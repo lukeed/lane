@@ -4,8 +4,9 @@
 # same anchor, must both land without conflict.
 set -uo pipefail
 
-LANE="$(cd "$(dirname "$0")" && pwd)/lane"
-FAKE="$(cd "$(dirname "$0")" && pwd)/tests/fake-reviewer"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+LANE="$ROOT/lane"
+FAKE="$ROOT/tests/fake-reviewer"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "  ok   - $1"; }
@@ -33,8 +34,7 @@ EOF
 }
 
 echo "== 1. cow layer =="
-python3 - <<'PY'
-import sys; sys.path.insert(0, "/home/claude/lane")
+PYTHONPATH="$ROOT" python3 - <<'PY'
 from lanelib import cow
 ok, detail = cow.probe("/tmp")
 print("  ok   - probe returns a verdict: %s (%s)" % (ok, detail))

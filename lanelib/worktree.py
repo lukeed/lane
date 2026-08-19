@@ -126,13 +126,26 @@ def create(name: str, base: str = None, fork: bool = False, warm=None,
     return dest, stats, notes
 
 
-def remove(name: str, force: bool = False):
+def remove(name: str, force: bool = False) -> bool:
+    """Remove a lane's worktree, and its branch when that is safe. Returns
+    True if the branch went too.
+
+    The branch is deleted with -d, not -D: a lane that was never landed holds
+    the only reference to its commits, so discarding them has to be asked for
+    rather than fall out of cleanup. `done` passes force=True, having just
+    fast-forwarded trunk onto those commits.
+    """
     root = main_root()
     dest = lanes_dir(root) / name
     git("worktree", "remove", *(["--force"] if force else []), str(dest), cwd=root)
-    git("branch", "-D", name, cwd=root, check=False)
+    deleted = True
+    if git("rev-parse", "--verify", "--quiet", "refs/heads/%s" % name,
+           cwd=root, check=False):
+        deleted = bool(git("branch", "-D" if force else "-d", name,
+                           cwd=root, check=False))
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
+    return deleted
 
 
 def fast_forward(root: Path, trunk: str, branch: str):

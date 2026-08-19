@@ -381,6 +381,19 @@ def cmd_done(a):
     return 0
 
 
+def cmd_rm(a):
+    if wt.remove(a.name, a.force):
+        print("removed lane %s" % a.name)
+        return 0
+    print("removed lane %s; kept branch %s, it has commits %s does not"
+          % (a.name, a.name, wt.trunk_name(wt.main_root())), file=sys.stderr)
+    print("  git worktree add <path> %s   to get back to them" % a.name,
+          file=sys.stderr)
+    print("  lane rm %s --force            to discard them" % a.name,
+          file=sys.stderr)
+    return 1
+
+
 def cmd_shellenv(a):
     print(r'''lane() {
   case "$1" in
@@ -460,10 +473,11 @@ def main(argv=None):
     s.add_argument("--review-max", type=int, default=20)
     s.set_defaults(fn=cmd_done)
 
-    s = sub.add_parser("rm", help="remove a lane without merging")
+    s = sub.add_parser("rm", help="discard a lane without landing it")
     s.add_argument("name")
-    s.add_argument("--force", action="store_true")
-    s.set_defaults(fn=lambda a: (wt.remove(a.name, a.force), 0)[1])
+    s.add_argument("--force", action="store_true",
+                   help="discard commits trunk does not have")
+    s.set_defaults(fn=cmd_rm)
 
     s = sub.add_parser("shellenv", help="print shell integration")
     s.set_defaults(fn=cmd_shellenv)

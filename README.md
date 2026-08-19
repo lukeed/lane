@@ -87,7 +87,7 @@ Python 3.9+, no dependencies.
 ## Tests
 
 ```
-./test_lane.sh    # 36 assertions against real git repos in a tmpdir
+./test_lane.sh    # 42 assertions against real git repos in a tmpdir
 ```
 
 ## Not verified here

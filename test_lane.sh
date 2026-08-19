@@ -197,6 +197,26 @@ is "garbage response yields no verdicts" \
    "$("$LANE" audit --review cmd --review-cmd "echo 'sorry, I cannot'" --json | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["verdicts"]))')" \
    "0"
 
+echo "== 11. rm will not discard commits trunk does not have =="
+setup
+"$LANE" new scrap > /dev/null 2>&1
+( cd "$TMP/.lanes-repo/scrap" && echo "fn work() {}" > src/work.rs \
+  && git add -A && git commit -qm "unlanded work" > /dev/null )
+SHA=$(git rev-parse scrap)
+"$LANE" rm scrap > /tmp/rm.out 2>&1
+is "rm exits non-zero when it kept a branch" "$?" "1"
+is "rm says the branch was kept" "$(grep -c 'kept branch scrap' /tmp/rm.out)" "1"
+is "unlanded branch survives" "$(git branch --list scrap | wc -l | tr -d ' ')" "1"
+is "unlanded commit still reachable" "$(git rev-parse scrap)" "$SHA"
+is "worktree is gone either way" \
+   "$([ -d "$TMP/.lanes-repo/scrap" ] && echo yes || echo no)" "no"
+
+"$LANE" new scrap2 > /dev/null 2>&1
+( cd "$TMP/.lanes-repo/scrap2" && echo "fn work() {}" > src/work2.rs \
+  && git add -A && git commit -qm "throwaway" > /dev/null )
+"$LANE" rm scrap2 --force > /dev/null 2>&1
+is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' ')" "0"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

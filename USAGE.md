@@ -223,7 +223,7 @@ Land them in any order.
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>] [--review ...]` | run the memory pass alone |
 | `lane done [--keep] [--trunk <ref>]` | rebase, audit, fast-forward, remove |
-| `lane rm <name> [--force]` | discard a lane without landing it |
+| `lane rm <name> [--force]` | discard a lane; it keeps a branch holding commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |
 
 ### Environment

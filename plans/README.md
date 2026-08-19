@@ -14,6 +14,7 @@ counts before starting, and update your row when done.
 | 014 | Follow a renamed file instead of discarding its memory | P1 | M | — | DONE |
 | 011 | Stop discarding notes whose anchor we cannot resolve | P1 | M | — | TODO |
 | 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | DONE |
+| 015 | Capture decisions from commit trailers, without importing the git log | P2 | M | — | TODO |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | TODO |
 | 007 | Let a project choose what a lane carries | P2 | M | — | TODO |
 | 010 | Clear the three small things that mislead | P3 | S | — | TODO |
@@ -34,10 +35,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 3. **013** — the design fix behind 003 and 009. Not urgent on its own now that 003 has
    landed, but every remaining mutation of a shared file is a merge hazard, and it is
    cheaper to do before more state accumulates than after.
-4. **007** — a lane without `.env` does not run the project, and the README says it will.
-5. **006** — the documented shell function can `cd` into an error message, or leave you in
+4. **015** — the reason for a change is typed into the commit message and thrown away.
+   Not a defect; the largest gap between what the tool promises and what it collects.
+5. **007** — a lane without `.env` does not run the project, and the README says it will.
+6. **006** — the documented shell function can `cd` into an error message, or leave you in
    a deleted directory.
-6. **010, 012** — cosmetics and binary size. No user loses work.
+7. **010, 012** — cosmetics and binary size. No user loses work.
 
 011 and the closed half of 003 are regressions the rewrite introduced. 014 predates it —
 the Python implementation lost memory on rename too, and neither audit caught it until the
@@ -54,6 +57,8 @@ immutable-notes design forced the question of what a note's path really is.
   013 makes 014's implementation simpler — once the directory is the only source of a
   note's path, following a rename is a pure file move with no content change — so if you
   are doing both, note the ordering caveat in 014 step 2.
+- **015 is independent of everything.** It adds a producer for `pending.jsonl`; nothing
+  downstream knows where a pending note came from.
 - Everything else is independent. 010 is a good warm-up.
 
 Assertion counts are expressed as deltas from whatever `cargo test` and `./test_lane.sh`

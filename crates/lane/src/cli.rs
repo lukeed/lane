@@ -103,7 +103,7 @@ enum Command {
         #[arg(long)]
         keep: bool,
         #[arg(long)]
-        allow_dirty: bool,
+        cd: bool,
         #[command(flatten)]
         budget: BudgetArgs,
         #[command(flatten)]
@@ -120,8 +120,9 @@ enum Command {
     Shellenv,
 }
 
-fn bold(text: &str) -> String {
-    if std::io::stdout().is_terminal() {
+/// Takes the stream it will be written to; under --cd that is stderr, not stdout.
+fn bold(text: &str, tty: bool) -> String {
+    if tty {
         format!("\x1b[1m{text}\x1b[0m")
     } else {
         text.to_string()
@@ -151,10 +152,10 @@ pub fn run() -> Result<i32> {
         Command::Done {
             trunk,
             keep,
-            allow_dirty,
+            cd,
             budget,
             review,
-        } => done(trunk.as_deref(), keep, allow_dirty, &budget, &review),
+        } => done(trunk.as_deref(), keep, cd, &budget, &review),
         Command::Rm { name, force } => rm(&name, force),
         Command::Shellenv => shellenv(),
     }
@@ -202,7 +203,6 @@ fn init() -> Result<i32> {
 
     let ignore = root.join(".gitignore");
     append_line(&ignore, PENDING)?;
-    append_line(&ignore, ".lanes-*")?;
 
     let (ok, detail) = crate::cow::probe(&root);
     println!("initialized .context/, union merge rules, AGENTS.md protocol");
@@ -218,11 +218,22 @@ fn init() -> Result<i32> {
 
 fn new(name: &str, base: Option<&str>, fork: bool, cd: bool) -> Result<i32> {
     let created = wt::create(name, base, fork, None)?;
+    // With --cd, stdout is reserved for the path so the shell can capture it without a pipe.
+    let tty = if cd {
+        std::io::stderr().is_terminal()
+    } else {
+        std::io::stdout().is_terminal()
+    };
+    let info: &mut dyn std::io::Write = if cd {
+        &mut std::io::stderr()
+    } else {
+        &mut std::io::stdout()
+    };
     for note in &created.notes {
-        println!("  {note}");
+        writeln!(info, "  {note}")?;
     }
-    println!("  {}", created.stats);
-    println!("{}", bold(&created.path.to_string_lossy()));
+    writeln!(info, "  {}", created.stats)?;
+    writeln!(info, "{}", bold(&created.path.to_string_lossy(), tty))?;
     if cd {
         println!("{}", created.path.display());
     }
@@ -258,6 +269,9 @@ fn ls() -> Result<i32> {
 
 fn path(name: &str) -> Result<i32> {
     let dest = wt::lanes_dir(&wt::main_root()?).join(name);
+    if !dest.exists() {
+        bail!("no lane named {name}");
+    }
     println!("{}", dest.display());
     Ok(0)
 }
@@ -431,7 +445,7 @@ fn audit_cmd(base: &str, budget: &BudgetArgs, review: &ReviewArgs, json: bool) -
 fn done(
     trunk: Option<&str>,
     keep: bool,
-    allow_dirty: bool,
+    cd: bool,
     budget: &BudgetArgs,
     review: &ReviewArgs,
 ) -> Result<i32> {
@@ -446,13 +460,20 @@ fn done(
         .map(str::to_string)
         .unwrap_or_else(|| wt::trunk_name(&root));
 
-    if wt::is_dirty(&lane_path) && !allow_dirty {
-        eprintln!("error: lane is dirty; commit or stash first");
+    if wt::is_dirty(&lane_path) {
+        eprintln!(
+            "error: lane has uncommitted changes; commit or stash first, the rebase will refuse them either way"
+        );
         return Ok(1);
     }
 
+    let info: &mut dyn std::io::Write = if cd {
+        &mut std::io::stderr()
+    } else {
+        &mut std::io::stdout()
+    };
     git(&["rebase", &trunk], Some(&lane_path))?;
-    println!("rebased onto {trunk}");
+    writeln!(info, "rebased onto {trunk}")?;
 
     let reviewer = review::build(review.review.as_deref(), review.review_cmd.as_deref());
     let out = audit::run(
@@ -460,7 +481,7 @@ fn done(
         &options(&trunk, budget, review),
         reviewer.as_ref(),
     )?;
-    audit::report(&out, &mut std::io::stdout())?;
+    audit::report(&out, info)?;
 
     // Fold this lane's per-branch files into the trunk's, so nothing accumulates.
     store::roll_up(&lane_path, &branch, &trunk)?;
@@ -480,11 +501,11 @@ fn done(
             ],
             Some(&lane_path),
         )?;
-        println!("committed memory update");
+        writeln!(info, "committed memory update")?;
     }
 
     wt::fast_forward(&root, &trunk, &branch)?;
-    println!("fast-forwarded {trunk}");
+    writeln!(info, "fast-forwarded {trunk}")?;
 
     if !keep {
         std::env::set_current_dir(&root)?;
@@ -493,7 +514,10 @@ fn done(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         wt::remove(&name, true)?;
-        println!("removed lane {branch}");
+        writeln!(info, "removed lane {branch}")?;
+    }
+    if cd {
+        println!("{}", root.display());
     }
     Ok(0)
 }
@@ -518,9 +542,9 @@ fn shellenv() -> Result<i32> {
     println!(
         r#"lane() {{
   case "$1" in
-    new)  shift; local p; p=$(command lane new --cd "$@" | tail -1) && cd "$p" ;;
-    cd)   shift; local p; p=$(command lane path "$1") && cd "$p" ;;
-    done) command lane done "${{@:2}}" && cd "$(git rev-parse --show-toplevel)" ;;
+    new)  shift; local p; p=$(command lane new --cd "$@")  || return; cd "$p" ;;
+    cd)   shift; local p; p=$(command lane path "$1")      || return; cd "$p" ;;
+    done) shift; local p; p=$(command lane done --cd "$@") || return; cd "$p" ;;
     *)    command lane "$@" ;;
   esac
 }}"#

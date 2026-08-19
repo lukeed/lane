@@ -264,7 +264,7 @@ then `lane done` again.
 `lane done`. Pending notes are untouched; they're only resolved after the
 rebase succeeds.
 
-**`lane is dirty`** — commit or stash. `--allow-dirty` skips the check but the
-rebase will likely fail anyway.
+**`lane has uncommitted changes`** — commit or stash first; the rebase refuses
+tracked changes either way. Untracked files are fine and need no stashing.
 
 **A note is wrong** — delete the file and commit. Nothing else references it.

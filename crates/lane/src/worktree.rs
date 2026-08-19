@@ -53,10 +53,14 @@ pub fn lanes_dir(root: &Path) -> PathBuf {
         .join(format!("{LANES_DIRNAME}-{name}"))
 }
 
+/// Tracked changes only: untracked files do not block a rebase.
 pub fn is_dirty(path: &Path) -> bool {
-    !try_git(&["status", "--porcelain"], Some(path))
-        .trim()
-        .is_empty()
+    !try_git(
+        &["status", "--porcelain", "--untracked-files=no"],
+        Some(path),
+    )
+    .trim()
+    .is_empty()
 }
 
 fn tracked_set(root: &Path) -> HashSet<String> {

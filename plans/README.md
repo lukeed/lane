@@ -15,9 +15,9 @@ counts before starting, and update your row when done.
 | 011 | Stop discarding notes whose anchor we cannot resolve | P1 | M | — | DONE |
 | 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | DONE |
 | 015 | Capture decisions from commit trailers, without importing the git log | P2 | M | — | TODO |
-| 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | TODO |
+| 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | DONE |
 | 007 | Let a project choose what a lane carries | P2 | M | — | TODO |
-| 010 | Clear the three small things that mislead | P3 | S | — | TODO |
+| 010 | Clear the three small things that mislead | P3 | S | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

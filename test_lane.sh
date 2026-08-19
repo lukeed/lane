@@ -343,6 +343,28 @@ is "check reports it as unverifiable" \
 is "a typo in a language we DO parse still evicts" \
    "$(grep -rl 'typo anchor' .context/attic | wc -l | tr -d ' ')" "1"
 
+echo "== 19. shell integration survives failure and survives done =="
+setup
+PATH="$(dirname "$LANE"):$PATH"
+eval "$(command lane shellenv)"
+
+is "new --cd puts only the path on stdout" \
+   "$(command lane new probe --cd 2>/dev/null | wc -l | tr -d ' ')" "1"
+command lane rm probe --force > /dev/null 2>&1
+
+cd "$TMP/repo"
+lane new dup > /dev/null 2>&1
+lane new dup > /dev/null 2>&1
+is "a failed new leaves the shell where it was" \
+   "$PWD" "$(cd "$TMP/.lanes-repo/dup" && pwd -P)"
+cd "$TMP/repo"
+
+lane new land > /dev/null 2>&1
+echo "fn x() {}" > src/x.rs && git add -A && git commit -qm x > /dev/null
+lane done > /dev/null 2>&1
+is "done lands the shell in the main worktree" "$PWD" "$(cd "$TMP/repo" && pwd -P)"
+is "that directory exists" "$([ -d "$PWD" ] && echo yes || echo no)" "yes"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

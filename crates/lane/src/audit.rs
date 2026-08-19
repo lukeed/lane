@@ -303,10 +303,12 @@ fn apply_review(
 
 pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
     let n = |tier: &str| out.stats.get(tier).copied().unwrap_or(0);
+    // Counted before the reviewer ran: what the hash check found, not what was done about it.
     writeln!(
         w,
-        "memory: +{} new, {} fresh, {} body-drift, {} signature-changed, {} missing",
+        "memory: +{} new; checked {}: {} fresh, {} body-drift, {} signature-changed, {} missing",
         out.created.len(),
+        out.stats.values().sum::<usize>(),
         n(FRESH),
         n(BODY),
         n(SIG),

@@ -38,6 +38,26 @@ install is `cargo install`. **WASM grammars** (tree-sitter's `wasm` feature) avo
 per-platform builds but link wasmtime, which is larger than the grammars it replaces.
 Revisit only if the grammar list grows past roughly thirty.
 
+### Trimming a grammar moves `@file` hashes
+
+Measured, not assumed. Hashing the same Rust body with and without the grammar:
+
+```
+normalized equal? false
+raw equal?        true
+```
+
+A named anchor in a trimmed-out language is `unverifiable` under plan 011, so nothing
+compares its hashes. But `@file` resolves without a grammar, and its *normalized* hash
+changes because comments are no longer stripped — so a trimmed build would report drift on
+every `@file` note for that language.
+
+`raw_hash` is exactly the escape hatch for this and it does not fire, because `NORM_VERSION`
+is a global constant that a trimmed build does not change. The fix is one line: make the
+stored marker record whether a grammar was applied, `"1"` against `"1n"`, so trimming flips
+it, the raw fallback engages, and identical bytes re-baseline silently. Do this in step 2,
+not as an afterthought.
+
 ## Current state
 
 `crates/lane/Cargo.toml` lists twelve grammar crates unconditionally.

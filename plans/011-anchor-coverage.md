@@ -48,6 +48,12 @@ the note at all, and treating absence of evidence as evidence of absence is what
 throws the note away. The tool also has the user right there at `lane note` time
 and says nothing.
 
+### Plan 013 made this smaller
+
+The tier now lives in `.context/state/<branch>.json`, not in the note, so adding a tier is
+a `TIERS` entry, a `tier_rank` arm and a `Checker::check` branch. Eviction already keys on
+`MISSING` alone, so an `unverifiable` note survives with no change to the audit.
+
 ## Current state
 
 - `crates/lane/src/syntax.rs` — `grammar_for` at the extension table; `Source::resolve`

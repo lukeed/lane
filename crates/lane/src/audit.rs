@@ -43,17 +43,28 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
     for note in notes.iter_mut() {
         let res = checker.check(note);
         *stats.entry(res.tier).or_insert(0) += 1;
+        let before = note.render();
         note.meta.status = res.tier.into();
-        note.meta.checked = now_iso();
-        if res.tier == BODY || res.tier == SIG {
+        let is_drift = res.tier == BODY || res.tier == SIG;
+        if is_drift {
             note.meta.sig = res.sig;
             note.meta.body_hash = res.body_hash;
             if let Some(span) = res.span {
                 note.meta.lines = format!("{}-{}", span.start, span.end);
             }
+        }
+        // An audit that learned nothing must leave no trace: stamping every note every
+        // run gave two branches a competing edit to the same line, which union merges.
+        if note.render() != before {
+            note.meta.checked = now_iso();
+        }
+        if is_drift {
             drifted.push(note.clone());
         }
-        if let Some(file) = note.file.clone() {
+        if let Some(file) = note.file.clone()
+            && !note.unreadable
+            && note.render() != note.raw
+        {
             note.write(&file)?;
         }
     }

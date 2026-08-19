@@ -233,6 +233,30 @@ is "parallel memory merges without conflict" "$?" "0"
 is "both notes survived" \
    "$(grep -rl 'a: alpha\|b: beta' .context --include='*.md' | wc -l | tr -d ' ')" "2"
 
+echo "== 14. audit is idempotent and a damaged note stays readable =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A && git commit -qm seed
+"$LANE" audit > /dev/null
+is "a no-op audit writes nothing" \
+   "$(git status --porcelain -- .context | wc -l | tr -d ' ')" "0"
+
+F=$(find .context -name '*.md' -not -path '*attic*' | head -1)
+python3 - "$F" <<'DUP'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+io.open(p, "w", encoding="utf-8").write(s.replace("checked:", "checked: 2099-01-01T00:00:00Z\nchecked:", 1))
+DUP
+BEFORE=$(cksum < "$F")
+is "a duplicated key does not hide the note" \
+   "$("$LANE" why src/auth.rs 2>/dev/null | grep -c 'constant time')" "1"
+"$LANE" audit > /dev/null 2>&1
+is "and does not evict it" \
+   "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
+is "and the damaged file is left alone" "$(cksum < "$F")" "$BEFORE"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

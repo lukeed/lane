@@ -221,6 +221,10 @@ impl Checker {
             body_hash: String::new(),
             span: None,
         };
+        // Nothing is known about a note we could not read, so nothing may act on it.
+        if note.unreadable {
+            return missing(FRESH);
+        }
         let anchor = note.meta.anchor.clone();
         let (want_sig, want_body) = (note.meta.sig.clone(), note.meta.body_hash.clone());
 

@@ -44,6 +44,10 @@ pub struct Note {
     pub meta: Meta,
     pub body: String,
     pub file: Option<PathBuf>,
+    /// The bytes this was parsed from, so audit can skip a write that changes nothing.
+    pub raw: String,
+    /// Frontmatter did not parse; we recovered what we could and must not rewrite it.
+    pub unreadable: bool,
 }
 
 impl Note {
@@ -52,6 +56,8 @@ impl Note {
             meta,
             body: body.into(),
             file: None,
+            raw: String::new(),
+            unreadable: false,
         }
     }
 
@@ -70,6 +76,24 @@ impl Note {
 }
 
 /// A note we cannot parse still has to be visible, so fall back to the whole file as body.
+/// `.context/<path>/<ulid>-<slug>.md`, so the directory names the file the note is about.
+fn path_from_location(file: &Path) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut seen_context = false;
+    for part in file.parent().unwrap_or(Path::new("")).components() {
+        let name = part.as_os_str().to_string_lossy().to_string();
+        if !seen_context {
+            seen_context = name == crate::store::CONTEXT_DIR;
+            continue;
+        }
+        if name == crate::store::ATTIC && parts.is_empty() {
+            continue;
+        }
+        parts.push(name);
+    }
+    parts.join("/")
+}
+
 pub fn parse(path: &Path) -> Result<Note> {
     let raw = std::fs::read_to_string(path)?;
     let stem = path
@@ -77,36 +101,47 @@ pub fn parse(path: &Path) -> Result<Note> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let fallback = || Note {
-        meta: Meta {
-            id: stem.clone(),
-            ..Default::default()
-        },
-        body: raw.clone(),
+    // Recover what the filename and directory still tell us, so a note we cannot read is
+    // still reported by name rather than as `#`.
+    let recovered = || Meta {
+        id: stem.split('-').next().unwrap_or(&stem).to_string(),
+        path: path_from_location(path),
+        ..Default::default()
+    };
+    let damaged = |body: String| Note {
+        meta: recovered(),
+        body,
         file: Some(path.to_path_buf()),
+        raw: raw.clone(),
+        unreadable: true,
     };
 
     let Some(rest) = raw.strip_prefix("---\n") else {
-        return Ok(fallback());
+        return Ok(damaged(raw.clone()));
     };
     let Some(end) = rest.find("\n---") else {
-        return Ok(fallback());
+        return Ok(damaged(raw.clone()));
     };
     let (front, tail) = rest.split_at(end);
-    let body = tail.trim_start_matches("\n---").trim_start_matches('\n');
+    let body = tail
+        .trim_start_matches("\n---")
+        .trim_start_matches('\n')
+        .to_string();
 
     match serde_yaml_ng::from_str::<Meta>(front) {
         Ok(meta) => Ok(Note {
             meta,
-            body: body.to_string(),
+            body,
             file: Some(path.to_path_buf()),
+            raw: raw.clone(),
+            unreadable: false,
         }),
         Err(e) => {
             eprintln!(
                 "warning: {} has unreadable frontmatter: {e}",
                 path.display()
             );
-            Ok(fallback())
+            Ok(damaged(body))
         }
     }
 }

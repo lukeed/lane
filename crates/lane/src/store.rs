@@ -247,13 +247,36 @@ impl Checker {
     }
 }
 
+/// Absolute and free of `..`, resolving symlinks when the path exists.
+///
+/// `std::path::absolute` keeps `..` components, which `strip_prefix` then happily accepts.
+fn resolved(path: &Path) -> Result<PathBuf> {
+    if let Ok(real) = path.canonicalize() {
+        return Ok(real);
+    }
+    let mut out = PathBuf::new();
+    for part in std::path::absolute(path)?.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    Ok(out)
+}
+
 /// Repo-relative path, refusing anything that would land outside the store.
 pub fn rel_to_repo(root: &Path, path: &str) -> Result<String> {
-    let abs = std::path::absolute(path)?;
-    let base = std::path::absolute(root)?;
+    let abs = resolved(Path::new(path))?;
+    let base = resolved(root)?;
     let rel = abs
         .strip_prefix(&base)
         .map_err(|_| anyhow::anyhow!("{path} is outside the repository"))?;
+    if rel.as_os_str().is_empty() {
+        anyhow::bail!("{path} is the repository root, not a file");
+    }
     Ok(rel.to_string_lossy().to_string())
 }
 
@@ -275,4 +298,34 @@ pub fn pending_count(worktree: &Path) -> usize {
     std::fs::read_to_string(worktree.join(PENDING))
         .map(|t| t.lines().filter(|l| !l.trim().is_empty()).count())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rel_to_repo;
+
+    #[test]
+    fn a_path_outside_the_repo_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = root.path().parent().unwrap().join("escape.txt");
+        std::fs::write(&outside, b"x").unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/a.rs"), b"x").unwrap();
+
+        assert!(rel_to_repo(root.path(), "../escape.txt").is_err());
+        assert!(rel_to_repo(root.path(), outside.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn a_path_inside_the_repo_is_kept_relative() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/a.rs"), b"x").unwrap();
+        let inside = root.path().join("src/a.rs");
+        assert_eq!(
+            rel_to_repo(root.path(), inside.to_str().unwrap()).unwrap(),
+            "src/a.rs"
+        );
+    }
 }

@@ -14,8 +14,8 @@ lane done                            rebase, audit memory, fast-forward, remove
 
 ## Copy-on-write
 
-`lanelib/cow.py` calls the kernel primitives directly — `FICLONE` (0x40049409)
-on Linux, `clonefile(2)` via ctypes on macOS — rather than shelling out to
+`crates/lane/src/cow.rs` calls the kernel primitives directly — `FICLONE` (0x40049409)
+on Linux via `rustix`, `clonefile(2)` on macOS — rather than shelling out to
 `cp --reflink`, because per-file we need to know whether we got real sharing
 or a silent full copy. `cp` will not tell you.
 
@@ -58,9 +58,12 @@ that anchor's span only:
 | `signature-changed` | the described thing changed shape | review |
 | `anchor-missing` | symbol gone | evict to `.context/.attic/` |
 
-Anchors are `fn verify`, `#script`, `## Heading`, `@file`. Comments and
-whitespace normalize away before hashing, so a formatter run does not stale the
-store, and editing `#script` leaves a note on `#style` alone (test 5).
+Anchors are `fn verify`, `#script`, `## Heading`, `@file`, resolved by
+tree-sitter rather than by regex: a span ends where the declaration ends, a `#`
+in a code fence is not a heading, and a brace inside a string does not truncate
+anything. Comments come from the parse tree too, so a formatter run does not
+stale the store, a changed URL inside a string does, and editing `#script`
+leaves a note on `#style` alone.
 
 Each `(path, anchor)` has a hard budget (5 notes / 1200 chars). Audit ranks by
 `pinned > reads > touched-by-this-lane > freshness > age` and evicts the
@@ -77,27 +80,30 @@ unnecessary and squash semantics never come up.
 ## Install
 
 ```bash
-git clone <this> ~/.lane && ln -s ~/.lane/lane /usr/local/bin/lane
+cargo install --path crates/lane
 eval "$(lane shellenv)"     # adds cd-into-the-lane behaviour
 cd yourrepo && lane init
 ```
 
-Python 3.9+, no dependencies.
+Rust 1.85+, edition 2024. Anchor resolution ships grammars for rust, go, python,
+javascript, typescript, tsx, c, c++, java, bash, css, html and markdown; adding
+one is a line in the table in `crates/lane/src/syntax.rs`.
 
 ## Tests
 
 ```
-./test_lane.sh    # 42 assertions against real git repos in a tmpdir
+cargo test        # 23 assertions: clone layer, anchors, hashing, verdict parsing
+./test_lane.sh    # 46 assertions against real git repos in a tmpdir
 ```
 
-## Not verified here
+## What the clone layer is tested against
 
-The container this was built in runs ext4 on a kernel with no btrfs or XFS
-modules, so **extent sharing itself is untested**. What is tested: the probe
-returns a correct verdict, `clone_file` is attempted per file before any
-fallback, the fallback tree is byte-identical, and symlinks are recreated
-rather than dereferenced. Run `lane init` on APFS or btrfs to confirm the
-sharing path, and `filefrag -v` on a cloned file to see `shared` extents.
+Extent sharing is verified on APFS: `cargo test` clones a 64 MiB file and fails
+if the filesystem spent more than 16 MiB of free space on it. The same assertion
+covers btrfs, XFS with `reflink=1`, bcachefs and ZFS wherever the suite runs;
+none of those have been run by the author. Where `probe()` says no, the test
+skips and the fallback copy is expected to cost full price. `filefrag -v` on a
+cloned file shows `shared` extents on Linux.
 
 ## Review
 
@@ -110,8 +116,8 @@ See USAGE.md.
 
 ## Still stubbed
 
-- **Anchor resolution is regex** (`lanelib/memory.py`, `resolve_anchor`).
-  Swap for tree-sitter; nothing downstream knows how a line range was produced.
 - **No session distillation.** `lane note` still needs calling. The version
   that gets adopted derives notes from the agent session at `done` time and
   writes them to `pending.jsonl` — a producer swap, not a redesign.
+- **A file whose language has no grammar resolves `@file` and nothing else.**
+  Named anchors there report as missing rather than as unverifiable.

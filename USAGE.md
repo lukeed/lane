@@ -14,7 +14,7 @@ lane done                   # rebase, distill memory, fast-forward trunk, delete
 ## Setup
 
 ```bash
-git clone <repo> ~/.lane && ln -s ~/.lane/lane /usr/local/bin/lane
+cargo install --path crates/lane
 eval "$(lane shellenv)"          # add to .zshrc: makes `lane new` cd into the lane
 cd yourproject && lane init
 git add .context .gitattributes AGENTS.md .gitignore

@@ -1,5 +1,11 @@
 # Implementation Plans
 
+> **STALE — pending re-audit.** These plans were written against the Python
+> implementation at commit `c2f4ed4`. The tool has since been rewritten in Rust
+> (`crates/lane`), which closed some of these findings outright and moved every
+> file path. Do not execute them as written; they are kept as the record of what
+> was found and what was decided. See "After the Rust rewrite" below.
+
 Written 2026-08-18 against commit `c2f4ed4`, from an audit of the whole repo
 (13 files, ~2,900 lines). Every finding raised in that audit is planned here
 except the two that were already fixed and committed — see "Already fixed"
@@ -133,3 +139,48 @@ written:
 - Anchor resolution is regex-based and known-loose; the audit treated that as
   the documented v0 limitation the README already declares, not as a finding.
   Plan 004's string-aware scanner is reusable there when someone takes it on.
+
+## After the Rust rewrite
+
+The rewrite carried across the findings whose fix was inherent to the new
+implementation or too small to leave broken, and deliberately preserved the rest
+so the plans stay meaningful.
+
+**Closed by the rewrite:**
+
+- **001** — the suite runs on macOS (`sedi` helper), and extent sharing is now a
+  real assertion in `cargo test` rather than an unverified README claim.
+- **002** — `anyhow` renders an expected failure as one `error:` line; panics
+  stay panics. `--allow-dirty` still exists and still cannot work.
+- **004** — comments come from the parse tree, so the language-blind stripper is
+  gone. A changed URL inside a string is drift; a markdown signature is a real
+  hash; the per-extension `SYNTAX` table the plan specified was unnecessary.
+- **005** — `lane note` refuses a path outside the repo or one that does not
+  exist, and `lane why` groups by `(path, anchor)` so it can no longer print
+  `None#`.
+- **008** — `ctx`, `test_ctx.sh`, `post-create` and `pre-done` are deleted. Every
+  assertion that only `test_ctx.sh` held was ported first: init scaffolding, the
+  signature-vs-body distinction, comment churn, the per-anchor budget, and the
+  two-branch merge.
+- **010** — the dead `pass` branch and the unused import are gone with the file
+  they lived in. `.lanes-*` is still written to `.gitignore`, and the audit
+  summary still reports pre-review tier counts.
+
+**Still open, unchanged by the rewrite:**
+
+- **003** — every audit still stamps `checked:` and rewrites every note, so
+  union merge can still duplicate frontmatter keys. Frontmatter now goes through
+  a real YAML serializer, which fixes the *escaping* half of the problem (a
+  newline in a model's `reason` can no longer corrupt a note) but not the
+  duplicate-key half.
+- **006** — `lane shellenv` emits the same shell function, `tail -1` and all.
+- **007** — the warm list is still the ten hardcoded entries in
+  `worktree::WARM_DEFAULT`, and the README table still overstates it.
+- **009** — `.reads.jsonl` is still one append-only file, union-merged.
+
+**New, found during the rewrite:**
+
+- A file whose language has no tree-sitter grammar resolves `@file` and nothing
+  else; named anchors there report `anchor-missing` and are evicted, rather than
+  being reported as unverifiable. The Python regexes were language-loose and
+  would sometimes match. This wants a tier or a guard.

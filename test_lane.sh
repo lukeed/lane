@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
-# Test suite for `lane`. Assertion 9 is the one that matters for the unified
-# flow: two lanes opened from the same trunk, both writing memory about the
-# same anchor, must both land without conflict.
+# End-to-end suite for `lane`. Section 6 is the one that matters: two lanes opened
+# from the same trunk, both writing memory about the same anchor, must both land.
+# The clone layer and anchor resolution are covered by `cargo test`.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-LANE="$ROOT/lane"
 FAKE="$ROOT/tests/fake-reviewer"
+cargo build --quiet --manifest-path "$ROOT/crates/lane/Cargo.toml" || exit 1
+TARGET=$(cargo metadata --no-deps --format-version 1 --manifest-path "$ROOT/crates/lane/Cargo.toml" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
+LANE="$TARGET/debug/lane"
+[ -x "$LANE" ] || { echo "no binary at $LANE"; exit 1; }
+
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "  ok   - $1"; }
 bad() { fail=$((fail+1)); echo "  FAIL - $1"; }
 is()  { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (want '$3', got '$2')"; fi; }
+# BSD sed wants an argument to -i, GNU sed refuses one; do the rename ourselves.
+sedi() { local expr="$1"; shift; for f in "$@"; do sed "$expr" "$f" > "$f.sedi" && mv "$f.sedi" "$f"; done; }
 
 setup() {
   cd "$TMP" && rm -rf repo .lanes-repo && mkdir repo && cd repo
@@ -32,34 +39,6 @@ EOF
   "$LANE" init > /dev/null
   git add -A && git commit -qm "lane init"
 }
-
-echo "== 1. cow layer =="
-PYTHONPATH="$ROOT" python3 - <<'PY'
-from lanelib import cow
-ok, detail = cow.probe("/tmp")
-print("  ok   - probe returns a verdict: %s (%s)" % (ok, detail))
-calls = []
-real = cow.clone_file
-def spy(s, d):
-    calls.append(s)
-    return real(s, d)
-cow.clone_file = spy
-import tempfile, os, filecmp
-src = tempfile.mkdtemp(); dst = tempfile.mkdtemp() + "/out"
-os.makedirs(os.path.join(src, "sub"))
-open(os.path.join(src, "a.bin"), "wb").write(os.urandom(4096))
-open(os.path.join(src, "sub", "b.bin"), "wb").write(os.urandom(4096))
-os.symlink("a.bin", os.path.join(src, "link"))
-st = cow.clone_tree(src, dst)
-assert len(calls) == 2, "clone_file must be attempted per regular file, got %d" % len(calls)
-print("  ok   - clone_file attempted before any fallback (2 files)")
-assert filecmp.cmp(os.path.join(src,"a.bin"), os.path.join(dst,"a.bin"), shallow=False)
-assert filecmp.cmp(os.path.join(src,"sub","b.bin"), os.path.join(dst,"sub","b.bin"), shallow=False)
-print("  ok   - fallback tree is byte-identical")
-assert os.path.islink(os.path.join(dst, "link")) and st.links == 1
-print("  ok   - symlinks recreated, not dereferenced")
-PY
-pass=$((pass+4))
 
 echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
@@ -89,7 +68,7 @@ setup
 "$LANE" new fix-login > /dev/null 2>&1
 LP="$TMP/.lanes-repo/fix-login"
 cd "$LP"
-sed -i 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
+sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn verify" \
   "must be constant-time; early return leaks token length" > /dev/null
 git add -A && git commit -qm "refactor verify"
@@ -116,7 +95,7 @@ git add -A && git commit -qm sfc
 "$LANE" note -p src/Editor.svelte -a "#script" "clear undo stack on doc swap" > /dev/null
 "$LANE" note -p src/Editor.svelte -a "#style" "auto not scroll; ios safari jank" > /dev/null
 "$LANE" audit > /dev/null
-sed -i 's|  let undoStack = \[\];|  let undoStack = [];\n  let cursor = 0;|' src/Editor.svelte
+sedi 's|  let undoStack = \[\];|  let undoStack = [];\n  let cursor = 0;|' src/Editor.svelte
 "$LANE" check --json > /tmp/c.json
 is "#script drifts" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/c.json"));print([x["tier"] for x in d if x["anchor"]=="#script"][0])')" \
@@ -140,7 +119,7 @@ is "both memories on trunk" \
    "$(git grep -l 'callers rely on false-on-expiry\|do not add regex' main -- .context | wc -l | tr -d ' ')" "2"
 
 echo "== 7. anchor deleted -> attic =="
-sed -i 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
+sedi 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn refresh" "rotation is idempotent upstream" > /dev/null
 "$LANE" audit > /dev/null
 is "evicted to attic" "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
@@ -164,9 +143,9 @@ git add -A && git commit -qm sync
 "$LANE" audit > /dev/null
 
 # drift all three spans
-sed -i 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
-sed -i 's|    let lock = session.lock()?;|    let lock = session.assume_locked();|' src/sync.rs
-sed -i 's|    transmit(msg)|    backoff_retry(\|\| transmit(msg))|' src/sync.rs
+sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
+sedi 's|    let lock = session.lock()?;|    let lock = session.assume_locked();|' src/sync.rs
+sedi 's|    transmit(msg)|    backoff_retry(\|\| transmit(msg))|' src/sync.rs
 
 "$LANE" audit --review cmd --review-cmd "$FAKE" --json > /tmp/r.json
 V=/tmp/r.json
@@ -216,6 +195,43 @@ is "worktree is gone either way" \
   && git add -A && git commit -qm "throwaway" > /dev/null )
 "$LANE" rm scrap2 --force > /dev/null 2>&1
 is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' ')" "0"
+
+echo "== 12. init scaffolding and the per-anchor budget =="
+setup
+is "gitattributes has both union rules" "$(grep -c 'merge=union' .gitattributes)" "2"
+is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
+is "pending notes are ignored" "$(grep -c '.wt/pending.jsonl' .gitignore)" "1"
+
+for i in 1 2 3 4 5; do
+  "$LANE" note -p src/auth.rs -a "fn verify" "filler note number $i about verify" > /dev/null
+done
+"$LANE" audit > /dev/null
+"$LANE" why src/auth.rs -a "fn verify" > /dev/null
+"$LANE" audit --max-notes 2 --json > /tmp/budget.json
+is "budget caps the anchor at 2 notes" \
+   "$(find .context/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
+is "eviction reason is recorded" \
+   "$(python3 -c 'import json;d=json.load(open("/tmp/budget.json"));print(d["evicted"][0]["reason"])')" \
+   "budget"
+is "evicted notes are recoverable from the attic" \
+   "$(find .context/.attic -name '*.md' | wc -l | tr -d ' ')" "3"
+
+echo "== 13. two branches writing memory merge without conflict =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A && git commit -qm seed
+
+git checkout -qb branch-a
+"$LANE" note -p src/auth.rs -a "fn verify" "a: alpha" > /dev/null
+"$LANE" audit > /dev/null && git add -A && git commit -qm a
+git checkout -q main && git checkout -qb branch-b
+"$LANE" note -p src/auth.rs -a "fn verify" "b: beta" > /dev/null
+"$LANE" audit > /dev/null && git add -A && git commit -qm b
+git merge -q --no-edit branch-a > /tmp/merge.out 2>&1
+is "parallel memory merges without conflict" "$?" "0"
+is "both notes survived" \
+   "$(grep -rl 'a: alpha\|b: beta' .context --include='*.md' | wc -l | tr -d ' ')" "2"
 
 echo
 echo "passed: $pass   failed: $fail"

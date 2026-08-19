@@ -3,7 +3,8 @@
 use crate::audit;
 use crate::git::{self, git, try_git};
 use crate::review;
-use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, PENDING, SIG};
+use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, PENDING, SIG, UNVERIFIABLE};
+use crate::syntax::{Resolution, Source};
 use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
@@ -268,6 +269,17 @@ fn note(text: &str, path: &str, anchor: &str) -> Result<i32> {
         // Otherwise the note is promoted, found missing, and atticked in the same audit.
         bail!("{rel} does not exist; note not recorded");
     }
+    let source_text = std::fs::read_to_string(root.join(&rel))?;
+    let source = Source::new(&source_text, &rel);
+    match source.resolve_detail(anchor) {
+        Resolution::Found(_) => {}
+        Resolution::NotFound => {
+            eprintln!("warning: anchor {anchor:?} not found in {rel}; note recorded anyway");
+        }
+        Resolution::Unparsed => {
+            eprintln!("warning: {rel} has no grammar; note will be kept but not checked for drift");
+        }
+    }
     store::append_pending(
         &root,
         &store::PendingNote {
@@ -316,6 +328,7 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
                 BODY => "~",
                 SIG => "!",
                 MISSING => "x",
+                UNVERIFIABLE => "?",
                 _ => " ",
             };
             let tail = if tier == FRESH {

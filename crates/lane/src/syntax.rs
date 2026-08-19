@@ -14,6 +14,13 @@ pub struct Span {
     pub end: usize,
 }
 
+pub enum Resolution {
+    Found(Span),
+    NotFound,
+    /// No grammar for this file type, so absence of a match means nothing.
+    Unparsed,
+}
+
 struct Grammar {
     language: fn() -> Language,
     decls: &'static str,
@@ -218,27 +225,37 @@ impl Source {
         self.text[self.byte_range(span)].to_string()
     }
 
-    pub fn resolve(&self, anchor: &str) -> Option<Span> {
+    pub fn resolve_detail(&self, anchor: &str) -> Resolution {
         let a = anchor.trim();
         if a.is_empty() || a == "@file" || a == "*" {
-            return Some(Span {
+            return Resolution::Found(Span {
                 start: 1,
                 end: self.line_count().max(1),
             });
         }
-        if let Some(block) = a.strip_prefix('#')
+        if self.grammar.is_none() {
+            return Resolution::Unparsed;
+        }
+        let span = if let Some(block) = a.strip_prefix('#')
             && !block.starts_with('#')
             && matches!(
                 block.trim().to_lowercase().as_str(),
                 "script" | "style" | "template"
-            )
-        {
-            return self.resolve_block(block.trim());
-        }
-        if a.starts_with("##") || a.starts_with("# ") {
-            return self.resolve_heading(a);
-        }
-        self.resolve_decl(a)
+            ) {
+            self.resolve_block(block.trim())
+        } else if a.starts_with("##") || a.starts_with("# ") {
+            self.resolve_heading(a)
+        } else {
+            self.resolve_decl(a)
+        };
+        span.map_or(Resolution::NotFound, Resolution::Found)
+    }
+
+    pub fn resolve(&self, anchor: &str) -> Option<Span> {
+        let Resolution::Found(span) = self.resolve_detail(anchor) else {
+            return None;
+        };
+        Some(span)
     }
 
     /// `<script>` / `<style>` / `<template>` in an SFC or html file.
@@ -647,5 +664,32 @@ pub fn refresh(token: &str) -> String {
         assert_eq!(body0, body1, "an untouched body must keep its hash");
         assert_eq!(sig0, sig2, "an untouched declaration must keep its hash");
         assert_ne!(body0, body2, "a changed body must change the body hash");
+    }
+
+    #[test]
+    fn a_named_anchor_without_a_grammar_is_unparsed() {
+        let src = Source::new("func verify() {}\n", "Auth.swift");
+        assert!(matches!(
+            src.resolve_detail("func verify"),
+            Resolution::Unparsed
+        ));
+    }
+
+    #[test]
+    fn a_file_anchor_without_a_grammar_still_resolves() {
+        let src = Source::new("func verify() {}\n", "Auth.swift");
+        assert!(matches!(
+            src.resolve_detail("@file"),
+            Resolution::Found(Span { start: 1, end: 1 })
+        ));
+    }
+
+    #[test]
+    fn a_missing_anchor_with_a_grammar_is_not_found() {
+        let src = Source::new(RS_SRC, "src/auth.rs");
+        assert!(matches!(
+            src.resolve_detail("fn verfy"),
+            Resolution::NotFound
+        ));
     }
 }

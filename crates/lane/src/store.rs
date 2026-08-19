@@ -2,7 +2,7 @@
 
 use crate::git;
 use crate::note::{self, Meta, Note};
-use crate::syntax::{Source, Span};
+use crate::syntax::{Resolution, Source, Span};
 use crate::util::{now_iso, slug, ulid};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -21,14 +21,18 @@ pub const FRESH: &str = "fresh";
 pub const BODY: &str = "body-drift";
 pub const SIG: &str = "signature-changed";
 pub const MISSING: &str = "anchor-missing";
+pub const UNVERIFIABLE: &str = "unverifiable";
 
-pub const TIERS: [&str; 4] = [FRESH, BODY, SIG, MISSING];
+pub const TIERS: [&str; 5] = [FRESH, BODY, SIG, MISSING, UNVERIFIABLE];
 
 pub fn tier_rank(tier: &str) -> u8 {
     match tier {
         BODY => 1,
         SIG => 2,
         MISSING => 3,
+        // Ranks with fresh: we have no evidence against it, and retention must not evict
+        // on ignorance any more than the audit does.
+        UNVERIFIABLE => 0,
         _ => 0,
     }
 }
@@ -357,10 +361,24 @@ impl Checker {
         let Some(src) = self.source(&path) else {
             return blank(MISSING);
         };
-        let Some(span) = src.resolve(&anchor) else {
-            return blank(MISSING);
+        let span = match src.resolve_detail(&anchor) {
+            Resolution::Found(span) => span,
+            Resolution::NotFound => return blank(MISSING),
+            Resolution::Unparsed => return blank(UNVERIFIABLE),
         };
         let (sig, body_hash, raw_hash) = src.hashes(span, &anchor);
+
+        // Nothing to compare against yet, so this is a first fingerprint, not a change.
+        if base.sig.is_empty() && base.body_hash.is_empty() {
+            return Check {
+                tier: FRESH,
+                sig,
+                body_hash,
+                raw_hash,
+                span: Some(span),
+                rebaselined: false,
+            };
+        }
 
         // A baseline from a different normalization is not comparable. Identical bytes mean
         // drift is impossible, so adopt silently; otherwise adopt and say so.
@@ -705,6 +723,59 @@ mod tests {
         let res = Checker::new(root.path()).check(&note);
         assert_eq!(res.tier, FRESH);
         assert!(res.rebaselined, "an unresolvable baseline must be reported");
+    }
+
+    #[test]
+    fn a_first_fingerprint_is_not_drift() {
+        // A note made when the language had no grammar has no baseline; adding one later
+        // must not report every such note as signature-changed.
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/a.rs"), "pub fn v() {}\n").unwrap();
+        let note = Note::new(
+            Meta {
+                id: "01M0A".into(),
+                anchor: "fn v".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+                ..Default::default()
+            },
+            "a note",
+        );
+        let file = note_dir(root.path(), "src/a.rs").join("01M0A-a-note.md");
+        note.write(&file).unwrap();
+        let note = note::parse(&file).unwrap();
+
+        let res = Checker::new(root.path()).check(&note);
+        assert_eq!(res.tier, FRESH);
+        assert!(!res.sig.is_empty(), "the fingerprint must be adopted");
+    }
+
+    #[test]
+    fn an_unverifiable_note_is_not_the_first_evicted() {
+        // Retention ranks it with fresh, not below drift.
+        assert_eq!(tier_rank(UNVERIFIABLE), tier_rank(FRESH));
+        assert!(tier_rank(UNVERIFIABLE) < tier_rank(BODY));
+    }
+
+    #[test]
+    fn an_unparsed_anchor_is_unverifiable() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/Auth.swift"), "func verify() {}\n").unwrap();
+        let note = Note::new(
+            Meta {
+                id: "01M0A".into(),
+                anchor: "func verify".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+                ..Default::default()
+            },
+            "a note",
+        );
+        let file = note_dir(root.path(), "src/Auth.swift").join("01M0A-a-note.md");
+        note.write(&file).unwrap();
+        let note = note::parse(&file).unwrap();
+
+        assert_eq!(Checker::new(root.path()).check(&note).tier, UNVERIFIABLE);
     }
 
     #[test]

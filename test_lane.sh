@@ -327,6 +327,22 @@ is "done rolls the lane's state into trunk's" \
 is "the lane's own state file is gone" \
    "$([ -f .context/state/land.json ] && echo yes || echo no)" "no"
 
+echo "== 18. anchors we cannot resolve are kept, not discarded =="
+setup
+printf 'func verify(_ t: String) -> Bool {\n    return ok(t)\n}\n' > src/Auth.swift
+git add -A && git commit -qm swift
+"$LANE" note -p src/Auth.swift -a "func verify" "swift: constant time" 2> /tmp/w.out
+is "note on an unparsed language warns" "$(grep -c 'warning:' /tmp/w.out)" "1"
+"$LANE" note -p src/auth.rs -a "fn verfy" "typo anchor" > /dev/null 2>&1
+"$LANE" audit > /dev/null
+"$LANE" audit > /dev/null
+is "the unparsed note survives" \
+   "$(grep -rl 'swift: constant time' .context --include='*.md' | grep -vc attic)" "1"
+is "check reports it as unverifiable" \
+   "$("$LANE" check | awk '/^unverifiable/{print $2}')" "1"
+is "a typo in a language we DO parse still evicts" \
+   "$(grep -rl 'typo anchor' .context/attic | wc -l | tr -d ' ')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

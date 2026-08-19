@@ -141,4 +141,5 @@ See USAGE.md.
   that gets adopted derives notes from the agent session at `done` time and
   writes them to `pending.jsonl` — a producer swap, not a redesign.
 - **A file whose language has no grammar resolves `@file` and nothing else.**
-  Named anchors there report as missing rather than as unverifiable.
+  Named-anchor notes there are kept and reported `unverifiable`. Supporting drift
+  checks for another language requires a table entry in `crates/lane/src/syntax.rs`.

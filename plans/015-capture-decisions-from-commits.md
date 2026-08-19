@@ -91,6 +91,11 @@ block is.
 - `git rev-parse --git-path hooks` resolves correctly from inside a lane worktree and
   honours `core.hooksPath`.
 - A hook installed once fires inside every lane, because worktrees share the common dir.
+- Comment lines are **only** stripped from editor commits. With `-m` and `-F` the default
+  cleanup is `whitespace`, so a `#` line survives into the stored message.
+- `prepare-commit-msg` receives the message source as `$2`: `message` for `-m`/`-F`,
+  `commit` for `--amend`, `merge`, `squash`, `template`, or empty when an editor will open.
+  Gating on empty-or-`template` is what makes a hint line safe.
 
 ## Current state
 
@@ -123,7 +128,7 @@ At `6856a10` the baselines are 34 and 64.
   explicit field and nothing else. Anything that guesses belongs in its own plan and needs
   its own argument.
 - Blocking or rewriting commits. The hook never fails a commit.
-- `pre-commit`, `post-merge`, `post-rewrite`. One hook, one job.
+- `pre-commit`, `post-merge`, `post-rewrite`. Two hooks, and neither can fail a commit.
 - Running `lane audit` from a hook — it writes tracked files and would leave every commit
   with a dirty tree.
 
@@ -199,7 +204,26 @@ and a human who also typed `lane note`.
 
 **Verify**: a unit test — promoting the same pending record twice yields one note.
 
-### Step 5: `lane hooks install`
+### Step 5: Put the syntax in front of the user, not in their memory
+
+The one thing this feature asks of a user is a line in a shape they have to know. Do not
+make them remember it. `lane hooks install` also writes `prepare-commit-msg`:
+
+```sh
+#!/bin/sh
+# lane: offer the Why form when an editor will open
+case "$2" in
+  ""|template) printf '\n# Why: <path>#<anchor> | what must stay true (optional, lane note)\n' >> "$1" ;;
+esac
+```
+
+The `case` is load-bearing, not decoration: git strips `#` lines from editor commits but
+**not** from `-m`, so an ungated hint would end up inside every message committed that way.
+
+**Verify**: `git commit -m x` stores a message with no `#` line; an editor commit shows the
+hint and stores a message without it.
+
+### Step 6: `lane hooks install`
 
 Writes `post-commit` into `git rev-parse --git-path hooks`:
 
@@ -220,7 +244,7 @@ Add `lane hooks uninstall` that removes only the marked block, and mention both 
 **Verify**: `lane hooks install` twice is idempotent; against a foreign hook it refuses and
 prints the snippet.
 
-### Step 6: Cover it end to end
+### Step 7: Cover it end to end
 
 Add a section to `test_lane.sh` before the summary. Six assertions:
 
@@ -257,7 +281,7 @@ is "an identical note is not duplicated" \
 
 Confirm each fails against the current code before implementing.
 
-### Step 7: Document it
+### Step 8: Document it
 
 A short `USAGE.md` section under "Leave notes while you work": the syntax, that a target is
 required, and the one sentence that matters — **record why it must stay true, not what you
@@ -273,6 +297,7 @@ README's "No session distillation" bullet with what now exists and what still do
 - [ ] A commit with no `Why:` trailer creates no pending file
 - [ ] A malformed or subject-restating trailer warns, records nothing, and exits 0
 - [ ] `lane hooks install` is idempotent and refuses to touch a foreign hook
+- [ ] `git commit -m` stores no `#` hint line; an editor commit shows one and stores none
 - [ ] The same trailer on two commits yields one note
 - [ ] `plans/README.md` row updated
 
@@ -297,6 +322,8 @@ README's "No session distillation" bullet with what now exists and what still do
   `lane why` output, which is the only thing that matters here.
 - Filters 1 and 2 are structural; 4 is a heuristic. If the heuristic ever gets in the way,
   delete it — the structural ones carry the design.
+- The hint in `prepare-commit-msg` must stay gated on `$2`. Ungating it puts a `#` line
+  into every `-m` commit message in the repository.
 - `post-commit` is safe only because `.wt/pending.jsonl` is gitignored. Anything a future
   hook writes into a tracked path leaves every commit dirty and breaks `lane done`'s
   refusal to land a dirty lane.

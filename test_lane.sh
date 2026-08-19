@@ -406,6 +406,21 @@ want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "--dirty carries the change iff reflink" \
    "$(grep -q 'scratch' "$TMP/.lanes-repo/carried/src/auth.rs" && echo yes || echo no)" "$(want)"
 
+echo "== 21. done refuses before it writes =="
+setup
+"$LANE" new spike > /dev/null 2>&1
+LP="$TMP/.lanes-repo/spike"
+( cd "$LP" && printf 'pub fn verify() {\n    lane version\n}\n' > src/auth.rs \
+  && git commit -qam "lane work" > /dev/null )
+printf 'pub fn verify() {\n    my version\n}\n' > src/auth.rs   # dirty in main, same file
+BEFORE=$(git -C "$LP" rev-parse HEAD)
+( cd "$LP" && "$LANE" done > /tmp/blocked.out 2>&1 )
+is "done refuses" "$(grep -c '^error:' /tmp/blocked.out)" "1"
+is "and names the file" "$(grep -c 'src/auth.rs' /tmp/blocked.out)" "1"
+is "nothing was committed" "$(git -C "$LP" rev-parse HEAD)" "$BEFORE"
+git checkout -- src/auth.rs
+( cd "$LP" && "$LANE" done > /dev/null 2>&1 )
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

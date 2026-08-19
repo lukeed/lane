@@ -467,6 +467,16 @@ fn done(
         return Ok(1);
     }
 
+    let blocked = wt::blocking_changes(&root, &trunk, &branch);
+    if !blocked.is_empty() {
+        eprintln!(
+            "error: {} has uncommitted changes to {}; commit or stash there first",
+            trunk,
+            blocked.join(", ")
+        );
+        return Ok(1);
+    }
+
     let info: &mut dyn std::io::Write = if cd {
         &mut std::io::stderr()
     } else {

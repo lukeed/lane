@@ -276,4 +276,7 @@ rebase succeeds.
 **`lane has uncommitted changes`** — commit or stash first; the rebase refuses
 tracked changes either way. Untracked files are fine and need no stashing.
 
+**`main has uncommitted changes`** — clean the named tracked files in the main
+worktree; commit or stash there first. Nothing in the lane was touched.
+
 **A note is wrong** — delete the file and commit. Nothing else references it.

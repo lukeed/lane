@@ -327,6 +327,62 @@ pub fn remove(name: &str, force: bool) -> Result<bool> {
     Ok(deleted)
 }
 
+fn tracked_changes(status: &str) -> Vec<String> {
+    let mut entries = status.split('\0');
+    let mut paths = Vec::new();
+    while let Some(entry) = entries.next() {
+        if entry.starts_with("## ") {
+            continue;
+        }
+        let Some(path) = entry.get(3..) else { continue };
+        paths.push(path.to_string());
+        if entry.as_bytes()[..2]
+            .iter()
+            .any(|s| matches!(s, b'R' | b'C'))
+            && let Some(source) = entries.next()
+        {
+            paths.push(source.to_string());
+        }
+    }
+    paths
+}
+
+/// Files a fast-forward would overwrite in the main worktree. Empty means `done` can land.
+pub fn blocking_changes(root: &Path, trunk: &str, branch: &str) -> Vec<String> {
+    // Only the merge path touches a working tree; update-ref cannot conflict.
+    if try_git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(root)) != trunk {
+        return Vec::new();
+    }
+    let incoming: HashSet<String> = try_git(
+        &[
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            &format!("{trunk}..{branch}"),
+        ],
+        Some(root),
+    )
+    .split('\0')
+    .filter(|p| !p.is_empty())
+    .map(str::to_string)
+    .collect();
+    // The branch header protects the first status column from try_git's trim.
+    tracked_changes(&try_git(
+        &[
+            "status",
+            "--porcelain",
+            "-z",
+            "--branch",
+            "--untracked-files=no",
+        ],
+        Some(root),
+    ))
+    .into_iter()
+    .filter(|p| incoming.contains(p))
+    .collect()
+}
+
 /// Advance trunk to branch: merge when trunk is checked out, update-ref when it is not.
 pub fn fast_forward(root: &Path, trunk: &str, branch: &str) -> Result<()> {
     let head = git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(root))?;
@@ -404,5 +460,21 @@ mod tests {
             "SECRET=1"
         );
         Ok(())
+    }
+
+    #[test]
+    fn tracked_changes_keeps_spaces() {
+        assert_eq!(
+            tracked_changes("## main\0 M src/auth flow.rs\0"),
+            vec!["src/auth flow.rs"]
+        );
+    }
+
+    #[test]
+    fn tracked_changes_includes_both_sides_of_a_rename() {
+        assert_eq!(
+            tracked_changes("## main\0R  src/new.rs\0src/old.rs\0"),
+            vec!["src/new.rs", "src/old.rs"]
+        );
     }
 }

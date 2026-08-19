@@ -66,6 +66,33 @@ or amends carry it.
 In all three cases the commit still succeeds. A hook that fails your commit over
 a malformed note is worse than losing the note.
 
+## Both, not either
+
+`lane note` does not go away. The two are producers for the same file:
+
+```
+git commit  →  Why: trailer  →  post-commit hook  ┐
+                                                  ├─→  .wt/pending.jsonl  →  audit  →  note
+lane note -p … -a … "…"  ───────────────────────  ┘
+```
+
+Nothing downstream knows which one a note came from. Same promotion, same
+fingerprinting, same budget, same review.
+
+Overlap is safe. Promotion drops a pending record whose text already matches a
+live note on the same anchor, so writing a `Why:` trailer *and* running
+`lane note` with the same sentence gives you one note, not two.
+
+Reach for the trailer when the decision and the change happen together, which is
+most of the time. Reach for `lane note` when they do not:
+
+- you learned something reading code you are not changing
+- the insight arrives mid-work, nowhere near a commit boundary
+- the note is long, or awkward to type inside a commit message
+
+The only rule that differs is the pasted-subject check, and only because it
+cannot apply: `lane note` has no commit subject to paste.
+
 ## What it will not do
 
 It reads one field. Not your diff, not the commit body, not commits without

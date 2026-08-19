@@ -1,0 +1,476 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""lane - copy-on-write worktrees with memory that survives them.
+
+  lane new fix-login              CoW worktree + branch
+  lane note -a "fn verify" "..."  record a finding
+  lane why src/auth.rs            read what past lanes learned
+  lane done                       rebase, audit memory, fast-forward, remove
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lanelib import cow, review as review_mod, worktree as wt
+from lanelib.memory import (
+    ATTIC, CONTEXT_DIR, PENDING, READS, TIER_BODY, TIER_FRESH, TIER_MISSING,
+    TIER_RANK, TIER_SIG, Note, bump_reads, check_note, current_branch,
+    evict, git, load_notes, note_dir, now_iso, promote_pending, read_counts,
+    repo_root, resolve_anchor, slug, touched_paths, ulid,
+)
+
+MAX_NOTES = 5
+MAX_CHARS = 1200
+
+
+def c(code, s):
+    return s if not sys.stdout.isatty() else "\033[%sm%s\033[0m" % (code, s)
+
+
+# --------------------------------------------------------------------------
+
+
+def cmd_init(a):
+    root = wt.main_root()
+    (root / CONTEXT_DIR).mkdir(exist_ok=True)
+    (root / CONTEXT_DIR / ".gitkeep").touch()
+
+    ga = root / ".gitattributes"
+    rules = ["%s/**/*.md merge=union" % CONTEXT_DIR,
+             "%s/%s merge=union" % (CONTEXT_DIR, READS)]
+    existing = ga.read_text(encoding="utf-8") if ga.exists() else ""
+    add = [r for r in rules if r not in existing]
+    if add:
+        with ga.open("a", encoding="utf-8") as f:
+            if existing and not existing.endswith("\n"):
+                f.write("\n")
+            f.write("\n".join(add) + "\n")
+
+    agents = root / "AGENTS.md"
+    protocol = (
+        "\n## Context memory\n\n"
+        "- Before editing a file, read `.context/<path>/` if it exists,"
+        " or run `lane why <path>`.\n"
+        "- Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n"
+        "- Do not edit `.context/` by hand; `lane done` manages it.\n"
+    )
+    if not agents.exists():
+        agents.write_text("# AGENTS\n" + protocol, encoding="utf-8")
+    elif "## Context memory" not in agents.read_text(encoding="utf-8"):
+        with agents.open("a", encoding="utf-8") as f:
+            f.write(protocol)
+
+    gi = root / ".gitignore"
+    for line in (".wt/pending.jsonl", ".lanes-*"):
+        if not gi.exists() or line not in gi.read_text(encoding="utf-8"):
+            with gi.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+    ok, detail = cow.probe(str(root))
+    print("initialized .context/, union merge rules, AGENTS.md protocol")
+    print("reflink on this filesystem: %s (%s)" % ("yes" if ok else "no", detail))
+    if not ok:
+        print("  lanes will still work; warm dirs get copied instead of shared")
+    return 0
+
+
+def cmd_new(a):
+    dest, stats, notes = wt.create(a.name, base=a.base, fork=a.fork)
+    for n in notes:
+        print("  " + n)
+    print("  %s" % stats)
+    print(c("1", str(dest)))
+    if a.cd:
+        print(dest)
+    return 0
+
+
+def cmd_ls(a):
+    root = wt.main_root()
+    lanes = wt.list_lanes(root)
+    if not lanes:
+        print("no lanes")
+        return 0
+    for w in lanes:
+        p = Path(w["worktree"])
+        br = w.get("branch", "").replace("refs/heads/", "") or "detached"
+        dirty = "dirty" if wt.is_dirty(p) else "clean"
+        pend = (p / PENDING)
+        n = len(pend.read_text().splitlines()) if pend.exists() else 0
+        print("%-20s %-24s %-6s %d pending note(s)" % (p.name, br, dirty, n))
+    return 0
+
+
+def cmd_note(a):
+    root = repo_root()
+    rel = os.path.relpath(os.path.abspath(a.path), str(root))
+    pending = root / PENDING
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    rec = {"text": a.text, "path": rel, "anchor": a.anchor or "@file",
+           "branch": current_branch(), "at": now_iso()}
+    with pending.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+    print("noted -> %s#%s" % (rel, rec["anchor"]))
+    return 0
+
+
+def span_text(root: Path, note) -> str:
+    target = root / note.path
+    if not target.exists():
+        return ""
+    text = target.read_text(encoding="utf-8", errors="replace")
+    span = resolve_anchor(text, note.anchor)
+    if not span:
+        return ""
+    return "\n".join(text.splitlines()[span[0] - 1:span[1]])[:4000]
+
+
+def apply_review(root: Path, drifted, reviewer, limit: int):
+    """Ask a model whether each drifted note is still true, then act.
+
+    Supersede creates a NEW note rather than editing the old one. That is not
+    fussiness: mutation would break the union-merge invariant that lets
+    parallel lanes write memory without conflicting.
+    """
+    if not drifted or isinstance(reviewer, review_mod.NullReviewer):
+        return []
+    items = []
+    for n in drifted[:limit]:
+        s = span_text(root, n)
+        if s:
+            items.append({"id": n.id, "path": n.path, "anchor": n.anchor,
+                          "note": n.body.strip(), "span": s})
+    if not items:
+        return []
+
+    verdicts = reviewer.review(items)
+    applied = []
+    for n in drifted:
+        v = verdicts.get(n.id)
+        if not v:
+            continue
+        n.meta["reviewed"] = now_iso()
+        n.meta["verdict"] = v["verdict"]
+        if v["reason"]:
+            n.meta["verdict"] = "%s: %s" % (v["verdict"], v["reason"])
+
+        if v["verdict"] == "holds":
+            n.meta["status"] = TIER_FRESH
+            if n.file:
+                n.file.write_text(n.render(), encoding="utf-8")
+        elif v["verdict"] == "superseded" and v["rewrite"]:
+            new = Note({
+                "id": ulid(), "path": n.path, "anchor": n.anchor,
+                "created": now_iso(), "branch": current_branch(),
+                "sig": n.meta.get("sig", ""), "body_hash": n.meta.get("body_hash", ""),
+                "lines": n.meta.get("lines", ""), "status": TIER_FRESH,
+                "checked": now_iso(), "supersedes": n.id,
+                "reviewed": now_iso(), "verdict": "supersedes %s" % n.id,
+            }, v["rewrite"])
+            d = note_dir(root, n.path)
+            d.mkdir(parents=True, exist_ok=True)
+            new.file = d / ("%s-%s.md" % (new.id, slug(v["rewrite"])))
+            new.file.write_text(new.render(), encoding="utf-8")
+            evict(root, n, "superseded by %s" % new.id)
+            applied.append((n, "superseded", new))
+            continue
+        elif v["verdict"] == "contradicted":
+            # Quarantine rather than keep: a confidently wrong note is worse
+            # than no note, and the attic makes the call reversible.
+            evict(root, n, "contradicted: %s" % (v["reason"] or "code disagrees"))
+            applied.append((n, "contradicted", None))
+            continue
+        applied.append((n, v["verdict"], None))
+    return applied
+
+
+def run_audit(root: Path, base: str, max_notes: int, max_chars: int,
+              reviewer=None, review_limit: int = 20):
+    created = promote_pending(root)
+    counts = read_counts(root)
+    touched = touched_paths(base) if base else set()
+    notes = load_notes(root)
+
+    stats = {TIER_FRESH: 0, TIER_BODY: 0, TIER_SIG: 0, TIER_MISSING: 0}
+    review, by_anchor = [], {}
+
+    for n in notes:
+        res = check_note(root, n)
+        tier = res["tier"]
+        stats[tier] += 1
+        n.meta["status"] = tier
+        n.meta["checked"] = now_iso()
+        if tier in (TIER_BODY, TIER_SIG):
+            n.meta["sig"] = res.get("sig", n.meta.get("sig", ""))
+            n.meta["body_hash"] = res.get("body_hash", n.meta.get("body_hash", ""))
+            if res.get("span"):
+                n.meta["lines"] = "%d-%d" % res["span"]
+            review.append(n)
+        if n.file:
+            n.file.write_text(n.render(), encoding="utf-8")
+
+    reviewed = apply_review(root, review, reviewer or review_mod.NullReviewer(),
+                            review_limit)
+    if reviewed:
+        notes = load_notes(root)  # supersedes added files, contradicted removed
+    for n in notes:
+        by_anchor.setdefault((n.path, n.anchor), []).append(n)
+
+    evicted = [(n, why) for n, why, _ in reviewed if why == "contradicted"]
+    evicted += [(n, "superseded") for n, why, _ in reviewed if why == "superseded"]
+
+    for (path, anchor), group in by_anchor.items():
+        for n in list(group):
+            if n.meta.get("status") == TIER_MISSING and not n.pinned:
+                evict(root, n, "anchor missing")
+                evicted.append((n, "anchor missing"))
+                group.remove(n)
+
+        group.sort(key=lambda n: (
+            0 if n.pinned else 1,
+            -counts.get(n.id, 0),
+            0 if n.path in touched else 1,
+            TIER_RANK.get(n.meta.get("status", TIER_FRESH), 0),
+            n.id,
+        ))
+        kept, chars = [], 0
+        for n in group:
+            if not n.pinned and (len(kept) >= max_notes
+                                 or chars + len(n.body) > max_chars):
+                evict(root, n, "budget")
+                evicted.append((n, "budget"))
+                continue
+            kept.append(n)
+            chars += len(n.body)
+
+    return {"created": created, "stats": stats, "review": review,
+            "evicted": evicted, "reviewed": reviewed,
+            "reviewer": getattr(reviewer, "name", "none")}
+
+
+def cmd_audit(a):
+    root = repo_root()
+    reviewer = review_mod.build_reviewer(a.review, a.review_cmd)
+    r = run_audit(root, a.base, a.max_notes, a.max_chars, reviewer, a.review_max)
+    if a.json:
+        print(json.dumps({
+            "created": [n.id for n in r["created"]],
+            "checked": r["stats"],
+            "needs_review": [{"id": n.id, "path": n.path, "anchor": n.anchor,
+                              "status": n.meta["status"]} for n in r["review"]],
+            "evicted": [{"id": n.id, "reason": x} for n, x in r["evicted"]],
+            "reviewer": r["reviewer"],
+            "verdicts": [{"id": n.id, "verdict": v,
+                          "replacement": (nw.id if nw else None)}
+                         for n, v, nw in r["reviewed"]],
+        }, indent=2))
+        return 0
+    print_audit(r)
+    return 0
+
+
+def print_audit(r):
+    s = r["stats"]
+    print("memory: +%d new, %d fresh, %d body-drift, %d signature-changed, %d missing"
+          % (len(r["created"]), s[TIER_FRESH], s[TIER_BODY], s[TIER_SIG],
+             s[TIER_MISSING]))
+    if r.get("reviewed"):
+        print("  reviewed %d drifted note(s) via %s" % (len(r["reviewed"]),
+                                                        r["reviewer"]))
+        for n, v, new in r["reviewed"]:
+            extra = (" -> %s" % new.id[:10]) if new else ""
+            print("  %-13s %s#%s%s" % (v, n.path, n.anchor, extra))
+    else:
+        for n in r["review"]:
+            print("  review  %s#%s  [%s]" % (n.path, n.anchor, n.meta["status"]))
+    for n, why in r["evicted"]:
+        print("  evict   %s#%s  (%s)" % (n.path, n.anchor, why))
+
+
+def cmd_why(a):
+    root = repo_root()
+    rel = os.path.relpath(os.path.abspath(a.path), str(root)) if a.path else None
+    notes = load_notes(root, rel)
+    if a.anchor:
+        notes = [n for n in notes if n.anchor == a.anchor]
+    if not notes:
+        print("no context for %s" % (rel or "repo"))
+        return 0
+    groups = {}
+    for n in notes:
+        groups.setdefault(n.anchor, []).append(n)
+    shown = []
+    for anchor in sorted(groups):
+        print("\n%s#%s" % (rel, anchor))
+        for n in sorted(groups[anchor], key=lambda x: x.id):
+            tier = check_note(root, n)["tier"]
+            mark = {TIER_FRESH: " ", TIER_BODY: "~", TIER_SIG: "!",
+                    TIER_MISSING: "x"}[tier]
+            tail = "" if tier == TIER_FRESH else "   [%s]" % tier
+            print("  %s %s%s" % (mark, n.body.strip().replace("\n", "\n    "), tail))
+            print("      %s · %s · %s" % (n.id[:10], n.meta.get("branch", "?"),
+                                          n.meta.get("created", "?")[:10]))
+            shown.append(n.id)
+    bump_reads(root, shown)
+    return 0
+
+
+def cmd_check(a):
+    root = repo_root()
+    rows = [(check_note(root, n)["tier"], n) for n in load_notes(root)]
+    if a.json:
+        print(json.dumps([{"id": n.id, "path": n.path, "anchor": n.anchor,
+                           "tier": t} for t, n in rows], indent=2))
+        return 0
+    stats = {}
+    for t, _ in rows:
+        stats[t] = stats.get(t, 0) + 1
+    for t in (TIER_FRESH, TIER_BODY, TIER_SIG, TIER_MISSING):
+        print("%-18s %d" % (t, stats.get(t, 0)))
+    return 1 if stats.get(TIER_MISSING) else 0
+
+
+def cmd_done(a):
+    """rebase -> audit -> commit memory -> fast-forward trunk -> remove lane.
+
+    Audit runs AFTER the rebase on purpose: spans are resolved against the
+    post-rebase tree, so no note is ever anchored to a rewritten commit.
+    """
+    lane_path = repo_root()
+    root = wt.main_root()
+    if lane_path == root:
+        print("error: not inside a lane", file=sys.stderr)
+        return 2
+    branch = current_branch()
+    trunk = a.trunk or wt.trunk_name(root)
+
+    if wt.is_dirty(lane_path) and not a.allow_dirty:
+        print("error: lane is dirty; commit or stash first", file=sys.stderr)
+        return 1
+
+    git("rebase", trunk, cwd=lane_path)
+    print("rebased onto %s" % trunk)
+
+    reviewer = review_mod.build_reviewer(a.review, a.review_cmd)
+    r = run_audit(lane_path, trunk, a.max_notes, a.max_chars, reviewer,
+                  a.review_max)
+    print_audit(r)
+
+    changed = git("status", "--porcelain", "--", CONTEXT_DIR, "AGENTS.md",
+                  cwd=lane_path, check=False).strip()
+    if changed:
+        git("add", CONTEXT_DIR, "AGENTS.md", cwd=lane_path, check=False)
+        git("commit", "-q", "-m", "memory: update context from lane %s" % branch,
+            cwd=lane_path)
+        print("committed memory update")
+
+    wt.fast_forward(root, trunk, branch)
+    print("fast-forwarded %s" % trunk)
+
+    if not a.keep:
+        os.chdir(str(root))
+        wt.remove(Path(lane_path).name, force=True)
+        print("removed lane %s" % branch)
+    return 0
+
+
+def cmd_shellenv(a):
+    print(r'''lane() {
+  case "$1" in
+    new)  shift; local p; p=$(command lane new --cd "$@" | tail -1) && cd "$p" ;;
+    cd)   shift; local p; p=$(command lane path "$1") && cd "$p" ;;
+    done) command lane done "${@:2}" && cd "$(git rev-parse --show-toplevel)" ;;
+    *)    command lane "$@" ;;
+  esac
+}''')
+    return 0
+
+
+def cmd_path(a):
+    print(wt.lanes_dir(wt.main_root()) / a.name)
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="lane", description=__doc__.splitlines()[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init", help="scaffold memory + merge rules, probe reflink")
+    s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("new", help="create a CoW lane")
+    s.add_argument("name")
+    s.add_argument("--base", default=None)
+    s.add_argument("--fork", action="store_true",
+                   help="clone the entire tree by reference, dirty state included")
+    s.add_argument("--cd", action="store_true", help="print path last, for shell fn")
+    s.set_defaults(fn=cmd_new)
+
+    s = sub.add_parser("ls", help="list lanes")
+    s.set_defaults(fn=cmd_ls)
+
+    s = sub.add_parser("path", help="print a lane's path")
+    s.add_argument("name")
+    s.set_defaults(fn=cmd_path)
+
+    s = sub.add_parser("note", help="record a finding")
+    s.add_argument("text")
+    s.add_argument("-p", "--path", required=True)
+    s.add_argument("-a", "--anchor", default="@file")
+    s.set_defaults(fn=cmd_note)
+
+    s = sub.add_parser("why", help="show context for a path")
+    s.add_argument("path", nargs="?")
+    s.add_argument("-a", "--anchor")
+    s.set_defaults(fn=cmd_why)
+
+    s = sub.add_parser("check", help="staleness report")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_check)
+
+    s = sub.add_parser("audit", help="promote, re-anchor, rank, evict")
+    s.add_argument("--base", default="")
+    s.add_argument("--max-notes", type=int, default=MAX_NOTES)
+    s.add_argument("--max-chars", type=int, default=MAX_CHARS)
+    s.add_argument("--review", choices=["auto", "none", "cmd", "anthropic"],
+                   default=None, help="drift reviewer (default: auto)")
+    s.add_argument("--review-cmd", default=None,
+                   help="command receiving JSON on stdin, e.g. 'claude -p'")
+    s.add_argument("--review-max", type=int, default=20)
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_audit)
+
+    s = sub.add_parser("done", help="rebase, audit, fast-forward, remove")
+    s.add_argument("--trunk", default=None)
+    s.add_argument("--keep", action="store_true")
+    s.add_argument("--allow-dirty", action="store_true")
+    s.add_argument("--max-notes", type=int, default=MAX_NOTES)
+    s.add_argument("--max-chars", type=int, default=MAX_CHARS)
+    s.add_argument("--review", choices=["auto", "none", "cmd", "anthropic"],
+                   default=None, help="drift reviewer (default: auto)")
+    s.add_argument("--review-cmd", default=None,
+                   help="command receiving JSON on stdin, e.g. 'claude -p'")
+    s.add_argument("--review-max", type=int, default=20)
+    s.set_defaults(fn=cmd_done)
+
+    s = sub.add_parser("rm", help="remove a lane without merging")
+    s.add_argument("name")
+    s.add_argument("--force", action="store_true")
+    s.set_defaults(fn=lambda a: (wt.remove(a.name, a.force), 0)[1])
+
+    s = sub.add_parser("shellenv", help="print shell integration")
+    s.set_defaults(fn=cmd_shellenv)
+
+    a = p.parse_args(argv)
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

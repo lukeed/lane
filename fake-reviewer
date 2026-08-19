@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""Deterministic stand-in for a model, so verdict handling is tested without
+an API key. Keys off marker words in the note text.
+
+Real usage is LANE_REVIEW_CMD='claude -p' or ANTHROPIC_API_KEY.
+"""
+import json
+import re
+import sys
+
+raw = sys.stdin.read()
+m = re.search(r'\{"reviews".*\}\s*$', raw, re.S)
+payload = json.loads(m.group(0))
+
+out = []
+for item in payload["reviews"]:
+    note = item["note"].lower()
+    if "HOLDS" in item["note"] or "constant-time" in note:
+        out.append({"id": item["id"], "verdict": "holds",
+                    "reason": "still accurate after refactor"})
+    elif "lock" in note:
+        out.append({"id": item["id"], "verdict": "superseded",
+                    "rewrite": "session lock is now taken by the caller; "
+                               "reconnect assumes it is already held",
+                    "reason": "locking moved to caller"})
+    elif "never retries" in note:
+        out.append({"id": item["id"], "verdict": "contradicted",
+                    "reason": "code now retries with backoff"})
+    else:
+        out.append({"id": item["id"], "verdict": "unsure",
+                    "reason": "span alone is insufficient"})
+
+# Fenced on purpose: the parser must tolerate what models actually emit.
+print("```json")
+print(json.dumps({"verdicts": out}))
+print("```")

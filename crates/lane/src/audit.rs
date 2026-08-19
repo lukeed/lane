@@ -1,0 +1,286 @@
+//! Promote, re-anchor, review, rank, evict.
+
+use crate::git;
+use crate::note::{Meta, Note};
+use crate::review::{Item, Reviewer};
+use crate::store::{self, BODY, FRESH, MISSING, SIG, TIERS};
+use crate::util::{now_iso, slug, ulid};
+use anyhow::Result;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::io::Write;
+use std::path::Path;
+
+pub struct Options {
+    pub base: String,
+    pub max_notes: usize,
+    pub max_chars: usize,
+    pub review_limit: usize,
+}
+
+pub struct Outcome {
+    pub created: Vec<Note>,
+    pub stats: HashMap<&'static str, usize>,
+    pub review: Vec<Note>,
+    pub evicted: Vec<(Note, String)>,
+    pub reviewed: Vec<(Note, String, Option<Note>)>,
+    pub reviewer: String,
+}
+
+pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outcome> {
+    let created = store::promote_pending(root)?;
+    let counts = store::read_counts(root);
+    let touched: HashSet<String> = if opts.base.is_empty() {
+        HashSet::new()
+    } else {
+        git::touched_paths(&opts.base)
+    };
+
+    let mut notes = store::load_notes(root, None);
+    let mut checker = store::Checker::new(root);
+    let mut stats: HashMap<&'static str, usize> = TIERS.iter().map(|t| (*t, 0)).collect();
+    let mut drifted: Vec<Note> = Vec::new();
+
+    for note in notes.iter_mut() {
+        let res = checker.check(note);
+        *stats.entry(res.tier).or_insert(0) += 1;
+        note.meta.status = res.tier.into();
+        note.meta.checked = now_iso();
+        if res.tier == BODY || res.tier == SIG {
+            note.meta.sig = res.sig;
+            note.meta.body_hash = res.body_hash;
+            if let Some(span) = res.span {
+                note.meta.lines = format!("{}-{}", span.start, span.end);
+            }
+            drifted.push(note.clone());
+        }
+        if let Some(file) = note.file.clone() {
+            note.write(&file)?;
+        }
+    }
+
+    let reviewed = apply_review(
+        root,
+        &mut drifted,
+        reviewer,
+        &mut checker,
+        opts.review_limit,
+    )?;
+    if !reviewed.is_empty() {
+        // Supersede added files and contradicted removed them.
+        notes = store::load_notes(root, None);
+    }
+
+    let mut evicted: Vec<(Note, String)> = reviewed
+        .iter()
+        .filter(|(_, why, _)| why == "contradicted")
+        .map(|(n, why, _)| (n.clone(), why.clone()))
+        .collect();
+    evicted.extend(
+        reviewed
+            .iter()
+            .filter(|(_, why, _)| why == "superseded")
+            .map(|(n, _, _)| (n.clone(), "superseded".to_string())),
+    );
+
+    let mut by_anchor: BTreeMap<(String, String), Vec<Note>> = BTreeMap::new();
+    for note in notes {
+        by_anchor
+            .entry((note.meta.path.clone(), note.meta.anchor.clone()))
+            .or_default()
+            .push(note);
+    }
+
+    for group in by_anchor.values_mut() {
+        let mut live = Vec::new();
+        for mut note in group.drain(..) {
+            if note.meta.status == MISSING && !note.meta.pinned {
+                store::evict(root, &mut note, "anchor missing")?;
+                evicted.push((note, "anchor missing".into()));
+            } else {
+                live.push(note);
+            }
+        }
+
+        live.sort_by(|a, b| {
+            let key = |n: &Note| {
+                (
+                    u8::from(!n.meta.pinned),
+                    std::cmp::Reverse(counts.get(&n.meta.id).copied().unwrap_or(0)),
+                    u8::from(!touched.contains(&n.meta.path)),
+                    store::tier_rank(&n.meta.status),
+                    n.meta.id.clone(),
+                )
+            };
+            key(a).cmp(&key(b))
+        });
+
+        let (mut kept, mut chars) = (0usize, 0usize);
+        for mut note in live {
+            let over = kept >= opts.max_notes || chars + note.body.len() > opts.max_chars;
+            if !note.meta.pinned && over {
+                store::evict(root, &mut note, "budget")?;
+                evicted.push((note, "budget".into()));
+                continue;
+            }
+            kept += 1;
+            chars += note.body.len();
+        }
+    }
+
+    Ok(Outcome {
+        created,
+        stats,
+        review: drifted,
+        evicted,
+        reviewed,
+        reviewer: reviewer.name(),
+    })
+}
+
+/// Supersede writes a NEW note rather than editing the old one: mutation would break the
+/// union-merge invariant that lets parallel lanes write memory without conflicting.
+fn apply_review(
+    root: &Path,
+    drifted: &mut [Note],
+    reviewer: &dyn Reviewer,
+    checker: &mut store::Checker,
+    limit: usize,
+) -> Result<Vec<(Note, String, Option<Note>)>> {
+    if drifted.is_empty() || !reviewer.enabled() {
+        return Ok(Vec::new());
+    }
+    let mut items = Vec::new();
+    for note in drifted.iter().take(limit) {
+        let span = checker.span_text(note);
+        if span.is_empty() {
+            continue;
+        }
+        items.push(Item {
+            id: note.meta.id.clone(),
+            path: note.meta.path.clone(),
+            anchor: note.meta.anchor.clone(),
+            note: note.body.trim().to_string(),
+            span,
+        });
+    }
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let verdicts = reviewer.review(&items);
+    let mut applied = Vec::new();
+
+    for note in drifted.iter_mut() {
+        let Some(v) = verdicts.get(&note.meta.id) else {
+            continue;
+        };
+        note.meta.reviewed = now_iso();
+        note.meta.verdict = if v.reason.is_empty() {
+            v.verdict.clone()
+        } else {
+            format!("{}: {}", v.verdict, v.reason)
+        };
+
+        match v.verdict.as_str() {
+            "superseded" if !v.rewrite.is_empty() => {
+                let meta = Meta {
+                    id: ulid(),
+                    path: note.meta.path.clone(),
+                    anchor: note.meta.anchor.clone(),
+                    created: now_iso(),
+                    branch: git::current_branch(),
+                    sig: note.meta.sig.clone(),
+                    body_hash: note.meta.body_hash.clone(),
+                    lines: note.meta.lines.clone(),
+                    status: FRESH.into(),
+                    checked: now_iso(),
+                    reviewed: now_iso(),
+                    verdict: format!("supersedes {}", note.meta.id),
+                    supersedes: note.meta.id.clone(),
+                    ..Default::default()
+                };
+                let file = store::note_dir(root, &meta.path).join(format!(
+                    "{}-{}.md",
+                    meta.id,
+                    slug(&v.rewrite, 28)
+                ));
+                let mut fresh = Note::new(meta, v.rewrite.clone());
+                fresh.write(&file)?;
+                fresh.file = Some(file);
+                let reason = format!("superseded by {}", fresh.meta.id);
+                store::evict(root, note, &reason)?;
+                applied.push((note.clone(), "superseded".into(), Some(fresh)));
+            }
+            "contradicted" => {
+                // A confidently wrong note is worse than none; the attic keeps it reversible.
+                let reason = if v.reason.is_empty() {
+                    "code disagrees".to_string()
+                } else {
+                    v.reason.clone()
+                };
+                store::evict(root, note, &format!("contradicted: {reason}"))?;
+                applied.push((note.clone(), "contradicted".into(), None));
+            }
+            other => {
+                if other == "holds" {
+                    note.meta.status = FRESH.into();
+                }
+                if let Some(file) = note.file.clone() {
+                    note.write(&file)?;
+                }
+                applied.push((note.clone(), other.to_string(), None));
+            }
+        }
+    }
+    Ok(applied)
+}
+
+pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
+    let n = |tier: &str| out.stats.get(tier).copied().unwrap_or(0);
+    writeln!(
+        w,
+        "memory: +{} new, {} fresh, {} body-drift, {} signature-changed, {} missing",
+        out.created.len(),
+        n(FRESH),
+        n(BODY),
+        n(SIG),
+        n(MISSING)
+    )?;
+
+    if out.reviewed.is_empty() {
+        for note in &out.review {
+            writeln!(
+                w,
+                "  review  {}#{}  [{}]",
+                note.meta.path, note.meta.anchor, note.meta.status
+            )?;
+        }
+    } else {
+        writeln!(
+            w,
+            "  reviewed {} drifted note(s) via {}",
+            out.reviewed.len(),
+            out.reviewer
+        )?;
+        for (note, verdict, replacement) in &out.reviewed {
+            let extra = replacement
+                .as_ref()
+                .map(|n| format!(" -> {}", &n.meta.id[..10.min(n.meta.id.len())]))
+                .unwrap_or_default();
+            writeln!(
+                w,
+                "  {verdict:<13} {}#{}{extra}",
+                note.meta.path, note.meta.anchor
+            )?;
+        }
+    }
+
+    for (note, why) in &out.evicted {
+        writeln!(
+            w,
+            "  evict   {}#{}  ({why})",
+            note.meta.path, note.meta.anchor
+        )?;
+    }
+    Ok(())
+}

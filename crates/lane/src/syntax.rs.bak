@@ -1,0 +1,14 @@
+#[test]
+fn dump_html_tree() {
+    use tree_sitter::Parser;
+    let src = "<script>\n  let undoStack = [];\n</script>\n<style>\n  .viewport { overflow: auto; }\n</style>\n";
+    let mut p = Parser::new();
+    p.set_language(&tree_sitter_html::LANGUAGE.into()).unwrap();
+    let t = p.parse(src, None).unwrap();
+    fn go(n: tree_sitter::Node, d: usize, src: &str) {
+        eprintln!("{}{} [{}..{}]", "  ".repeat(d), n.kind(), n.start_position().row + 1, n.end_position().row + 1);
+        let mut c = n.walk();
+        for ch in n.children(&mut c) { go(ch, d + 1, src); }
+    }
+    go(t.root_node(), 0, src);
+}

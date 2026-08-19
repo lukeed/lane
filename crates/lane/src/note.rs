@@ -145,3 +145,63 @@ pub fn parse(path: &Path) -> Result<Note> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_note(root: &Path, rel: &str, body: &str) -> PathBuf {
+        let dir = root.join(crate::store::CONTEXT_DIR).join(rel);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("01M0AAAAAAAAAAAAAAAAAAAAAA-seed.md");
+        let note = Note::new(
+            Meta {
+                id: "01M0AAAAAAAAAAAAAAAAAAAAAA".into(),
+                path: rel.into(),
+                anchor: "fn verify".into(),
+                created: "2026-08-19T00:00:00Z".into(),
+                ..Default::default()
+            },
+            body,
+        );
+        note.write(&file).unwrap();
+        file
+    }
+
+    #[test]
+    fn a_note_we_wrote_round_trips_to_the_same_bytes() {
+        // This is what lets audit skip a write, and so what keeps merges clean.
+        let root = tempfile::tempdir().unwrap();
+        let file = write_note(root.path(), "src/auth.rs", "seed: constant time");
+        let parsed = parse(&file).unwrap();
+        assert!(!parsed.unreadable);
+        assert_eq!(parsed.render(), parsed.raw);
+    }
+
+    #[test]
+    fn a_damaged_note_keeps_its_identity_and_body() {
+        let root = tempfile::tempdir().unwrap();
+        let file = write_note(root.path(), "src/auth.rs", "seed: constant time");
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            text.replacen("created:", "created: 2099-01-01T00:00:00Z\ncreated:", 1),
+        )
+        .unwrap();
+
+        let parsed = parse(&file).unwrap();
+        assert!(parsed.unreadable, "duplicate keys must not parse silently");
+        assert_eq!(parsed.meta.path, "src/auth.rs");
+        assert_eq!(parsed.meta.id, "01M0AAAAAAAAAAAAAAAAAAAAAA");
+        assert!(parsed.body.contains("seed: constant time"));
+    }
+
+    #[test]
+    fn a_notes_path_comes_from_its_directory_attic_or_not() {
+        let root = Path::new("/repo");
+        let live = root.join(".context/src/auth.rs/01M0-x.md");
+        let attic = root.join(".context/.attic/src/auth.rs/01M0-x.md");
+        assert_eq!(path_from_location(&live), "src/auth.rs");
+        assert_eq!(path_from_location(&attic), "src/auth.rs");
+    }
+}

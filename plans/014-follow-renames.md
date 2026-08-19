@@ -58,8 +58,9 @@ The rule this plan installs: **evict when the file is gone, follow it when it mo
   directory. After plan 013 that is the only source of truth and a rename is a pure
   directory move; before 013 the `path:` field must be updated too.
 
-Note directories are `.context/<path>/`, so following a rename is a directory move from
-`.context/<old>/` to `.context/<new>/`.
+Note directories are `.context/<path>/` today, and `.context/-/<path>/` after plan 013,
+so following a rename is a directory move from `<old>` to `<new>` under whichever root
+is current. Read the `NOTES` constant in `store.rs` rather than hardcoding the prefix.
 
 Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at file end.
 
@@ -120,8 +121,8 @@ and confirm by hand that `renames("HEAD~1")` returns one entry after a `git mv`.
 ### Step 2: Move the notes before deciding anything is missing
 
 In `audit::run`, after `promote_pending` and before notes are loaded, apply the rename map:
-for each `(old, new)` where `.context/<old>/` exists, move its contents into
-`.context/<new>/`, creating the destination and merging into it if it already exists.
+for each `(old, new)` where the note directory for `old` exists, move its contents into
+the one for `new`, creating the destination and merging into it if it already exists.
 
 Use `std::fs::rename` per note file rather than moving the directory wholesale, so an
 existing destination directory is merged rather than clobbered. Remove the old directory
@@ -135,7 +136,7 @@ if 013 has already landed.
 Report it: push one line per moved path into the audit output, `moved   <old> -> <new> (N note(s))`.
 
 **Verify**: after `git mv src/auth.rs src/token.rs`, `lane audit` prints a `moved` line and
-`.context/src/token.rs/` holds the note.
+the note directory for `src/token.rs` holds the note.
 
 ### Step 3: Do not evict what merely moved
 

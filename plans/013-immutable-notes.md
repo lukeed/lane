@@ -4,7 +4,7 @@
 > command and confirm the expected result before moving on. If a STOP condition occurs,
 > stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat 73bdfd5..HEAD -- crates/lane/src/`
+> **Drift check (run first)**: `git diff --stat 43e404f..HEAD -- crates/lane/src/`
 
 ## Status
 
@@ -14,7 +14,7 @@
 - **Depends on**: none. No migration: nothing is released and no store exists to carry
   forward.
 - **Category**: tech-debt
-- **Planned at**: commit `73bdfd5`, 2026-08-19
+- **Planned at**: commit `43e404f`, 2026-08-19
 - **Supersedes**: plan 009 entirely, and the design plan 003 patched around. 003 stays
   landed; this removes the class rather than the symptom.
 
@@ -164,7 +164,7 @@ Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at fi
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 7 |
 
-At `73bdfd5` the baselines are 28 and 50.
+At `43e404f` the baselines are 28 and 50.
 
 ## Scope
 

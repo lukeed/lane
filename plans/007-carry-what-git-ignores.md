@@ -4,7 +4,7 @@
 > command and confirm the expected result before moving on. If a STOP condition occurs,
 > stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat 229d9ec..HEAD -- crates/lane/src/worktree.rs crates/lane/src/cli.rs`
+> **Drift check (run first)**: `git diff --stat 43e404f..HEAD -- crates/lane/src/worktree.rs crates/lane/src/cli.rs`
 
 ## Status
 
@@ -13,7 +13,7 @@
 - **Risk**: MED
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `229d9ec`, 2026-08-19
+- **Planned at**: commit `43e404f`, 2026-08-19
 - **Supersedes**: the earlier version of this plan, which made the hardcoded list
   configurable. That design could not express the case that matters and is abandoned.
 
@@ -135,7 +135,7 @@ Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at fi
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
 
-At `229d9ec` the baselines are 40 and 72.
+At `43e404f` the baselines are 40 and 72.
 
 ## Scope
 

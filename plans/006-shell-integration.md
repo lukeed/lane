@@ -4,7 +4,7 @@
 > command and confirm the expected result before moving on. If a STOP condition
 > occurs, stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat 6dc6647..HEAD -- crates/lane/src/cli.rs`
+> **Drift check (run first)**: `git diff --stat 43e404f..HEAD -- crates/lane/src/cli.rs`
 
 ## Status
 
@@ -13,7 +13,7 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `6dc6647`, 2026-08-18
+- **Planned at**: commit `43e404f`, 2026-08-18
 
 ## Why this matters
 

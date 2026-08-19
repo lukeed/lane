@@ -4,7 +4,7 @@
 > command and confirm the expected result before moving on. If a STOP condition occurs,
 > stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat 229d9ec..HEAD -- crates/lane/src/cli.rs crates/lane/src/worktree.rs`
+> **Drift check (run first)**: `git diff --stat 43e404f..HEAD -- crates/lane/src/cli.rs crates/lane/src/worktree.rs`
 
 ## Status
 
@@ -13,7 +13,7 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `229d9ec`, 2026-08-19
+- **Planned at**: commit `43e404f`, 2026-08-19
 
 ## Why this matters
 
@@ -90,7 +90,7 @@ Conventions: one-line comments, `anyhow::Result`, command functions return an ex
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
 
-At `229d9ec` the baselines are 40 and 72.
+At `43e404f` the baselines are 40 and 72.
 
 ## Scope
 

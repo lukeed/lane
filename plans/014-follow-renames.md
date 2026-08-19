@@ -4,7 +4,7 @@
 > command and confirm the expected result before moving on. If a STOP condition occurs,
 > stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat c73428e..HEAD -- crates/lane/src/audit.rs crates/lane/src/store.rs crates/lane/src/git.rs`
+> **Drift check (run first)**: `git diff --stat 43e404f..HEAD -- crates/lane/src/audit.rs crates/lane/src/store.rs crates/lane/src/git.rs`
 
 ## Status
 
@@ -13,7 +13,7 @@
 - **Risk**: MED
 - **Depends on**: none — plan 013 makes step 2 simpler but is not required
 - **Category**: bug
-- **Planned at**: commit `c73428e`, 2026-08-19
+- **Planned at**: commit `43e404f`, 2026-08-19
 
 ## Why this matters
 

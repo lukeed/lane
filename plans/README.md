@@ -1,7 +1,7 @@
 # Implementation Plans
 
-Re-audited 2026-08-18 against commit `6dc6647`, after the Rust rewrite; 013 and 014
-added 2026-08-19 against `c73428e`. Every finding
+Re-audited 2026-08-18 against commit `43e404f`, after the Rust rewrite; 013 and 014
+added 2026-08-19 against `43e404f`. Every finding
 below was re-verified against the current tree, not carried over on trust.
 
 Each executor: read the plan fully, honour its STOP conditions, record the baseline test
@@ -87,7 +87,7 @@ Verified against the tree, not assumed. The plan files were deleted; this is the
 - **005 — note path validation and `lane why` labelling.** `lane why` groups by
   `(path, anchor)` and cannot print `None#`. `lane note` refuses a file that does not
   exist. Containment took two attempts: the first used `std::path::absolute`, which keeps
-  `..`, so `../outside.txt` still escaped — fixed in `6dc6647` with canonicalization and
+  `..`, so `../outside.txt` still escaped — fixed in `43e404f` with canonicalization and
   lexical `..` folding, plus two tests. *The unresolvable-anchor warning moved into 011.*
 - **008 — retire the superseded design.** `ctx`, `test_ctx.sh`, `post-create` and
   `pre-done` are deleted. Every assertion only `test_ctx.sh` held was ported first: init

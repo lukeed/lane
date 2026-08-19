@@ -9,9 +9,10 @@
 ## Status
 
 - **Priority**: P1
-- **Effort**: L
-- **Risk**: HIGH
-- **Depends on**: none
+- **Effort**: M
+- **Risk**: MED
+- **Depends on**: none. No migration: nothing is released and no store exists to carry
+  forward, which is why this is M/MED rather than L/HIGH.
 - **Category**: tech-debt
 - **Planned at**: commit `c73428e`, 2026-08-19
 - **Supersedes**: plan 009 (per-branch read ledger) entirely, and the design 003 patched
@@ -45,11 +46,15 @@ The fix is to split the file along the line that already exists.
 ```
 .context/
   src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   immutable; the directory IS the path
-  .state/<branch>.json                                disposable cache: fingerprints, verdicts
-  .reads/<branch>.json                                disposable cache: read counts
-  .attic/src/auth.rs/01M0B4KQTX-....md                evicted note, byte-identical
-  .attic/.log/<branch>.jsonl                          durable record: why, when
+  .attic/src/auth.rs/01M0B4KQTX-....md                the same file, retired, byte-identical
+  .state/<branch>.json                                per-branch cache: fingerprints + reads
+  .log/<branch>.jsonl                                 per-branch record: verdicts and evictions
 ```
+
+Four kinds of file. Three are per-writer, which is what makes them conflict-free; the split
+between those three is durability, not merge behaviour. `.state/` is a cache and may be
+deleted at any time. `.log/` is a record and may not — a verdict cost a model call, and
+"nothing is deleted, the attic keeps it inspectable" means keeping the reason.
 
 Two rules produce the whole thing:
 
@@ -75,6 +80,10 @@ Consequences worth stating:
   loud.
 - **Plan 003's `unreadable` flag and `raw` comparison become dead weight.** Leave them; they
   cost nothing and still guard against a hand-mangled file.
+- **Read counts fold into `.state/`.** Both are per-note derived numbers keyed by id, so one
+  file per branch carries both, and plan 009's separate `.reads/` is unnecessary.
+- **The state file obeys 003's rule too.** Write it only when its content changed, and
+  advance `checked` only when a fingerprint moved, so a no-op audit produces no diff anywhere.
 
 ### `pinned` stays in the note file
 
@@ -153,6 +162,7 @@ In `store.rs`:
 
 ```rust
 pub const STATE: &str = ".state";
+pub const LOG: &str = ".log";
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct NoteState {
@@ -161,7 +171,7 @@ pub struct NoteState {
     pub lines: String,
     pub status: String,
     pub checked: String,
-    pub verdict: String,
+    pub reads: u32,
 }
 ```
 
@@ -171,7 +181,9 @@ derived, so a wrong pick costs one recheck.
 
 `save_state(root, &HashMap<String, NoteState>)` writes only the current branch's file,
 named `slug(current_branch(), 60)`, with sorted keys so the committed diff is stable, and
-drops ids that are no longer in the live store.
+drops ids that are no longer in the live store. Skip the write when the content is
+unchanged, so a no-op audit produces no diff here either. `bump_reads` and `read_counts`
+move onto this file and `.reads.jsonl` goes away.
 
 **Verify**: a unit test writing two branch files with different `checked` values and
 asserting `load_state` takes the newer.
@@ -194,8 +206,10 @@ In `audit.rs`:
 - `apply_review` records `verdict` and the refreshed `status` into that map; the
   `superseded` branch still creates a **new** note file, which is a create, not a mutation
 - `store::evict` becomes a pure file move plus one appended line to
-  `.context/.attic/.log/<branch>.jsonl`:
-  `{"id":...,"path":...,"anchor":...,"reason":...,"at":...}`
+  `.context/.log/<branch>.jsonl`:
+  `{"at":...,"kind":"evict","id":...,"path":...,"anchor":...,"reason":...}`
+- every reviewer verdict appends a line to the same log with `"kind":"verdict"`, so a model
+  call is paid for once and the record survives a fresh clone
 - `save_state` is called once at the end
 
 Remove `evicted`, `status`, `checked`, `reviewed`, `verdict` from `Meta` (step 1 already
@@ -215,18 +229,7 @@ file is not created, or that it contains none, in the same commit.
 
 **Verify**: `lane init` in a fresh repo → `.gitattributes` absent or without `merge=union`.
 
-### Step 6: Migrate an existing store once
-
-At the start of `audit::run`, if any note's frontmatter still contains `path:`, run a
-one-shot migration: for each note, move its fields into the current branch's state file,
-rewrite the note with the reduced frontmatter, and leave the file where it is. Log one line
-saying it happened.
-
-The tool is pre-release, so one migration path is enough; do not build a version ladder.
-
-**Verify**: a store created before this plan audits cleanly afterwards with no notes lost.
-
-### Step 7: Cover it
+### Step 6: Cover it
 
 Add to `test_lane.sh` before the summary. Five assertions:
 
@@ -261,13 +264,10 @@ Confirm the first and third fail against the current code before changing it.
 - [ ] `grep -rc 'merge=union' crates/lane/src/` → `0`
 - [ ] `grep -c 'pub path' crates/lane/src/note.rs` → `0`
 - [ ] An audit that finds drift modifies no existing `.md` file
-- [ ] A store created before this plan survives one audit with no notes lost
 - [ ] `plans/README.md` rows for 013 and 009 updated
 
 ## STOP conditions
 
-- The migration in step 6 loses a note, a verdict, or an eviction reason on any store you
-  can construct. Report rather than accepting the loss.
 - Reconciling two state files needs a rule more complicated than "newest `checked` wins".
   It should not; the value is derived. If it does, the state is carrying something that is
   not derived and belongs in the note.
@@ -281,10 +281,10 @@ Confirm the first and third fail against the current code before changing it.
 - The invariant, worth defending in review: **`.context/` holds immutable notes and
   per-writer files. Nothing else.** A new field that changes over time goes in the state
   file; a new fact that is true forever goes in the note.
-- Per-writer files come in two kinds and the distinction matters: `.state/` and `.reads/`
-  are disposable caches that may be deleted at any time, `.attic/.log/` is a durable record
-  that may not. Both are conflict-free for the same reason.
-- Deferred: `.state/` and `.reads/` accumulate a file per branch forever. Same trade plan
-  009 recorded — deleting a file another branch may have modified is a delete/modify
+- Per-writer files come in two kinds and the distinction matters: `.state/` is a disposable
+  cache that may be deleted at any time, `.log/` is a durable record that may not. Both are
+  conflict-free for the same reason.
+- Deferred: `.state/` and `.log/` accumulate a file per branch forever, including for lanes
+  long since deleted. Same trade plan 009 recorded — deleting a file another branch may have modified is a delete/modify
   conflict, worse than the kilobytes. Garbage-collect in an explicit `lane gc` on trunk if
   it ever matters, never as a side effect of audit.

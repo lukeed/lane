@@ -58,6 +58,10 @@ that anchor's span only:
 | `signature-changed` | the described thing changed shape | review |
 | `anchor-missing` | symbol gone | evict to `.context/.attic/` |
 
+A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
+detection and moves the notes with it. Eviction means the file or the symbol is
+genuinely gone.
+
 Anchors are `fn verify`, `#script`, `## Heading`, `@file`, resolved by
 tree-sitter rather than by regex: a span ends where the declaration ends, a `#`
 in a code fence is not a heading, and a brace inside a string does not truncate

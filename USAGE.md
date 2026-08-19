@@ -125,6 +125,10 @@ normalized so comments and whitespace don't count:
 | `signature-changed` | the described thing changed shape | sent for review |
 | `anchor-missing` | symbol gone | evicted to `.context/.attic/` |
 
+A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
+detection and moves the notes with it. Eviction means the file or the symbol is
+genuinely gone.
+
 Editing `#script` never stales a note on `#style`. Running a formatter stales
 nothing at all.
 

@@ -257,6 +257,40 @@ is "and does not evict it" \
    "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
 is "and the damaged file is left alone" "$(cksum < "$F")" "$BEFORE"
 
+echo "== 15. a renamed file keeps its memory =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A && git commit -qm seed
+git mv src/auth.rs src/token.rs && git commit -qm rename
+"$LANE" audit > /tmp/mv.out 2>&1
+is "audit reports the move" "$(grep -c 'moved   src/auth.rs -> src/token.rs' /tmp/mv.out)" "1"
+is "the note followed the file" \
+   "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
+is "nothing was evicted" \
+   "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
+is "the old directory is gone" \
+   "$([ -d .context/src/auth.rs ] && echo yes || echo no)" "no"
+git add -A && git commit -qm memory
+git rm -q src/token.rs && git commit -qm delete
+"$LANE" audit > /dev/null 2>&1
+is "a genuine deletion still evicts" \
+   "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
+
+echo "== 16. a lane that renames a file lands its memory on the new path =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A && git commit -qm seed
+"$LANE" new refactor > /dev/null 2>&1
+( cd "$TMP/.lanes-repo/refactor" \
+  && git mv src/auth.rs src/token.rs && git commit -qm rename > /dev/null \
+  && "$LANE" done > /tmp/lanemv.out 2>&1 )
+cd "$TMP/repo"
+is "done reports the move" "$(grep -c '^  moved   ' /tmp/lanemv.out)" "1"
+is "trunk has the note on the new path" \
+   "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

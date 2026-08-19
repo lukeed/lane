@@ -19,6 +19,8 @@ pub struct Options {
 
 pub struct Outcome {
     pub created: Vec<Note>,
+    /// (old path, new path, notes moved) for source files that were renamed, not deleted.
+    pub moved: Vec<(String, String, usize)>,
     pub stats: HashMap<&'static str, usize>,
     pub review: Vec<Note>,
     pub evicted: Vec<(Note, String)>,
@@ -36,6 +38,22 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
     };
 
     let mut notes = store::load_notes(root, None);
+
+    // Follow the code before judging it: a renamed file keeps its memory, only a deleted
+    // one loses it. Costs a git call only when something is actually missing.
+    let mut moved = Vec::new();
+    if store::has_missing_sources(root, &notes) {
+        for (old, new) in git::renames(&opts.base) {
+            let count = store::move_notes(root, &old, &new)?;
+            if count > 0 {
+                moved.push((old, new, count));
+            }
+        }
+        if !moved.is_empty() {
+            notes = store::load_notes(root, None);
+        }
+    }
+
     let mut checker = store::Checker::new(root);
     let mut stats: HashMap<&'static str, usize> = TIERS.iter().map(|t| (*t, 0)).collect();
     let mut drifted: Vec<Note> = Vec::new();
@@ -140,6 +158,7 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
 
     Ok(Outcome {
         created,
+        moved,
         stats,
         review: drifted,
         evicted,
@@ -257,6 +276,10 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
         n(SIG),
         n(MISSING)
     )?;
+
+    for (old, new, count) in &out.moved {
+        writeln!(w, "  moved   {old} -> {new}  ({count} note(s))")?;
+    }
 
     if out.reviewed.is_empty() {
         for note in &out.review {

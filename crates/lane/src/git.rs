@@ -56,3 +56,55 @@ pub fn touched_paths(base: &str) -> std::collections::HashSet<String> {
         .map(str::to_string)
         .collect()
 }
+
+/// Renames reachable from HEAD, oldest first so a chain of them applies in order.
+///
+/// A lane knows its base and can diff against it. On trunk there is no base — the rename
+/// is already in history — so fall back to a bounded walk of recent commits.
+pub fn renames(base: &str) -> Vec<(String, String)> {
+    let (out, newest_first) = if base.is_empty() {
+        (
+            try_git(
+                &[
+                    "log",
+                    "--diff-filter=R",
+                    "--name-status",
+                    "--find-renames",
+                    "--format=",
+                    "--max-count=200",
+                ],
+                None,
+            ),
+            true,
+        )
+    } else {
+        (
+            try_git(
+                &[
+                    "diff",
+                    "--name-status",
+                    "--find-renames",
+                    &format!("{base}...HEAD"),
+                ],
+                None,
+            ),
+            false,
+        )
+    };
+
+    let mut pairs = Vec::new();
+    for line in out.lines() {
+        let mut parts = line.split('\t');
+        let Some(status) = parts.next() else { continue };
+        if !status.starts_with('R') {
+            continue;
+        }
+        if let (Some(old), Some(new)) = (parts.next(), parts.next()) {
+            pairs.push((old.to_string(), new.to_string()));
+        }
+    }
+    if newest_first {
+        pairs.reverse();
+    }
+    pairs
+}

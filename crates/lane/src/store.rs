@@ -304,9 +304,99 @@ pub fn pending_count(worktree: &Path) -> usize {
         .unwrap_or(0)
 }
 
+/// Move a path's notes to follow a renamed source file. Returns how many moved.
+pub fn move_notes(root: &Path, old: &str, new: &str) -> Result<usize> {
+    let from = note_dir(root, old);
+    if !from.is_dir() {
+        return Ok(0);
+    }
+    let to = note_dir(root, new);
+    std::fs::create_dir_all(&to)?;
+
+    let mut moved = 0;
+    for entry in std::fs::read_dir(&from)? {
+        let path = entry?.path();
+        if path.extension().is_none_or(|x| x != "md") {
+            continue;
+        }
+        let Some(name) = path.file_name() else {
+            continue;
+        };
+        // Per file, not the directory, so an existing destination is merged not clobbered.
+        let dest = to.join(name);
+        std::fs::rename(&path, &dest)?;
+        // Until a note takes its path from its directory, the field is the source of truth
+        // and has to move with the file.
+        if let Ok(mut note) = note::parse(&dest)
+            && !note.unreadable
+            && note.meta.path == old
+        {
+            note.meta.path = new.to_string();
+            note.write(&dest)?;
+        }
+        moved += 1;
+    }
+    // Only prunes when nothing else was in there.
+    let _ = std::fs::remove_dir(&from);
+    Ok(moved)
+}
+
+/// Whether any note points at a file that is not there; the only reason to ask git
+/// about renames.
+pub fn has_missing_sources(root: &Path, notes: &[Note]) -> bool {
+    notes.iter().any(|n| !root.join(&n.meta.path).exists())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::rel_to_repo;
+    use super::*;
+
+    fn seed_note(root: &Path, path: &str, id: &str, body: &str) {
+        let note = crate::note::Note::new(
+            crate::note::Meta {
+                id: id.into(),
+                path: path.into(),
+                anchor: "@file".into(),
+                ..Default::default()
+            },
+            body,
+        );
+        note.write(&note_dir(root, path).join(format!("{id}-x.md")))
+            .unwrap();
+    }
+
+    #[test]
+    fn move_notes_follows_a_rename_and_rewrites_the_path() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/auth.rs", "01M0A", "constant time");
+
+        let moved = move_notes(root.path(), "src/auth.rs", "src/token.rs").unwrap();
+        assert_eq!(moved, 1);
+        assert!(!note_dir(root.path(), "src/auth.rs").exists());
+
+        let notes = load_notes(root.path(), Some("src/token.rs"));
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].meta.path, "src/token.rs");
+        assert_eq!(notes[0].body.trim(), "constant time");
+    }
+
+    #[test]
+    fn move_notes_merges_into_an_existing_destination() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/auth.rs", "01M0A", "from the old path");
+        seed_note(
+            root.path(),
+            "src/token.rs",
+            "01M0B",
+            "already at the new path",
+        );
+
+        assert_eq!(
+            move_notes(root.path(), "src/auth.rs", "src/token.rs").unwrap(),
+            1
+        );
+        assert_eq!(load_notes(root.path(), Some("src/token.rs")).len(), 2);
+    }
 
     #[test]
     fn a_path_outside_the_repo_is_refused() {

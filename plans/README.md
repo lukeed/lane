@@ -11,7 +11,7 @@ counts before starting, and update your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 014 | Follow a renamed file instead of discarding its memory | P1 | M | — | TODO |
+| 014 | Follow a renamed file instead of discarding its memory | P1 | M | — | DONE |
 | 011 | Stop discarding notes whose anchor we cannot resolve | P1 | M | — | TODO |
 | 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | TODO |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | TODO |

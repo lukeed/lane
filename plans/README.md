@@ -1,6 +1,7 @@
 # Implementation Plans
 
-Re-audited 2026-08-18 against commit `6dc6647`, after the Rust rewrite. Every finding
+Re-audited 2026-08-18 against commit `6dc6647`, after the Rust rewrite; 013 and 014
+added 2026-08-19 against `c73428e`. Every finding
 below was re-verified against the current tree, not carried over on trust.
 
 Each executor: read the plan fully, honour its STOP conditions, record the baseline test
@@ -10,38 +11,49 @@ counts before starting, and update your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
+| 014 | Follow a renamed file instead of discarding its memory | P1 | M | — | TODO |
 | 011 | Stop discarding notes whose anchor we cannot resolve | P1 | M | — | TODO |
-| 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
+| 013 | Make note files immutable, everything that changes per-writer | P1 | L | — | TODO |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | TODO |
 | 007 | Let a project choose what a lane carries | P2 | M | — | TODO |
-| 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | TODO |
 | 010 | Clear the three small things that mislead | P3 | S | — | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
+| 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
+| 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
 ## Severity, if you would rather work that way
 
-1. **011** — a note on any language outside the thirteen shipped grammars is created and
+1. **014** — `git mv` on a noted file evicts every note about it on the next audit, and
+   `lane why <new path>` returns nothing. Verified. Renaming files is routine, and git
+   reported `R100` the whole time.
+2. **011** — a note on any language outside the thirteen shipped grammars is created and
    evicted on the first audit. Verified with Swift. A regression from the Python
    implementation, whose loose regexes matched `func verify` fine.
-2. **003** — a union-merged note now fails to parse, disappears from `lane why`, and is
-   atticked under an eviction line with no path. Also a regression: the Python parser took
-   the last duplicate key and carried on.
-3. **007** — a lane without `.env` does not run the project, and the README says it will.
-4. **006** — the documented shell function can `cd` into an error message, or leave you in
+3. **013** — the design fix behind 003 and 009. Not urgent on its own now that 003 has
+   landed, but every remaining mutation of a shared file is a merge hazard, and it is
+   cheaper to do before more state accumulates than after.
+4. **007** — a lane without `.env` does not run the project, and the README says it will.
+5. **006** — the documented shell function can `cd` into an error message, or leave you in
    a deleted directory.
-5. **009, 010, 012** — debt, size, and cosmetics. No user loses work.
+6. **010, 012** — cosmetics and binary size. No user loses work.
 
-Both P1s are regressions introduced by the rewrite. That is what a re-audit is for.
+011 and the closed half of 003 are regressions the rewrite introduced. 014 predates it —
+the Python implementation lost memory on rename too, and neither audit caught it until the
+immutable-notes design forced the question of what a note's path really is.
 
 ## Dependency notes
 
 - **012 depends on 011.** Feature-gating grammars means a trimmed build has fewer
   languages; without 011's `unverifiable` tier that silently evicts notes, turning a size
   optimisation into data loss.
-- **009 depends on 003.** Same idea at a second layer — one writer per file — and its
-  merge test reuses the shape 003 establishes.
+- **013 supersedes 009** and removes the need for the workarounds 003 landed. 003 stays
+  landed; 013 removes the class rather than the symptom.
+- **014 is independent of 013**, and should go first because it is losing memory today.
+  013 makes 014's implementation simpler — once the directory is the only source of a
+  note's path, following a rename is a pure file move with no content change — so if you
+  are doing both, note the ordering caveat in 014 step 2.
 - Everything else is independent. 010 is a good warm-up.
 
 Assertion counts are expressed as deltas from whatever `cargo test` and `./test_lane.sh`

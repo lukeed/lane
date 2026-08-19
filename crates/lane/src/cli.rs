@@ -3,7 +3,7 @@
 use crate::audit;
 use crate::git::{self, git, try_git};
 use crate::review;
-use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, PENDING, READS, SIG};
+use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, PENDING, SIG};
 use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
@@ -176,7 +176,7 @@ fn append_line(path: &Path, line: &str) -> Result<()> {
 }
 
 const PROTOCOL: &str = "\n## Context memory\n\n\
-- Before editing a file, read `.context/<path>/` if it exists, or run `lane why <path>`.\n\
+- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
 - Do not edit `.context/` by hand; `lane done` manages it.\n";
 
@@ -187,8 +187,9 @@ fn init() -> Result<i32> {
     std::fs::write(context.join(".gitkeep"), "")?;
 
     let attrs = root.join(".gitattributes");
-    append_line(&attrs, &format!("{CONTEXT_DIR}/**/*.md merge=union"))?;
-    append_line(&attrs, &format!("{CONTEXT_DIR}/{READS} merge=union"))?;
+    // The log is the one genuinely append-only file, which is what union merge is for.
+    // Notes never conflict because they are never modified.
+    append_line(&attrs, &format!("{CONTEXT_DIR}/log/*.jsonl merge=union"))?;
 
     let agents = root.join("AGENTS.md");
     if !agents.exists() {
@@ -299,7 +300,7 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
     let mut groups: std::collections::BTreeMap<(String, String), Vec<_>> = Default::default();
     for note in notes {
         groups
-            .entry((note.meta.path.clone(), note.meta.anchor.clone()))
+            .entry((note.path(), note.meta.anchor.clone()))
             .or_default()
             .push(note);
     }
@@ -354,7 +355,7 @@ fn check(json: bool) -> Result<i32> {
             .iter()
             .map(|(tier, n)| {
                 serde_json::json!({
-                    "id": n.meta.id, "path": n.meta.path,
+                    "id": n.meta.id, "path": n.path(),
                     "anchor": n.meta.anchor, "tier": tier,
                 })
             })
@@ -393,8 +394,7 @@ fn audit_cmd(base: &str, budget: &BudgetArgs, review: &ReviewArgs, json: bool) -
             "created": out.created.iter().map(|n| &n.meta.id).collect::<Vec<_>>(),
             "checked": out.stats,
             "needs_review": out.review.iter().map(|n| serde_json::json!({
-                "id": n.meta.id, "path": n.meta.path,
-                "anchor": n.meta.anchor, "status": n.meta.status,
+                "id": n.meta.id, "path": n.path(), "anchor": n.meta.anchor,
             })).collect::<Vec<_>>(),
             "evicted": out.evicted.iter().map(|(n, why)| serde_json::json!({
                 "id": n.meta.id, "reason": why,
@@ -449,6 +449,9 @@ fn done(
     )?;
     audit::report(&out, &mut std::io::stdout())?;
 
+    // Fold this lane's per-branch files into the trunk's, so nothing accumulates.
+    store::roll_up(&lane_path, &branch, &trunk)?;
+
     let changed = try_git(
         &["status", "--porcelain", "--", CONTEXT_DIR, "AGENTS.md"],
         Some(&lane_path),
@@ -483,6 +486,10 @@ fn done(
 }
 
 fn rm(name: &str, force: bool) -> Result<i32> {
+    // The work is discarded, so its state and its record go with it.
+    if let Ok(root) = wt::main_root() {
+        store::discard_branch_files(&root, name);
+    }
     if wt::remove(name, force)? {
         println!("removed lane {name}");
         return Ok(0);

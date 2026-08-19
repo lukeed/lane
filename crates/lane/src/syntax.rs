@@ -363,17 +363,18 @@ impl Source {
         self.grammar.as_ref().map(|g| (g.language)())
     }
 
-    /// (signature hash, body hash) for a span, comments and whitespace normalized away.
-    pub fn hashes(&self, span: Span, anchor: &str) -> (String, String) {
+    /// (signature, body, raw) hashes for a span. The first two normalize comments and
+    /// whitespace away; the raw one does not, so a grammar upgrade can be resolved.
+    pub fn hashes(&self, span: Span, anchor: &str) -> (String, String, String) {
         let chunk = self.span_text(span);
         if chunk.is_empty() {
-            return (String::new(), String::new());
+            return (String::new(), String::new(), String::new());
         }
         let stripped = strip_comments(&chunk, self.comment_language(anchor).as_ref());
         let mut lines = stripped.lines();
         let sig = normalize(lines.next().unwrap_or_default());
         let body = normalize(&lines.collect::<Vec<_>>().join("\n"));
-        (sha(&sig), sha(&body))
+        (sha(&sig), sha(&body), sha(&chunk))
     }
 }
 
@@ -407,6 +408,9 @@ fn normalize(text: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+/// Bump whenever a grammar upgrade or a change to strip_comments/normalize can move a hash.
+pub const NORM_VERSION: &str = "1";
 
 pub fn sha(text: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -555,7 +559,11 @@ pub fn refresh(token: &str) -> String {
             "a.rs",
         );
         let span = Span { start: 1, end: 3 };
-        assert_eq!(a.hashes(span, "fn f"), b.hashes(span, "fn f"));
+        let (sig_a, body_a, raw_a) = a.hashes(span, "fn f");
+        let (sig_b, body_b, raw_b) = b.hashes(span, "fn f");
+        assert_eq!((sig_a, body_a), (sig_b, body_b));
+        // The raw hash is deliberately not comment-insensitive; that is its whole job.
+        assert_ne!(raw_a, raw_b);
     }
 
     #[test]
@@ -577,7 +585,7 @@ pub fn refresh(token: &str) -> String {
     fn a_markdown_signature_is_a_real_hash() {
         let src = Source::new(MD_SRC, "docs/g.md");
         let span = src.resolve("## Rate limiting").unwrap();
-        let (sig, _) = src.hashes(span, "## Rate limiting");
+        let (sig, _, _) = src.hashes(span, "## Rate limiting");
         assert_ne!(sig, sha(""));
     }
 
@@ -628,9 +636,9 @@ pub fn refresh(token: &str) -> String {
         let body_changed = Source::new("pub fn verify(t: &str) -> bool {\n    ok2(t)\n}\n", "a.rs");
         let span = Span { start: 1, end: 3 };
 
-        let (sig0, body0) = base.hashes(span, "fn verify");
-        let (sig1, body1) = sig_changed.hashes(span, "fn verify");
-        let (sig2, body2) = body_changed.hashes(span, "fn verify");
+        let (sig0, body0, _) = base.hashes(span, "fn verify");
+        let (sig1, body1, _) = sig_changed.hashes(span, "fn verify");
+        let (sig2, body2, _) = body_changed.hashes(span, "fn verify");
 
         assert_ne!(
             sig0, sig1,

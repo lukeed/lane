@@ -11,32 +11,25 @@ fn is_false(b: &bool) -> bool {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct Meta {
     pub id: String,
-    pub path: String,
     pub anchor: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub created: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub branch: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub norm: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sig: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub body_hash: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub raw_hash: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub lines: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub status: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub checked: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub reviewed: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub verdict: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub supersedes: String,
     #[serde(default, skip_serializing_if = "is_false")]
     pub pinned: bool,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub evicted: String,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +44,14 @@ pub struct Note {
 }
 
 impl Note {
+    /// The directory is the path: one source of truth, and a rename is a pure file move.
+    pub fn path(&self) -> String {
+        self.file
+            .as_deref()
+            .map(path_from_location)
+            .unwrap_or_default()
+    }
+
     pub fn new(meta: Meta, body: impl Into<String>) -> Self {
         Note {
             meta,
@@ -80,13 +81,17 @@ impl Note {
 fn path_from_location(file: &Path) -> String {
     let mut parts: Vec<String> = Vec::new();
     let mut seen_context = false;
+    let mut seen_namespace = false;
     for part in file.parent().unwrap_or(Path::new("")).components() {
         let name = part.as_os_str().to_string_lossy().to_string();
         if !seen_context {
             seen_context = name == crate::store::CONTEXT_DIR;
             continue;
         }
-        if name == crate::store::ATTIC && parts.is_empty() {
+        // Exactly one component after .context is ours; the rest is the user's path, which
+        // may itself be named attic.
+        if !seen_namespace {
+            seen_namespace = true;
             continue;
         }
         parts.push(name);
@@ -105,7 +110,6 @@ pub fn parse(path: &Path) -> Result<Note> {
     // still reported by name rather than as `#`.
     let recovered = || Meta {
         id: stem.split('-').next().unwrap_or(&stem).to_string(),
-        path: path_from_location(path),
         ..Default::default()
     };
     let damaged = |body: String| Note {
@@ -151,13 +155,12 @@ mod tests {
     use super::*;
 
     fn write_note(root: &Path, rel: &str, body: &str) -> PathBuf {
-        let dir = root.join(crate::store::CONTEXT_DIR).join(rel);
+        let dir = crate::store::note_dir(root, rel);
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("01M0AAAAAAAAAAAAAAAAAAAAAA-seed.md");
         let note = Note::new(
             Meta {
                 id: "01M0AAAAAAAAAAAAAAAAAAAAAA".into(),
-                path: rel.into(),
                 anchor: "fn verify".into(),
                 created: "2026-08-19T00:00:00Z".into(),
                 ..Default::default()
@@ -191,7 +194,7 @@ mod tests {
 
         let parsed = parse(&file).unwrap();
         assert!(parsed.unreadable, "duplicate keys must not parse silently");
-        assert_eq!(parsed.meta.path, "src/auth.rs");
+        assert_eq!(parsed.path(), "src/auth.rs");
         assert_eq!(parsed.meta.id, "01M0AAAAAAAAAAAAAAAAAAAAAA");
         assert!(parsed.body.contains("seed: constant time"));
     }
@@ -199,9 +202,12 @@ mod tests {
     #[test]
     fn a_notes_path_comes_from_its_directory_attic_or_not() {
         let root = Path::new("/repo");
-        let live = root.join(".context/src/auth.rs/01M0-x.md");
-        let attic = root.join(".context/.attic/src/auth.rs/01M0-x.md");
+        let live = root.join(".context/-/src/auth.rs/01M0-x.md");
+        let attic = root.join(".context/attic/src/auth.rs/01M0-x.md");
         assert_eq!(path_from_location(&live), "src/auth.rs");
         assert_eq!(path_from_location(&attic), "src/auth.rs");
+        // A repo may have its own attic/, and only our own leading component is dropped.
+        let user_attic = root.join(".context/-/attic/f.txt/01M0-x.md");
+        assert_eq!(path_from_location(&user_attic), "attic/f.txt");
     }
 }

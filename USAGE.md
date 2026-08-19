@@ -123,7 +123,7 @@ normalized so comments and whitespace don't count:
 | `fresh` | unchanged | nothing, costs nothing |
 | `body-drift` | implementation moved | sent for review |
 | `signature-changed` | the described thing changed shape | sent for review |
-| `anchor-missing` | symbol gone | evicted to `.context/.attic/` |
+| `anchor-missing` | symbol gone | evicted to `.context/attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
@@ -165,7 +165,8 @@ lane audit --review cmd --review-cmd './my-reviewer'
 
 Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by
 `pinned > times read > touched by this lane > freshness > age` and moves the
-rest to `.context/.attic/` with a reason. Nothing is deleted.
+rest to `.context/attic/` with the reason recorded in `.context/log/`.
+Nothing is deleted.
 
 Keep something permanently:
 
@@ -176,7 +177,7 @@ pinned: true        # add to the note's frontmatter
 Recover something:
 
 ```bash
-git mv .context/.attic/src/auth.rs/01M0B4KQTX-*.md .context/src/auth.rs/
+git mv .context/attic/src/auth.rs/01M0B4KQTX-*.md .context/-/src/auth.rs/
 ```
 
 ---
@@ -188,7 +189,7 @@ you keep both:
 
 ```
 ## Context memory
-- Before editing a file, read `.context/<path>/` if it exists, or run `lane why <path>`.
+- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.
 - Record non-obvious findings with `lane note -a <anchor> "..."`.
 - Do not edit `.context/` by hand; `lane done` manages it.
 ```
@@ -207,8 +208,8 @@ lane ls
 ```
 
 Each has its own warm build cache at no disk cost. They can annotate the same
-file, the same anchor, at the same time: notes are immutable one-file-per-note
-with `merge=union`, so there is nothing to lock and nothing to conflict.
+file, the same anchor, at the same time: a note file is written once and never
+modified, so there is nothing to lock and nothing to conflict.
 
 Land them in any order.
 
@@ -244,10 +245,11 @@ Land them in any order.
 ```
 yourproject/
   .context/
-    src/auth.rs/01M0B9MBYB-must-stay-constant-time.md
-    .attic/                       evicted, recoverable
-    .reads.jsonl                  append-only, union-merged
-  .gitattributes                  merge=union rules
+    -/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
+    attic/                        evicted, recoverable
+    state/<branch>.json           fingerprints and read counts, per branch
+    log/<branch>.jsonl            verdicts and evictions, per branch
+  .gitattributes                  one union rule, for log/*.jsonl
   AGENTS.md
 ../.lanes-yourproject/
   fix-login/                      the lane worktree

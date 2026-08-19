@@ -21,6 +21,8 @@ pub struct Outcome {
     pub created: Vec<Note>,
     /// (old path, new path, notes moved) for source files that were renamed, not deleted.
     pub moved: Vec<(String, String, usize)>,
+    /// Notes whose baseline predated a normalization change and could not be compared.
+    pub rebaselined: usize,
     pub stats: HashMap<&'static str, usize>,
     pub review: Vec<Note>,
     pub evicted: Vec<(Note, String)>,
@@ -57,34 +59,43 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
     let mut checker = store::Checker::new(root);
     let mut stats: HashMap<&'static str, usize> = TIERS.iter().map(|t| (*t, 0)).collect();
     let mut drifted: Vec<Note> = Vec::new();
+    // Start from this branch's own file so `lane why`'s read counts survive the audit.
+    let mut state = store::own_state(root);
+    let mut rebaselined = 0usize;
 
     for note in notes.iter_mut() {
         let res = checker.check(note);
         *stats.entry(res.tier).or_insert(0) += 1;
-        let before = note.render();
-        note.meta.status = res.tier.into();
-        let is_drift = res.tier == BODY || res.tier == SIG;
-        if is_drift {
-            note.meta.sig = res.sig;
-            note.meta.body_hash = res.body_hash;
-            if let Some(span) = res.span {
-                note.meta.lines = format!("{}-{}", span.start, span.end);
-            }
+        if res.rebaselined {
+            rebaselined += 1;
         }
-        // An audit that learned nothing must leave no trace: stamping every note every
-        // run gave two branches a competing edit to the same line, which union merges.
-        if note.render() != before {
-            note.meta.checked = now_iso();
-        }
-        if is_drift {
+        if res.tier == BODY || res.tier == SIG {
             drifted.push(note.clone());
         }
-        if let Some(file) = note.file.clone()
-            && !note.unreadable
-            && note.render() != note.raw
-        {
-            note.write(&file)?;
-        }
+
+        let previous = state.get(&note.meta.id).cloned().unwrap_or_default();
+        let unchanged = previous.sig == res.sig
+            && previous.body_hash == res.body_hash
+            && previous.raw_hash == res.raw_hash
+            && previous.status == res.tier
+            && previous.norm == crate::syntax::NORM_VERSION;
+        state.insert(
+            note.meta.id.clone(),
+            store::NoteState {
+                sig: res.sig,
+                body_hash: res.body_hash,
+                raw_hash: res.raw_hash,
+                status: res.tier.into(),
+                // Only advances when something moved, so a no-op audit writes nothing.
+                checked: if unchanged {
+                    previous.checked
+                } else {
+                    now_iso()
+                },
+                norm: crate::syntax::NORM_VERSION.into(),
+                reads: previous.reads,
+            },
+        );
     }
 
     let reviewed = apply_review(
@@ -92,6 +103,7 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
         &mut drifted,
         reviewer,
         &mut checker,
+        &mut state,
         opts.review_limit,
     )?;
     if !reviewed.is_empty() {
@@ -114,7 +126,7 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
     let mut by_anchor: BTreeMap<(String, String), Vec<Note>> = BTreeMap::new();
     for note in notes {
         by_anchor
-            .entry((note.meta.path.clone(), note.meta.anchor.clone()))
+            .entry((note.path(), note.meta.anchor.clone()))
             .or_default()
             .push(note);
     }
@@ -122,7 +134,10 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
     for group in by_anchor.values_mut() {
         let mut live = Vec::new();
         for mut note in group.drain(..) {
-            if note.meta.status == MISSING && !note.meta.pinned {
+            let missing = state
+                .get(&note.meta.id)
+                .is_some_and(|st| st.status == MISSING);
+            if missing && !note.meta.pinned {
                 store::evict(root, &mut note, "anchor missing")?;
                 evicted.push((note, "anchor missing".into()));
             } else {
@@ -135,8 +150,13 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
                 (
                     u8::from(!n.meta.pinned),
                     std::cmp::Reverse(counts.get(&n.meta.id).copied().unwrap_or(0)),
-                    u8::from(!touched.contains(&n.meta.path)),
-                    store::tier_rank(&n.meta.status),
+                    u8::from(!touched.contains(&n.path())),
+                    store::tier_rank(
+                        state
+                            .get(&n.meta.id)
+                            .map(|st| st.status.as_str())
+                            .unwrap_or(FRESH),
+                    ),
                     n.meta.id.clone(),
                 )
             };
@@ -156,10 +176,20 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
         }
     }
 
+    // Drop cache entries for notes that are no longer live, then write once.
+    let live: std::collections::HashSet<String> = store::load_notes(root, None)
+        .iter()
+        .map(|n| n.meta.id.clone())
+        .collect();
+    state.retain(|id, _| live.contains(id));
+    store::save_state(root, &state)?;
+    store::gc_state(root);
+
     Ok(Outcome {
         created,
         moved,
         stats,
+        rebaselined,
         review: drifted,
         evicted,
         reviewed,
@@ -174,6 +204,7 @@ fn apply_review(
     drifted: &mut [Note],
     reviewer: &dyn Reviewer,
     checker: &mut store::Checker,
+    state: &mut store::State,
     limit: usize,
 ) -> Result<Vec<(Note, String, Option<Note>)>> {
     if drifted.is_empty() || !reviewer.enabled() {
@@ -187,7 +218,7 @@ fn apply_review(
         }
         items.push(Item {
             id: note.meta.id.clone(),
-            path: note.meta.path.clone(),
+            path: note.path(),
             anchor: note.meta.anchor.clone(),
             note: note.body.trim().to_string(),
             span,
@@ -204,32 +235,32 @@ fn apply_review(
         let Some(v) = verdicts.get(&note.meta.id) else {
             continue;
         };
-        note.meta.reviewed = now_iso();
-        note.meta.verdict = if v.reason.is_empty() {
-            v.verdict.clone()
-        } else {
-            format!("{}: {}", v.verdict, v.reason)
-        };
+        // The verdict is a decision worth keeping: a model call paid for once.
+        store::append_log(
+            root,
+            &serde_json::json!({
+                "at": now_iso(), "kind": "verdict", "id": note.meta.id,
+                "path": note.path(), "anchor": note.meta.anchor,
+                "verdict": v.verdict, "reason": v.reason,
+            }),
+        )?;
 
         match v.verdict.as_str() {
             "superseded" if !v.rewrite.is_empty() => {
                 let meta = Meta {
                     id: ulid(),
-                    path: note.meta.path.clone(),
                     anchor: note.meta.anchor.clone(),
                     created: now_iso(),
                     branch: git::current_branch(),
+                    norm: crate::syntax::NORM_VERSION.into(),
                     sig: note.meta.sig.clone(),
                     body_hash: note.meta.body_hash.clone(),
+                    raw_hash: note.meta.raw_hash.clone(),
                     lines: note.meta.lines.clone(),
-                    status: FRESH.into(),
-                    checked: now_iso(),
-                    reviewed: now_iso(),
-                    verdict: format!("supersedes {}", note.meta.id),
                     supersedes: note.meta.id.clone(),
-                    ..Default::default()
+                    pinned: false,
                 };
-                let file = store::note_dir(root, &meta.path).join(format!(
+                let file = store::note_dir(root, &note.path()).join(format!(
                     "{}-{}.md",
                     meta.id,
                     slug(&v.rewrite, 28)
@@ -237,8 +268,12 @@ fn apply_review(
                 let mut fresh = Note::new(meta, v.rewrite.clone());
                 fresh.write(&file)?;
                 fresh.file = Some(file);
+                if let Some(entry) = state.get(&note.meta.id).cloned() {
+                    state.insert(fresh.meta.id.clone(), entry);
+                }
                 let reason = format!("superseded by {}", fresh.meta.id);
                 store::evict(root, note, &reason)?;
+                state.remove(&note.meta.id);
                 applied.push((note.clone(), "superseded".into(), Some(fresh)));
             }
             "contradicted" => {
@@ -249,14 +284,15 @@ fn apply_review(
                     v.reason.clone()
                 };
                 store::evict(root, note, &format!("contradicted: {reason}"))?;
+                state.remove(&note.meta.id);
                 applied.push((note.clone(), "contradicted".into(), None));
             }
             other => {
-                if other == "holds" {
-                    note.meta.status = FRESH.into();
-                }
-                if let Some(file) = note.file.clone() {
-                    note.write(&file)?;
+                if other == "holds"
+                    && let Some(entry) = state.get_mut(&note.meta.id)
+                {
+                    entry.status = FRESH.into();
+                    entry.checked = now_iso();
                 }
                 applied.push((note.clone(), other.to_string(), None));
             }
@@ -277,17 +313,21 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
         n(MISSING)
     )?;
 
+    if out.rebaselined > 0 {
+        writeln!(
+            w,
+            "  re-baselined {} note(s) after a normalization change",
+            out.rebaselined
+        )?;
+    }
+
     for (old, new, count) in &out.moved {
         writeln!(w, "  moved   {old} -> {new}  ({count} note(s))")?;
     }
 
     if out.reviewed.is_empty() {
         for note in &out.review {
-            writeln!(
-                w,
-                "  review  {}#{}  [{}]",
-                note.meta.path, note.meta.anchor, note.meta.status
-            )?;
+            writeln!(w, "  review  {}#{}", note.path(), note.meta.anchor)?;
         }
     } else {
         writeln!(
@@ -304,17 +344,14 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
             writeln!(
                 w,
                 "  {verdict:<13} {}#{}{extra}",
-                note.meta.path, note.meta.anchor
+                note.path(),
+                note.meta.anchor
             )?;
         }
     }
 
     for (note, why) in &out.evicted {
-        writeln!(
-            w,
-            "  evict   {}#{}  ({why})",
-            note.meta.path, note.meta.anchor
-        )?;
+        writeln!(w, "  evict   {}#{}  ({why})", note.path(), note.meta.anchor)?;
     }
     Ok(())
 }

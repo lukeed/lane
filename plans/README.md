@@ -13,7 +13,7 @@ counts before starting, and update your row when done.
 |------|-------|----------|--------|------------|--------|
 | 014 | Follow a renamed file instead of discarding its memory | P1 | M | — | DONE |
 | 011 | Stop discarding notes whose anchor we cannot resolve | P1 | M | — | TODO |
-| 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | TODO |
+| 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | DONE |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | TODO |
 | 007 | Let a project choose what a lane carries | P2 | M | — | TODO |
 | 010 | Clear the three small things that mislead | P3 | S | — | TODO |

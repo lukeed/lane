@@ -1,5 +1,6 @@
 //! The `.context/` store: load, promote, check, evict, and the read ledger.
 
+use crate::git;
 use crate::note::{self, Meta, Note};
 use crate::syntax::{Source, Span};
 use crate::util::{now_iso, slug, ulid};
@@ -9,8 +10,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub const CONTEXT_DIR: &str = ".context";
-pub const ATTIC: &str = ".attic";
-pub const READS: &str = ".reads.jsonl";
+/// Reserved: everything under it mirrors user paths, so a repo may have its own attic/.
+pub const NOTES: &str = "-";
+pub const ATTIC: &str = "attic";
+pub const STATE: &str = "state";
+pub const LOG: &str = "log";
 pub const PENDING: &str = ".wt/pending.jsonl";
 
 pub const FRESH: &str = "fresh";
@@ -30,11 +34,16 @@ pub fn tier_rank(tier: &str) -> u8 {
 }
 
 pub fn note_dir(root: &Path, path: &str) -> PathBuf {
-    root.join(CONTEXT_DIR).join(path)
+    root.join(CONTEXT_DIR).join(NOTES).join(path)
 }
 
+pub fn attic_dir(root: &Path, path: &str) -> PathBuf {
+    root.join(CONTEXT_DIR).join(ATTIC).join(path)
+}
+
+/// Live notes only; the attic is a sibling of the reserved tree, never inside it.
 pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
-    let base = root.join(CONTEXT_DIR);
+    let base = root.join(CONTEXT_DIR).join(NOTES);
     if !base.exists() {
         return Vec::new();
     }
@@ -44,31 +53,143 @@ pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
         .filter(|p| p.extension().is_some_and(|x| x == "md"))
-        .filter(|p| {
-            !p.strip_prefix(&base)
-                .map(|r| {
-                    r.components()
-                        .next()
-                        .is_some_and(|c| c.as_os_str() == ATTIC)
-                })
-                .unwrap_or(false)
-        })
         .collect();
     files.sort();
 
     files
         .iter()
         .filter_map(|p| note::parse(p).ok())
-        .filter(|n| filter.is_none_or(|f| n.meta.path == f))
+        .filter(|n| filter.is_none_or(|f| n.path() == f))
         .collect()
+}
+
+/// Per-note derived state. Disposable: losing it costs one recompute, never a wrong answer.
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+pub struct NoteState {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sig: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body_hash: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub raw_hash: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub status: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub checked: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub norm: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub reads: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+pub type State = HashMap<String, NoteState>;
+
+fn state_file_for(root: &Path, branch: &str) -> PathBuf {
+    let name = slug(branch, 60);
+    root.join(CONTEXT_DIR)
+        .join(STATE)
+        .join(format!("{name}.json"))
+}
+
+fn log_file_for(root: &Path, branch: &str) -> PathBuf {
+    let name = slug(branch, 60);
+    root.join(CONTEXT_DIR)
+        .join(LOG)
+        .join(format!("{name}.jsonl"))
+}
+
+fn state_file(root: &Path) -> PathBuf {
+    state_file_for(root, &git::current_branch())
+}
+
+fn read_state_file(path: &Path) -> State {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn all_state(root: &Path) -> Vec<State> {
+    let dir = root.join(CONTEXT_DIR).join(STATE);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    files.sort();
+    files.iter().map(|p| read_state_file(p)).collect()
+}
+
+/// Newest `checked` wins. Order-independent, and a wrong pick costs one recheck.
+pub fn load_state(root: &Path) -> State {
+    let mut merged = State::new();
+    for part in all_state(root) {
+        for (id, entry) in part {
+            match merged.get(&id) {
+                Some(have) if have.checked >= entry.checked => {}
+                _ => {
+                    merged.insert(id, entry);
+                }
+            }
+        }
+    }
+    merged
+}
+
+/// Reads sum across branches; freshness does not.
+pub fn read_counts(root: &Path) -> HashMap<String, u32> {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    for part in all_state(root) {
+        for (id, entry) in part {
+            *counts.entry(id).or_insert(0) += entry.reads;
+        }
+    }
+    counts
+}
+
+fn write_state_file(path: &Path, state: &State) -> Result<()> {
+    let mut sorted: Vec<(&String, &NoteState)> = state.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    let ordered: std::collections::BTreeMap<&String, &NoteState> = sorted.into_iter().collect();
+    let text = serde_json::to_string_pretty(&ordered)? + "\n";
+
+    if std::fs::read_to_string(path).is_ok_and(|old| old == text) {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, text)?;
+    Ok(())
+}
+
+/// Write this branch's file, and only if it changed.
+pub fn save_state(root: &Path, state: &State) -> Result<()> {
+    write_state_file(&state_file(root), state)
 }
 
 pub fn bump_reads(root: &Path, ids: &[String]) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
+    let mut own = read_state_file(&state_file(root));
+    for id in ids {
+        own.entry(id.clone()).or_default().reads += 1;
+    }
+    save_state(root, &own)
+}
+
+/// Append-only, one file per branch, so this is the one thing union merge is for.
+pub fn append_log(root: &Path, entry: &serde_json::Value) -> Result<()> {
     use std::io::Write;
-    let path = root.join(CONTEXT_DIR).join(READS);
+    let path = log_file_for(root, &git::current_branch());
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -76,25 +197,8 @@ pub fn bump_reads(root: &Path, ids: &[String]) -> Result<()> {
         .create(true)
         .append(true)
         .open(path)?;
-    for id in ids {
-        writeln!(file, r#"{{"id":"{id}","at":"{}"}}"#, now_iso())?;
-    }
+    writeln!(file, "{entry}")?;
     Ok(())
-}
-
-pub fn read_counts(root: &Path) -> HashMap<String, u32> {
-    let mut counts = HashMap::new();
-    let Ok(text) = std::fs::read_to_string(root.join(CONTEXT_DIR).join(READS)) else {
-        return counts;
-    };
-    for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        if let Ok(rec) = serde_json::from_str::<serde_json::Value>(line)
-            && let Some(id) = rec.get("id").and_then(|v| v.as_str())
-        {
-            *counts.entry(id.to_string()).or_insert(0) += 1;
-        }
-    }
-    counts
 }
 
 #[derive(Serialize, Deserialize)]
@@ -126,22 +230,20 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
         };
         let mut meta = Meta {
             id: ulid(),
-            path: rec.path.clone(),
             anchor: rec.anchor.clone(),
             created: rec.at,
             branch: rec.branch,
-            status: MISSING.into(),
-            checked: now_iso(),
+            norm: crate::syntax::NORM_VERSION.into(),
             ..Default::default()
         };
         if let Ok(body_text) = std::fs::read_to_string(root.join(&rec.path)) {
             let src = Source::new(&body_text, &rec.path);
             if let Some(span) = src.resolve(&rec.anchor) {
-                let (sig, body_hash) = src.hashes(span, &rec.anchor);
+                let (sig, body_hash, raw_hash) = src.hashes(span, &rec.anchor);
                 meta.sig = sig;
                 meta.body_hash = body_hash;
+                meta.raw_hash = raw_hash;
                 meta.lines = format!("{}-{}", span.start, span.end);
-                meta.status = FRESH.into();
             }
         }
         let file =
@@ -161,13 +263,22 @@ pub fn evict(root: &Path, note: &mut Note, reason: &str) -> Result<()> {
     let Some(file) = note.file.clone() else {
         return Ok(());
     };
-    let base = root.join(CONTEXT_DIR);
-    let rel = file.strip_prefix(&base).unwrap_or(&file);
-    let dest = base.join(ATTIC).join(rel);
-    note.meta.evicted = format!("{} ({reason})", now_iso());
-    note.write(&dest)?;
-    std::fs::remove_file(&file)?;
-    note.file = None;
+    let live = root.join(CONTEXT_DIR).join(NOTES);
+    let rel = file.strip_prefix(&live).unwrap_or(&file);
+    let dest = root.join(CONTEXT_DIR).join(ATTIC).join(rel);
+    // A pure move: the note is retired, not rewritten. The reason goes to the log.
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&file, &dest)?;
+    append_log(
+        root,
+        &serde_json::json!({
+            "at": now_iso(), "kind": "evict", "id": note.meta.id,
+            "path": note.path(), "anchor": note.meta.anchor, "reason": reason,
+        }),
+    )?;
+    note.file = Some(dest);
     Ok(())
 }
 
@@ -175,13 +286,17 @@ pub struct Check {
     pub tier: &'static str,
     pub sig: String,
     pub body_hash: String,
+    pub raw_hash: String,
     pub span: Option<Span>,
+    /// The baseline was taken under a different normalization and could not be compared.
+    pub rebaselined: bool,
 }
 
 /// Parses each file once and reuses it across every note anchored to it.
 pub struct Checker {
     root: PathBuf,
     cache: HashMap<String, Option<Source>>,
+    state: State,
 }
 
 impl Checker {
@@ -189,6 +304,7 @@ impl Checker {
         Checker {
             root: root.to_path_buf(),
             cache: HashMap::new(),
+            state: load_state(root),
         }
     }
 
@@ -203,8 +319,8 @@ impl Checker {
     }
 
     pub fn span_text(&mut self, note: &Note) -> String {
-        let anchor = note.meta.anchor.clone();
-        let Some(src) = self.source(&note.meta.path) else {
+        let (path, anchor) = (note.path(), note.meta.anchor.clone());
+        let Some(src) = self.source(&path) else {
             return String::new();
         };
         let Some(span) = src.resolve(&anchor) else {
@@ -215,29 +331,54 @@ impl Checker {
     }
 
     pub fn check(&mut self, note: &Note) -> Check {
-        let missing = |tier| Check {
+        let blank = |tier| Check {
             tier,
             sig: String::new(),
             body_hash: String::new(),
+            raw_hash: String::new(),
             span: None,
+            rebaselined: false,
         };
         // Nothing is known about a note we could not read, so nothing may act on it.
         if note.unreadable {
-            return missing(FRESH);
+            return blank(FRESH);
         }
-        let anchor = note.meta.anchor.clone();
-        let (want_sig, want_body) = (note.meta.sig.clone(), note.meta.body_hash.clone());
 
-        let Some(src) = self.source(&note.meta.path) else {
-            return missing(MISSING);
+        // The newest confirmation wins; the note's creation fingerprint is the fallback.
+        let base = self.state.get(&note.meta.id).cloned().unwrap_or(NoteState {
+            sig: note.meta.sig.clone(),
+            body_hash: note.meta.body_hash.clone(),
+            raw_hash: note.meta.raw_hash.clone(),
+            norm: note.meta.norm.clone(),
+            ..Default::default()
+        });
+
+        let (path, anchor) = (note.path(), note.meta.anchor.clone());
+        let Some(src) = self.source(&path) else {
+            return blank(MISSING);
         };
         let Some(span) = src.resolve(&anchor) else {
-            return missing(MISSING);
+            return blank(MISSING);
         };
-        let (sig, body_hash) = src.hashes(span, &anchor);
-        let tier = if sig != want_sig {
+        let (sig, body_hash, raw_hash) = src.hashes(span, &anchor);
+
+        // A baseline from a different normalization is not comparable. Identical bytes mean
+        // drift is impossible, so adopt silently; otherwise adopt and say so.
+        if base.norm != crate::syntax::NORM_VERSION {
+            let unchanged = !base.raw_hash.is_empty() && base.raw_hash == raw_hash;
+            return Check {
+                tier: FRESH,
+                sig,
+                body_hash,
+                raw_hash,
+                span: Some(span),
+                rebaselined: !unchanged,
+            };
+        }
+
+        let tier = if sig != base.sig {
             SIG
-        } else if body_hash != want_body {
+        } else if body_hash != base.body_hash {
             BODY
         } else {
             FRESH
@@ -246,7 +387,9 @@ impl Checker {
             tier,
             sig,
             body_hash,
+            raw_hash,
             span: Some(span),
+            rebaselined: false,
         }
     }
 }
@@ -325,15 +468,6 @@ pub fn move_notes(root: &Path, old: &str, new: &str) -> Result<usize> {
         // Per file, not the directory, so an existing destination is merged not clobbered.
         let dest = to.join(name);
         std::fs::rename(&path, &dest)?;
-        // Until a note takes its path from its directory, the field is the source of truth
-        // and has to move with the file.
-        if let Ok(mut note) = note::parse(&dest)
-            && !note.unreadable
-            && note.meta.path == old
-        {
-            note.meta.path = new.to_string();
-            note.write(&dest)?;
-        }
         moved += 1;
     }
     // Only prunes when nothing else was in there.
@@ -344,7 +478,90 @@ pub fn move_notes(root: &Path, old: &str, new: &str) -> Result<usize> {
 /// Whether any note points at a file that is not there; the only reason to ask git
 /// about renames.
 pub fn has_missing_sources(root: &Path, notes: &[Note]) -> bool {
-    notes.iter().any(|n| !root.join(&n.meta.path).exists())
+    notes.iter().any(|n| !root.join(n.path()).exists())
+}
+
+/// This branch's file alone; the read counts live here and must survive an audit.
+pub fn own_state(root: &Path) -> State {
+    read_state_file(&state_file(root))
+}
+
+/// Fold a lane's per-branch files into its target and delete its own.
+///
+/// Safe because `done` rebases before it audits, so lanes serialise; without this the
+/// store accumulates a file per lane forever.
+pub fn roll_up(root: &Path, from: &str, into: &str) -> Result<()> {
+    let (from_log, into_log) = (log_file_for(root, from), log_file_for(root, into));
+    if let Ok(lines) = std::fs::read_to_string(&from_log) {
+        use std::io::Write;
+        if let Some(parent) = into_log.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&into_log)?;
+        write!(file, "{lines}")?;
+        std::fs::remove_file(&from_log)?;
+    }
+
+    let from_state = state_file_for(root, from);
+    if !from_state.exists() {
+        return Ok(());
+    }
+    let mine = read_state_file(&from_state);
+    let into_path = state_file_for(root, into);
+    let mut theirs = read_state_file(&into_path);
+    for (id, entry) in mine {
+        let merged = match theirs.remove(&id) {
+            Some(have) => {
+                let reads = have.reads + entry.reads;
+                let mut newer = if have.checked >= entry.checked {
+                    have
+                } else {
+                    entry
+                };
+                newer.reads = reads;
+                newer
+            }
+            None => entry,
+        };
+        theirs.insert(id, merged);
+    }
+    write_state_file(&into_path, &theirs)?;
+    std::fs::remove_file(&from_state)?;
+    Ok(())
+}
+
+/// Drop a branch's files outright; used when its work is discarded rather than landed.
+pub fn discard_branch_files(root: &Path, branch: &str) {
+    let _ = std::fs::remove_file(state_file_for(root, branch));
+    let _ = std::fs::remove_file(log_file_for(root, branch));
+}
+
+/// Remove caches for branches that no longer exist. Only ever state, never the log.
+pub fn gc_state(root: &Path) {
+    let live: std::collections::HashSet<String> = git::try_git(
+        &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        None,
+    )
+    .lines()
+    .map(|b| slug(b, 60))
+    .collect();
+    let dir = root.join(CONTEXT_DIR).join(STATE);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.extension().is_none_or(|x| x != "json") {
+            continue;
+        }
+        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string());
+        if stem.is_some_and(|s| !live.contains(&s)) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -355,7 +572,6 @@ mod tests {
         let note = crate::note::Note::new(
             crate::note::Meta {
                 id: id.into(),
-                path: path.into(),
                 anchor: "@file".into(),
                 ..Default::default()
             },
@@ -363,6 +579,132 @@ mod tests {
         );
         note.write(&note_dir(root, path).join(format!("{id}-x.md")))
             .unwrap();
+    }
+
+    fn write_state(root: &Path, branch: &str, id: &str, entry: NoteState) {
+        let path = state_file_for(root, branch);
+        let mut existing = read_state_file(&path);
+        existing.insert(id.to_string(), entry);
+        write_state_file(&path, &existing).unwrap();
+    }
+
+    #[test]
+    fn load_state_takes_the_newest_confirmation() {
+        let root = tempfile::tempdir().unwrap();
+        write_state(
+            root.path(),
+            "main",
+            "01M0A",
+            NoteState {
+                sig: "old".into(),
+                checked: "2026-01-01T00:00:00Z".into(),
+                reads: 2,
+                ..Default::default()
+            },
+        );
+        write_state(
+            root.path(),
+            "lane-x",
+            "01M0A",
+            NoteState {
+                sig: "new".into(),
+                checked: "2026-06-01T00:00:00Z".into(),
+                reads: 3,
+                ..Default::default()
+            },
+        );
+        assert_eq!(load_state(root.path())["01M0A"].sig, "new");
+        // Freshness takes the newest; attention sums.
+        assert_eq!(read_counts(root.path())["01M0A"], 5);
+    }
+
+    /// A note plus a source file, ready to check.
+    fn fixture(root: &Path, body: &str) -> Note {
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/a.rs"), body).unwrap();
+        let note = Note::new(
+            Meta {
+                id: "01M0A".into(),
+                anchor: "@file".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+                ..Default::default()
+            },
+            "a note",
+        );
+        let file = note_dir(root, "src/a.rs").join("01M0A-a-note.md");
+        note.write(&file).unwrap();
+        note::parse(&file).unwrap()
+    }
+
+    #[test]
+    fn a_state_entry_beats_a_stale_creation_fingerprint() {
+        let root = tempfile::tempdir().unwrap();
+        let note = fixture(root.path(), "pub fn v() {}\n");
+        let live = Source::new("pub fn v() {}\n", "src/a.rs");
+        let span = live.resolve("@file").unwrap();
+        let (sig, body_hash, raw_hash) = live.hashes(span, "@file");
+
+        write_state(
+            root.path(),
+            "main",
+            "01M0A",
+            NoteState {
+                sig,
+                body_hash,
+                raw_hash,
+                checked: "2026-06-01T00:00:00Z".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+                ..Default::default()
+            },
+        );
+        // The note's own fingerprint is empty, which would otherwise read as drift.
+        assert_eq!(Checker::new(root.path()).check(&note).tier, FRESH);
+    }
+
+    #[test]
+    fn an_old_normalization_rebaselines_silently_when_the_bytes_match() {
+        let root = tempfile::tempdir().unwrap();
+        let note = fixture(root.path(), "pub fn v() {}\n");
+        let live = Source::new("pub fn v() {}\n", "src/a.rs");
+        let span = live.resolve("@file").unwrap();
+        let (_, _, raw_hash) = live.hashes(span, "@file");
+
+        write_state(
+            root.path(),
+            "main",
+            "01M0A",
+            NoteState {
+                sig: "from-an-older-normalizer".into(),
+                raw_hash,
+                checked: "2026-06-01T00:00:00Z".into(),
+                norm: "0".into(),
+                ..Default::default()
+            },
+        );
+        let res = Checker::new(root.path()).check(&note);
+        assert_eq!(res.tier, FRESH);
+        assert!(!res.rebaselined, "identical bytes cannot have drifted");
+    }
+
+    #[test]
+    fn an_old_normalization_is_reported_when_the_bytes_moved() {
+        let root = tempfile::tempdir().unwrap();
+        let note = fixture(root.path(), "pub fn v() {}\n");
+        write_state(
+            root.path(),
+            "main",
+            "01M0A",
+            NoteState {
+                sig: "from-an-older-normalizer".into(),
+                raw_hash: "different".into(),
+                checked: "2026-06-01T00:00:00Z".into(),
+                norm: "0".into(),
+                ..Default::default()
+            },
+        );
+        let res = Checker::new(root.path()).check(&note);
+        assert_eq!(res.tier, FRESH);
+        assert!(res.rebaselined, "an unresolvable baseline must be reported");
     }
 
     #[test]
@@ -376,7 +718,7 @@ mod tests {
 
         let notes = load_notes(root.path(), Some("src/token.rs"));
         assert_eq!(notes.len(), 1);
-        assert_eq!(notes[0].meta.path, "src/token.rs");
+        assert_eq!(notes[0].path(), "src/token.rs");
         assert_eq!(notes[0].body.trim(), "constant time");
     }
 

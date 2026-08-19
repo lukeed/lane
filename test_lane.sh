@@ -76,7 +76,7 @@ git add -A && git commit -qm "refactor verify"
 cd "$TMP/repo"
 is "trunk advanced" "$(git log --oneline main | grep -c 'refactor verify')" "1"
 is "memory committed to trunk" \
-   "$(git show main --name-only --format= | grep -c '^\.context/src/auth\.rs/')" "1"
+   "$(git show main --name-only --format= | grep -c '^\.context/-/src/auth\.rs/')" "1"
 is "note readable from trunk" \
    "$("$LANE" why src/auth.rs | grep -c 'constant-time')" "1"
 is "lane removed" "$([ -d "$TMP/.lanes-repo/fix-login" ] && echo yes || echo no)" "no"
@@ -122,7 +122,7 @@ echo "== 7. anchor deleted -> attic =="
 sedi 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn refresh" "rotation is idempotent upstream" > /dev/null
 "$LANE" audit > /dev/null
-is "evicted to attic" "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
+is "evicted to attic" "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
 echo "== 8. model-in-the-loop review =="
 setup
@@ -157,15 +157,15 @@ is "holds keeps note fresh" \
 is "superseded wrote a replacement note" \
    "$(grep -rl 'session lock is now taken by the caller' .context --include='*.md' | grep -vc attic)" "1"
 is "replacement records supersedes" \
-   "$(grep -rh 'supersedes:' .context/src/sync.rs/*.md | wc -l | tr -d ' ')" "1"
+   "$(grep -rh 'supersedes:' .context/-/src/sync.rs/*.md | wc -l | tr -d ' ')" "1"
 is "superseded original in attic" \
-   "$(grep -rl 'caller must not hold' .context/.attic | wc -l | tr -d ' ')" "1"
+   "$(grep -rl 'caller must not hold' .context/attic | wc -l | tr -d ' ')" "1"
 is "contradicted note quarantined" \
-   "$(grep -rl 'never retries' .context/.attic | wc -l | tr -d ' ')" "1"
+   "$(grep -rl 'never retries' .context/attic | wc -l | tr -d ' ')" "1"
 is "contradicted removed from live store" \
    "$(grep -rl 'never retries' .context --include='*.md' | grep -vc attic)" "0"
-is "attic records the reason" \
-   "$(grep -rh 'evicted:.*contradicted' .context/.attic | wc -l | tr -d ' ')" "1"
+is "the log records the reason" \
+   "$(grep -rh 'contradicted' .context/log/*.jsonl | wc -l | tr -d ' ')" "2"
 
 echo "== 9. review is off by default (no key, no cmd) =="
 env -u ANTHROPIC_API_KEY -u LANE_REVIEW_CMD "$LANE" audit --json > /tmp/n.json
@@ -198,7 +198,8 @@ is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' '
 
 echo "== 12. init scaffolding and the per-anchor budget =="
 setup
-is "gitattributes has both union rules" "$(grep -c 'merge=union' .gitattributes)" "2"
+is "gitattributes has one union rule, for the log" \
+   "$(grep -c 'log/\*.jsonl merge=union' .gitattributes)" "1"
 is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
 is "pending notes are ignored" "$(grep -c '.wt/pending.jsonl' .gitignore)" "1"
 
@@ -209,12 +210,12 @@ done
 "$LANE" why src/auth.rs -a "fn verify" > /dev/null
 "$LANE" audit --max-notes 2 --json > /tmp/budget.json
 is "budget caps the anchor at 2 notes" \
-   "$(find .context/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
+   "$(find .context/-/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
 is "eviction reason is recorded" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/budget.json"));print(d["evicted"][0]["reason"])')" \
    "budget"
 is "evicted notes are recoverable from the attic" \
-   "$(find .context/.attic -name '*.md' | wc -l | tr -d ' ')" "3"
+   "$(find .context/attic -name '*.md' | wc -l | tr -d ' ')" "3"
 
 echo "== 13. two branches writing memory merge without conflict =="
 setup
@@ -254,7 +255,7 @@ is "a duplicated key does not hide the note" \
    "$("$LANE" why src/auth.rs 2>/dev/null | grep -c 'constant time')" "1"
 "$LANE" audit > /dev/null 2>&1
 is "and does not evict it" \
-   "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
+   "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
 is "and the damaged file is left alone" "$(cksum < "$F")" "$BEFORE"
 
 echo "== 15. a renamed file keeps its memory =="
@@ -268,14 +269,14 @@ is "audit reports the move" "$(grep -c 'moved   src/auth.rs -> src/token.rs' /tm
 is "the note followed the file" \
    "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
 is "nothing was evicted" \
-   "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
+   "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
 is "the old directory is gone" \
-   "$([ -d .context/src/auth.rs ] && echo yes || echo no)" "no"
+   "$([ -d .context/-/src/auth.rs ] && echo yes || echo no)" "no"
 git add -A && git commit -qm memory
 git rm -q src/token.rs && git commit -qm delete
 "$LANE" audit > /dev/null 2>&1
 is "a genuine deletion still evicts" \
-   "$(find .context/.attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
+   "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
 echo "== 16. a lane that renames a file lands its memory on the new path =="
 setup
@@ -290,6 +291,41 @@ cd "$TMP/repo"
 is "done reports the move" "$(grep -c '^  moved   ' /tmp/lanemv.out)" "1"
 is "trunk has the note on the new path" \
    "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
+
+echo "== 17. notes are immutable; state and log are per-branch and roll up =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A && git commit -qm seed
+N=$(find .context/- -name '*.md' | head -1)
+BEFORE=$(cksum < "$N")
+sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
+"$LANE" audit > /dev/null
+is "a drifted note file is not rewritten" "$(cksum < "$N")" "$BEFORE"
+is "the note carries no path field" "$(grep -c '^path:' "$N")" "0"
+is "the fingerprint lives in state" \
+   "$(find .context/state -name '*.json' | wc -l | tr -d ' ')" "1"
+is "state records the drift" \
+   "$(python3 -c 'import json,glob;d=json.load(open(glob.glob(".context/state/*.json")[0]));print(list(d.values())[0]["status"])')" \
+   "body-drift"
+
+mkdir -p attic && echo "user content" > attic/f.txt
+git add -A && git commit -qm user-attic
+"$LANE" note -p attic/f.txt -a "@file" "a repo may have its own attic" > /dev/null
+"$LANE" audit > /dev/null
+is "a user path named attic does not collide" \
+   "$(find '.context/-/attic' -name '*.md' | wc -l | tr -d ' ')" "1"
+git add -A && git commit -qm memory
+
+"$LANE" new land > /dev/null 2>&1
+( cd "$TMP/.lanes-repo/land" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
+  && "$LANE" done > /dev/null 2>&1 )
+cd "$TMP/repo"
+is "done rolls the lane's state into trunk's" \
+   "$(find .context/state -name '*.json' | wc -l | tr -d ' ')" "1"
+is "the lane's own state file is gone" \
+   "$([ -f .context/state/land.json ] && echo yes || echo no)" "no"
 
 echo
 echo "passed: $pass   failed: $fail"

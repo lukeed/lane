@@ -42,11 +42,28 @@ exactly one modified file afterward, not several hundred.
 
 ## Memory
 
-Notes are immutable, one file per note, ULID-named, under `.context/<path>/`,
-with `merge=union` in `.gitattributes`. Concurrent lanes never touch the same
-bytes, so parallel memory writes cannot conflict — no lock, no lease, no
-coordination. Test 6 opens two lanes from one trunk, has both annotate the
-same anchor, and lands them in sequence.
+`.context/` holds two kinds of file and nothing else:
+
+```
+.context/
+  -/<path>/<ulid>-<slug>.md     the note; written once, never rewritten
+  attic/<path>/<ulid>-<slug>.md the same file, retired, byte-identical
+  state/<branch>.json           per-branch cache: fingerprints and read counts
+  log/<branch>.jsonl            per-branch record: verdicts and evictions
+```
+
+A note file is written once and never modified, so two branches can never edit
+the same bytes and a merge has nothing to resolve. Everything that changes over
+time is per-writer instead: one branch, one file. `lane done` folds a lane's
+state and log into the trunk's, so nothing accumulates.
+
+`-` is reserved. Everything under it mirrors your paths, which is why a repo may
+have its own `attic/` without colliding with ours.
+
+The only `merge=union` rule is for `log/*.jsonl`, the one genuinely append-only
+file — which is what union merge is actually for. Notes need no rule because
+they never change; a conflict on one means two people disagreed about `pinned`,
+and that should be loud.
 
 Staleness is computed per anchor, not per file, against a normalized hash of
 that anchor's span only:
@@ -56,7 +73,7 @@ that anchor's span only:
 | `fresh` | span unchanged | none |
 | `body-drift` | implementation moved, contract held | flag once |
 | `signature-changed` | the described thing changed shape | review |
-| `anchor-missing` | symbol gone | evict to `.context/.attic/` |
+| `anchor-missing` | symbol gone | evict to `attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
@@ -96,8 +113,8 @@ one is a line in the table in `crates/lane/src/syntax.rs`.
 ## Tests
 
 ```
-cargo test        # 23 assertions: clone layer, anchors, hashing, verdict parsing
-./test_lane.sh    # 46 assertions against real git repos in a tmpdir
+cargo test        # 34 assertions: clone layer, anchors, hashing, state, verdicts
+./test_lane.sh    # 64 assertions against real git repos in a tmpdir
 ```
 
 ## What the clone layer is tested against

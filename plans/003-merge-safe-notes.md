@@ -1,371 +1,160 @@
-# Plan 003: Stop rewriting unchanged notes, and make merged frontmatter unambiguous
+# Plan 003: Stop rewriting unchanged notes, so a merge cannot destroy one
 
-> **Executor instructions**: Follow this plan step by step. Run every
-> verification command and confirm the expected result before moving to the
-> next step. If anything in the "STOP conditions" section occurs, stop and
-> report — do not improvise. When done, update the status row for this plan
-> in `plans/README.md`.
+> **Executor instructions**: Follow this plan step by step. Run every verification
+> command and confirm the expected result before moving on. If a STOP condition
+> occurs, stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat c2f4ed4..HEAD -- lane lanelib/memory.py test_lane.sh`
-> If any of those changed since this plan was written, compare the "Current
-> state" excerpts against the live code before proceeding; on a mismatch,
-> treat it as a STOP condition.
+> **Drift check (run first)**: `git diff --stat 6dc6647..HEAD -- crates/lane/src/audit.rs crates/lane/src/note.rs crates/lane/src/store.rs`
 
 ## Status
 
 - **Priority**: P1
 - **Effort**: M
 - **Risk**: MED
-- **Depends on**: plans/001-portable-test-suites.md
+- **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `c2f4ed4`, 2026-08-18
+- **Planned at**: commit `6dc6647`, 2026-08-18
+- **Supersedes**: the version of this plan written against the Python implementation.
+  The rewrite changed the failure mode from silently wrong to loudly destructive.
 
 ## Why this matters
 
-`lane`'s central claim is that parallel lanes can write memory without
-coordinating: one file per note, ULID-named, `merge=union` in
-`.gitattributes`, nothing to lock. That holds for *creating* notes. It does
-not hold for *maintaining* them.
-
-Every `lane audit` stamps `checked: <now>` into every note and rewrites the
-file, whether or not anything about the note actually changed. So any two
-branches that both audit produce a competing one-line change to the same line
-of the same file. Union merge does what union merge does — it keeps both:
+Every `lane audit` stamps `checked: <now>` into every note and rewrites the file,
+whether or not anything changed. Two branches that both audit therefore produce a
+competing one-line edit to the same line of the same file, and `.gitattributes` says
+`merge=union`, so git keeps both:
 
 ```
----
-id: 01M0C29WQMYMQWTV6Y9YD1H0MT
-...
 status: fresh
 checked: 2026-08-19T20:00:00Z
 checked: 2026-08-19T10:00:00Z
----
 ```
 
-Verified by merging two branches that had each run an audit. `parse_note`
-(`lanelib/memory.py:314-324`) builds its dict by assignment, so the last line
-wins — merge order, not recency.
+Under the Python implementation the frontmatter parser took the last line and carried on
+with a possibly-wrong fingerprint. The Rust rewrite parses frontmatter with
+`serde_yaml_ng`, which **rejects duplicate keys**. Verified end to end on a note with a
+duplicated `checked:`:
 
-For `checked:` that is cosmetic. The same mechanism applies to `sig:`,
-`body_hash:` and `status:`, which are the fingerprint that drives the whole
-staleness model. A stale `sig` winning a merge means a note that genuinely
-drifted reports `fresh` and is never reviewed. That is the failure mode this
-tool exists to prevent.
+```
+$ lane check
+warning: .../01M0...-seed-note.md has unreadable frontmatter: duplicate field `checked`
+anchor-missing     1
+$ lane why src/auth.rs
+no context for src/auth.rs
+$ lane audit
+  evict   #  (anchor missing)
+```
 
-`lane done` currently dodges it, because it rebases *then* audits, so a
-lane's memory commit is always built on top of trunk's. Nothing else dodges
-it. `USAGE.md` tells users to run `git pull --rebase` on trunk when it has
-diverged, and any real merge of memory from a remote or a colleague hits this
-directly.
+So a merged note is now invisible to `lane why`, and the next audit moves it to the
+attic under an eviction line with no path and no anchor. It is recoverable, but the
+user is not told which note they lost. That is worse than the behaviour this plan was
+originally written against, which is why it is P1 rather than P2.
 
-Two changes fix it, and both are needed:
-
-1. **A no-op audit should produce no diff.** If nothing about a note changed,
-   do not rewrite it. Then two branches auditing a stable store touch nothing
-   and there is nothing to merge.
-2. **When a duplicate key does arrive, resolve it deterministically and
-   safely.** Never let a merge decide which fingerprint is true; re-derive it
-   from the file the note points at, which is the ground truth anyway.
+`lane done` still dodges it by rebasing before auditing. `git pull --rebase` on trunk —
+which `USAGE.md` tells users to run — does not.
 
 ## Current state
 
-Files:
+- `crates/lane/src/audit.rs` — the loop in `run()` sets `note.meta.checked = now_iso()`
+  and then writes unconditionally:
 
-- `lane` — `run_audit` at `lane:194`, the only place notes are re-stamped
-- `lanelib/memory.py` — `Note` and `render()` at `lanelib/memory.py:274-308`,
-  `parse_note` at `lanelib/memory.py:314`, `check_note` at
-  `lanelib/memory.py:384`
-
-`lane:204-217`, the loop that causes the churn:
-
-```python
-    for n in notes:
-        res = check_note(root, n)
-        tier = res["tier"]
-        stats[tier] += 1
-        n.meta["status"] = tier
-        n.meta["checked"] = now_iso()
-        if tier in (TIER_BODY, TIER_SIG):
-            n.meta["sig"] = res.get("sig", n.meta.get("sig", ""))
-            n.meta["body_hash"] = res.get("body_hash", n.meta.get("body_hash", ""))
-            if res.get("span"):
-                n.meta["lines"] = "%d-%d" % res["span"]
-            review.append(n)
-        if n.file:
-            n.file.write_text(n.render(), encoding="utf-8")
+```rust
+        note.meta.status = res.tier.into();
+        note.meta.checked = now_iso();
+        ...
+        if let Some(file) = note.file.clone() {
+            note.write(&file)?;
+        }
 ```
 
-`lanelib/memory.py:314-324`, the parser that lets the last duplicate win:
+- `crates/lane/src/note.rs` — `parse()` falls back to a whole-file body with an empty
+  `Meta` when YAML fails, which is what produces the empty `#` in the eviction line.
+  `Note::render()` serializes `Meta` through `serde_yaml_ng`.
+- `crates/lane/src/cli.rs` — `init()` writes the `merge=union` rules.
 
-```python
-def parse_note(p: Path) -> Note:
-    raw = p.read_text(encoding="utf-8")
-    m = FM_RX.match(raw)
-    if not m:
-        return Note({"id": p.stem}, raw, p)
-    meta = {}
-    for line in m.group(1).splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta[k.strip()] = v.strip()
-    return Note(meta, m.group(2), p)
-```
+Nothing reads `meta.checked`. Verify with
+`grep -rn 'checked' crates/lane/src/ | grep -v 'checked:'` before relying on it.
 
-`lanelib/memory.py:296-308`, `render()` — note it emits a fixed whitelist of
-keys in a fixed order, so a re-render of a parsed note is normalised. That is
-what makes "compare rendered output to decide whether to write" reliable, and
-it means writing a merged note also heals its duplicates.
-
-```python
-    def render(self) -> str:
-        keys = ["id", "path", "anchor", "created", "branch", "sig", "body_hash",
-                "lines", "status", "checked", "reviewed", "verdict",
-                "supersedes", "pinned", "evicted"]
-        lines = ["---"]
-        for k in keys:
-            if k in self.meta and self.meta[k] not in (None, ""):
-                lines.append("%s: %s" % (k, self.meta[k]))
-        lines.append("---")
-        lines.append("")
-        lines.append(self.body.strip())
-        lines.append("")
-        return "\n".join(lines)
-```
-
-`lanelib/memory.py:384-397`, `check_note` — the ground truth. Given a note it
-resolves the anchor in the real file and recomputes both hashes. An empty
-stored `sig` therefore yields `TIER_SIG`, i.e. "look at this", never "fresh":
-
-```python
-def check_note(root: Path, note: Note) -> dict:
-    target = root / note.path
-    if not target.exists():
-        return {"tier": TIER_MISSING, "reason": "file gone"}
-    text = target.read_text(encoding="utf-8", errors="replace")
-    span = resolve_anchor(text, note.anchor)
-    if span is None:
-        return {"tier": TIER_MISSING, "reason": "anchor not found"}
-    sig, body = span_hashes(text, span)
-    if sig != note.meta.get("sig", ""):
-        return {"tier": TIER_SIG, "sig": sig, "body_hash": body, "span": span}
-    if body != note.meta.get("body_hash", ""):
-        return {"tier": TIER_BODY, "sig": sig, "body_hash": body, "span": span}
-    return {"tier": TIER_FRESH, "sig": sig, "body_hash": body, "span": span}
-```
-
-**Already checked, do not re-investigate**: nothing in the codebase *reads*
-`meta["checked"]`. `grep -rn '"checked"' lane lanelib/` returns only writes
-(`lane:174`, `lane:209`, `lanelib/memory.py:435`) plus the render whitelist and
-an unrelated JSON key at `lane:265`. It is a write-only informational field,
-which is why redefining it in step 1 is safe.
-
-`TIER_RANK` (`lanelib/memory.py:42`) already gives a total order over tiers,
-worst-last:
-
-```python
-TIER_RANK = {TIER_FRESH: 0, TIER_BODY: 1, TIER_SIG: 2, TIER_MISSING: 3}
-```
-
-Repo conventions to match:
-
-- `%`-style formatting; **no f-strings anywhere in this repo**
-- Comments justify decisions. `lanelib/memory.py:447-449` and `lane:136-141`
-  are the house voice — copy that register
-- Module-level regexes are UPPER_SNAKE and defined above their user
-- Functions are small and return plain dicts/tuples, not custom types
+Conventions: one-line comments, `anyhow::Result`, tests as `#[cfg(test)] mod tests` at
+the end of the file.
 
 ## Commands you will need
 
-| Purpose      | Command          | Expected on success       |
-|--------------|------------------|---------------------------|
-| Lane suite   | `./test_lane.sh` | `failed: 0`, baseline + 5 |
-| Ctx suite    | `./test_ctx.sh`  | `passed: 14   failed: 0`  |
-| Syntax check | `python3 -c "import ast,io; [ast.parse(io.open(f).read()) for f in ['lane','lanelib/memory.py']]"` | exit 0 |
-
-(`./test_ctx.sh` is deleted by plan 008. If that has already landed, skip its row.)
-
-
-**Record the baseline first.** Run `./test_lane.sh` before you change
-anything and write down the number it prints. Plans in this directory land in
-whatever order the maintainer chooses, so the only stable expectation is a
-*delta*: this plan must leave the suite passing with **5 more assertions**
-than that baseline. Any absolute total below is illustrative.
+| Purpose | Command | Expected |
+|---|---|---|
+| Unit + integration | `cargo test` | all pass, baseline + 3 |
+| Lint | `cargo clippy --all-targets` | zero warnings |
+| Format | `cargo fmt --all --check` | exit 0 |
+| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
 
 ## Scope
 
-**In scope**:
-- `lane` — `run_audit` only
-- `lanelib/memory.py` — `parse_note`, and a new duplicate-key helper
-- `test_lane.sh` — new section
+**In scope**: `crates/lane/src/audit.rs`, `note.rs`, `test_lane.sh`.
 
-**Out of scope** (do NOT touch, even though they look related):
-- `.gitattributes` generation in `cmd_init` (`lane:45-54`). `merge=union` is
-  the deliberate design and this plan makes it correct rather than replacing
-  it. Do not introduce a custom merge driver — it would need installing on
-  every clone, which is exactly the coordination the design refuses.
-- `promote_pending` (`lanelib/memory.py:405`). New notes are written once with
-  a fresh fingerprint; they are not part of the churn.
-- `evict` (`lanelib/memory.py:447`) and `apply_review` (`lane:135`). Both write
-  notes, but only when something genuinely happened.
-- `ctx` — superseded script, plan 008.
-- The ordering of `lane done` (rebase, then audit). It is correct and is the
-  reason this bug is survivable today.
-
-## Git workflow
-
-- Branch: `advisor/003-merge-safe-notes`
-- Commit per step; lowercase imperative subject with a body explaining why.
-  Example from this repo: `lane rm: stop discarding unlanded commits`
-- Do NOT push or open a PR.
+**Out of scope**:
+- The `merge=union` rule itself. It is the design, and this plan removes the spurious
+  diffs it was being asked to resolve rather than replacing it. A custom merge driver
+  would need installing in every clone, which is the coordination the design refuses.
+- `promote_pending` and `evict`. Both write for real reasons.
+- The read ledger, which has the same class of problem — plan 009.
 
 ## Steps
 
-### Step 1: Only write a note when its content actually changed
+### Step 1: Keep the bytes a note was parsed from
 
-Redefine `checked:` from "when this note was last audited" to "when this note
-last changed". Nothing reads it, so the meaning is free; what it buys is that
-a stable store produces a byte-identical render on every audit.
+In `note.rs`, add `pub raw: String` to `Note`, set it from the file contents in `parse()`
+(both the success and fallback paths), and default it to `String::new()` in `Note::new`.
 
-Give `Note` the raw text it was parsed from so the comparison is against what
-is really on disk. In `lanelib/memory.py`, extend `Note.__init__`
-(`lanelib/memory.py:275`) with a `raw` parameter defaulting to `None`:
+**Verify**: `cargo test` → baseline, all pass.
 
-```python
-    def __init__(self, meta: dict, body: str, file: Path = None, raw: str = None):
-        self.meta = meta
-        self.body = body
-        self.file = file
-        self.raw = raw      # bytes as parsed, so audit can skip a no-op write
+### Step 2: Write only when the render actually changed
+
+Redefine `checked:` as "when this note last changed" — nothing reads it, so the meaning
+is free, and what it buys is a byte-identical render across audits of a stable store.
+
+In `audit.rs`, replace the stamp-and-write with:
+
+```rust
+        let before = note.render();
+        note.meta.status = res.tier.into();
+        // ... the existing drift branch, unchanged ...
+        // An audit that learned nothing must leave no trace: stamping every note every
+        // run gave two branches a competing edit to the same line.
+        if note.render() != before {
+            note.meta.checked = now_iso();
+        }
+        if let Some(file) = note.file.clone()
+            && note.render() != note.raw
+        {
+            note.write(&file)?;
+        }
 ```
 
-Pass it from `parse_note`'s two return sites: `Note({"id": p.stem}, raw, p, raw)`
-and `Note(meta, m.group(2), p, raw)`.
+The second condition also rewrites a note whose on-disk text is not what `render()`
+produces, which heals a file carrying merge damage.
 
-Then replace `lane:204-217` with:
+**Verify**: in a scratch repo with one note, `lane audit` twice, then
+`git status --porcelain -- .context` → empty.
 
-```python
-    for n in notes:
-        res = check_note(root, n)
-        tier = res["tier"]
-        stats[tier] += 1
-        before = n.render()
-        n.meta["status"] = tier
-        if tier in (TIER_BODY, TIER_SIG):
-            n.meta["sig"] = res.get("sig", n.meta.get("sig", ""))
-            n.meta["body_hash"] = res.get("body_hash", n.meta.get("body_hash", ""))
-            if res.get("span"):
-                n.meta["lines"] = "%d-%d" % res["span"]
-            review.append(n)
-        # An audit that learned nothing must leave no trace. Stamping every
-        # note on every run gave two branches a competing edit to the same
-        # line, and union merge keeps both.
-        if n.render() != before:
-            n.meta["checked"] = now_iso()
-        if n.file and n.render() != n.raw:
-            n.file.write_text(n.render(), encoding="utf-8")
-```
+### Step 3: Name the note when its frontmatter is unreadable
 
-The second condition also rewrites a note whose on-disk text is not what
-`render()` produces — which is exactly a note carrying duplicate keys from a
-past merge. Writing it heals the file.
+`parse()`'s fallback leaves `Meta::default()`, so the path and anchor are empty and the
+eviction line reads `evict   #  (anchor missing)`. Recover what the filename already
+tells us: notes are written as `<ulid>-<slug>.md` under `.context/<path>/`.
 
-**Verify**: in a scratch repo with at least one note, run `lane audit` twice
-and confirm `git status --porcelain -- .context` is empty after the second
-run. Step 5's test automates this.
+In `parse()`'s fallback, set `id` from the filename stem up to the first `-`, and `path`
+from the note file's directory relative to `.context/`. Leave `anchor` empty — it is not
+recoverable — and leave the body as the raw text so nothing is lost.
 
-### Step 2: Collect duplicate frontmatter keys instead of overwriting them
+**Verify**: a note with a duplicated key produces an eviction line naming its real path,
+not `#`.
 
-In `lanelib/memory.py`, change `parse_note` to gather every value per key:
+### Step 4: Cover it
 
-```python
-def parse_note(p: Path) -> Note:
-    raw = p.read_text(encoding="utf-8")
-    m = FM_RX.match(raw)
-    if not m:
-        return Note({"id": p.stem}, raw, p, raw)
-    seen = {}
-    for line in m.group(1).splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            seen.setdefault(k.strip(), []).append(v.strip())
-    return Note(resolve_dupes(seen), m.group(2), p, raw)
-```
-
-**Verify**: `python3 -c "import ast,io; ast.parse(io.open('lanelib/memory.py').read())"` → exit 0
-
-### Step 3: Resolve duplicates deterministically, and never in favour of "fresh"
-
-Add `resolve_dupes` directly above `parse_note` in `lanelib/memory.py`:
-
-```python
-# Union merge concatenates both sides of a changed line, so a note that two
-# branches audited arrives with repeated keys. Which line came first is an
-# artifact of merge order and carries no meaning, so nothing here may depend
-# on it: every rule below is order-independent, and every ambiguous
-# fingerprint resolves toward re-checking rather than toward "fresh".
-def resolve_dupes(seen: dict) -> dict:
-    meta = {}
-    for k, vals in seen.items():
-        uniq = list(dict.fromkeys(vals))
-        if len(uniq) == 1:
-            meta[k] = uniq[0]
-        elif k in ("sig", "body_hash", "lines"):
-            # A fingerprint we cannot arbitrate is a fingerprint we do not
-            # have. Dropping it makes check_note re-derive it from the file,
-            # which is the only real source of truth.
-            meta[k] = ""
-        elif k == "status":
-            meta[k] = max(uniq, key=lambda t: TIER_RANK.get(t, 0))
-        else:
-            meta[k] = max(uniq)
-    return meta
-```
-
-`max(uniq)` for the remaining keys is a string maximum: right for the ISO
-timestamps in `checked`, `created` and `reviewed`, and harmless for the rest,
-which never legitimately differ between branches (`id`, `path`, `anchor`).
-
-An empty `sig` makes `check_note` return `TIER_SIG`, so the note is flagged
-for review and the next audit writes a real fingerprint back. The cost of a
-merge collision is one review; the cost of the current behaviour is a silently
-wrong `fresh`.
-
-**Verify**:
-
-```
-python3 - <<'PY'
-from lanelib.memory import resolve_dupes
-a = {"sig": ["aaa", "bbb"], "status": ["fresh", "body-drift"], "checked": ["2026-01-02T00:00:00Z", "2026-01-01T00:00:00Z"]}
-b = {"sig": ["bbb", "aaa"], "status": ["body-drift", "fresh"], "checked": ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"]}
-assert resolve_dupes(a) == resolve_dupes(b), "must not depend on merge order"
-assert resolve_dupes(a)["sig"] == ""
-assert resolve_dupes(a)["status"] == "body-drift"
-assert resolve_dupes(a)["checked"] == "2026-01-02T00:00:00Z"
-print("ok")
-PY
-```
-→ prints `ok`
-
-### Step 4: Confirm the existing suites still pass
-
-Both suites exercise audit heavily. A drop here means step 1's write condition
-is wrong.
-
-**Verify**:
-- `./test_lane.sh` → `failed: 0` at the baseline count (unchanged; step 5 adds more)
-- `./test_ctx.sh` → `passed: 14   failed: 0`
-
-Note `test_ctx.sh` drives the standalone `ctx` script, which has its own copy
-of this logic and is **out of scope**. It should be unaffected. If it changes,
-you edited the wrong file.
-
-### Step 5: Test it end to end
-
-Add a new section to `test_lane.sh` before the final summary block, modelled
-on section 11 (the newest, same helpers, same shape). Five assertions:
+Add to `test_lane.sh` before the summary, modelled on section 13:
 
 ```bash
-echo "== 13. audit is idempotent and memory survives a real merge =="
+echo "== N. audit is idempotent and a merged note stays readable =="
 setup
 "$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
 "$LANE" audit > /dev/null
@@ -374,100 +163,51 @@ git add -A && git commit -qm seed
 is "a no-op audit writes nothing" \
    "$(git status --porcelain -- .context | wc -l | tr -d ' ')" "0"
 
-git checkout -qb branch-a
-"$LANE" note -p src/auth.rs -a "fn verify" "a: alpha" > /dev/null
-"$LANE" audit > /dev/null && git add -A && git commit -qm a
-git checkout -q main && git checkout -qb branch-b
-"$LANE" note -p src/auth.rs -a "fn verify" "b: beta" > /dev/null
-"$LANE" audit > /dev/null && git add -A && git commit -qm b
-git merge -q --no-edit branch-a > /tmp/m.out 2>&1
-is "parallel memory merges without conflict" "$?" "0"
-is "both notes survived" \
-   "$(grep -rl 'a: alpha\|b: beta' .context --include='*.md' | wc -l | tr -d ' ')" "2"
-is "no note has a duplicated key" \
-   "$(for f in $(find .context -name '*.md' -not -path '*/.attic/*'); do
-        awk '/^---$/{n++; next} n==1 {sub(/:.*/,""); print}' "$f" | sort | uniq -d
-      done | wc -l | tr -d ' ')" "0"
-"$LANE" check --json > /tmp/k.json
-is "no note reports a fingerprint it cannot justify" \
-   "$(python3 -c 'import json;d=json.load(open("/tmp/k.json"));print(sum(1 for x in d if x["tier"]=="anchor-missing"))')" "0"
+F=$(find .context -name '*.md' -not -path '*attic*' | head -1)
+python3 - "$F" <<'PY'
+import io, sys
+p = sys.argv[1]; s = io.open(p, encoding="utf-8").read()
+io.open(p, "w", encoding="utf-8").write(s.replace("checked:", "checked: 2099-01-01T00:00:00Z\nchecked:", 1))
+PY
+is "a duplicated key does not hide the note" \
+   "$("$LANE" why src/auth.rs 2>/dev/null | grep -c 'constant time')" "1"
+is "and the eviction line names it" \
+   "$("$LANE" audit 2>/dev/null | grep -c 'evict   #')" "0"
 ```
 
-The duplicate-key assertion is the regression gate: it reads the frontmatter
-of every live note and reports any key appearing twice.
+Also add a `#[cfg(test)]` case in `audit.rs` or `note.rs` asserting that `render()` of a
+parsed-then-unmodified note equals its `raw`.
 
-To confirm the test actually catches the bug, temporarily revert step 1's
-write condition to the unconditional `n.file.write_text(...)`, re-run, and
-check that this section fails. Then restore step 1.
+Confirm all three shell assertions fail against the current code first.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 5
-
-## Test plan
-
-Summarised from step 5 — five new assertions in `test_lane.sh` section 13:
-
-1. a second consecutive `lane audit` leaves `.context` with no git diff
-2. two branches that each added a note merge without conflict
-3. both notes survive the merge
-4. no live note carries a duplicated frontmatter key
-5. the merged store reports no bogus tiers
-
-Structural pattern: section 11 of `test_lane.sh`. Use `is` for every
-assertion; do not add a new helper.
-
-The negative control described in step 5 (revert, watch it fail, restore) is
-required, not optional. A regression test that passes against the old code is
-not a regression test.
+**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
 
 ## Done criteria
 
-ALL must hold:
-
-- [ ] `./test_lane.sh` reports `failed: 0` with baseline + 5 assertions
-- [ ] `./test_ctx.sh` prints `passed: 14   failed: 0`
-- [ ] `grep -c 'def resolve_dupes' lanelib/memory.py` → `1`
-- [ ] `grep -c 'n.meta\["checked"\] = now_iso()' lane` → `1`, and it is inside
-      the `if n.render() != before:` branch
-- [ ] The step 3 verification script prints `ok`
-- [ ] Running `lane audit` twice in a repo with notes leaves
-      `git status --porcelain -- .context` empty
-- [ ] `git status --short` lists only `lane`, `lanelib/memory.py`,
-      `test_lane.sh`
-- [ ] `plans/README.md` status row for 003 updated
+- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
+- [ ] Two consecutive `lane audit` runs leave `git status --porcelain -- .context` empty
+- [ ] A note with a duplicated frontmatter key is still listed by `lane why`
+- [ ] `grep -c 'meta.checked = now_iso()' crates/lane/src/audit.rs` → `1`, inside the
+      changed-render branch
+- [ ] `plans/README.md` row updated
 
 ## STOP conditions
 
-Stop and report back (do not improvise) if:
-
-- Making writes conditional breaks an existing assertion in `test_lane.sh`
-  sections 1–12. Those cover promotion, review verdicts and eviction, all of
-  which write notes for real reasons and must keep working.
-- You find code that *reads* `meta["checked"]` and depends on it meaning "last
-  audited". The plan assumes it is write-only; that was verified at
-  `c2f4ed4`, but verify again with
-  `grep -rn 'checked' lane lanelib/` before step 1.
-- The duplicate-key assertion in step 5 passes *before* you make any change.
-  That means the test is not reproducing the bug — report it rather than
-  proceeding, because the rest of the plan then has no gate.
-- Resolving duplicates makes notes churn on every audit (each run flagging
-  everything as `signature-changed`). That would mean `render()` and the
-  on-disk text disagree for a reason other than merge damage. Report the
-  diff rather than loosening the comparison.
+- Making writes conditional breaks any existing assertion. Sections 4, 7, 8 and 12 all
+  depend on notes being written during audit for real reasons.
+- You find code that reads `meta.checked` and depends on it meaning "last audited".
+- The duplicate-key assertion passes before you change anything — then it is not
+  reproducing the bug and the rest of the plan has no gate.
+- Recovering `path` from the note's directory turns out to be ambiguous for a note whose
+  file was moved by hand. Report rather than guessing.
 
 ## Maintenance notes
 
-- The invariant to protect in review: **an audit that learned nothing writes
-  nothing.** Any future field that gets stamped unconditionally — a counter, a
-  "last seen" timestamp, a schema version — reintroduces this bug. If a field
-  must change every run, it does not belong in the note file; put it in the
-  ledger alongside `.reads.jsonl`.
-- `resolve_dupes` is the only place that knows union merge exists. If notes
-  ever move to a format with real escaping, that function is where the
-  ambiguity rules live and should move with it.
-- Deferred out of this plan: `.reads.jsonl` has the same class of problem —
-  unbounded growth and merge-order-dependent counts. Plan 009 covers it.
-- Deferred out of this plan: `reason` strings from the model reviewer are
-  written into `verdict:` unescaped (`lane:160-162`), so a newline in a model
-  response corrupts the frontmatter directly, without any merge involved.
-  That is a real hole in the same file format; it is small, but it needs its
-  own change and its own test. Raise it if you want it folded in.
+- The invariant to protect: **an audit that learned nothing writes nothing.** Any field
+  stamped unconditionally reintroduces this. If something must change every run, it does
+  not belong in the note file.
+- Resolving duplicate keys rather than rejecting them was considered and rejected: with
+  a real YAML parser the ambiguity is a parse error, and the honest fix is to stop
+  producing the ambiguity. If duplicates ever arrive from somewhere else, revisit.
+- Deferred: `.reads.jsonl` has the same shape of problem. Plan 009.

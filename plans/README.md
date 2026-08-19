@@ -16,7 +16,8 @@ counts before starting, and update your row when done.
 | 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | DONE |
 | 015 | Capture decisions from commit trailers, without importing the git log | P2 | M | — | TODO |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | DONE |
-| 007 | Let a project choose what a lane carries | P2 | M | — | TODO |
+| 007 | Carry what git ignores, and nothing at all without reflink | P2 | M | — | TODO |
+| 016 | Fail `lane done` before it writes, not after | P2 | S | — | TODO |
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
@@ -37,10 +38,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
    cheaper to do before more state accumulates than after.
 4. **015** — the reason for a change is typed into the commit message and thrown away.
    Not a defect; the largest gap between what the tool promises and what it collects.
-5. **007** — a lane without `.env` does not run the project, and the README says it will.
-6. **006** — the documented shell function can `cd` into an error message, or leave you in
+5. **007** — a lane carries nothing for a monorepo and no `.env` anywhere, so it does not
+   run the project; and without reflink it byte-copies the caches it exists to share.
+6. **016** — `lane done` can fail after committing memory, leaving trunk unadvanced.
+7. **006** — the documented shell function can `cd` into an error message, or leave you in
    a deleted directory.
-7. **010, 012** — cosmetics and binary size. No user loses work.
+8. **010, 012** — cosmetics and binary size. No user loses work.
 
 011 and the closed half of 003 are regressions the rewrite introduced. 014 predates it —
 the Python implementation lost memory on rename too, and neither audit caught it until the

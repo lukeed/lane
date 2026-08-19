@@ -2,24 +2,11 @@
 
 use crate::cow;
 use crate::git::{git, git_ok, try_git};
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 const LANES_DIRNAME: &str = ".lanes";
-
-pub const WARM_DEFAULT: [&str; 10] = [
-    "node_modules",
-    "target",
-    ".venv",
-    "vendor",
-    "dist",
-    ".next",
-    ".turbo",
-    ".gradle",
-    "build",
-    ".cargo",
-];
 
 /// Root of the primary worktree, even when called from inside a lane.
 pub fn main_root() -> Result<PathBuf> {
@@ -63,11 +50,22 @@ pub fn is_dirty(path: &Path) -> bool {
     .is_empty()
 }
 
-fn tracked_set(root: &Path) -> HashSet<String> {
-    try_git(&["ls-files", "-z"], Some(root))
+/// Entries git will not materialize: exactly what a fresh worktree is missing.
+/// Already collapsed to directory roots, at any depth, from the user's own ignore rules.
+fn ignored_entries(root: &Path) -> Vec<String> {
+    try_git(&["status", "--porcelain", "-z", "--ignored"], Some(root))
         .split('\0')
+        .filter_map(|e| e.strip_prefix("!! "))
+        .map(|p| p.trim_end_matches('/').to_string())
+        .filter(|p| !p.is_empty() && p != ".git")
+        .collect()
+}
+
+fn excluded(root: &Path) -> HashSet<String> {
+    try_git(&["config", "--get-all", "lane.exclude"], Some(root))
+        .lines()
+        .map(|p| p.trim_end_matches('/').to_string())
         .filter(|p| !p.is_empty())
-        .map(str::to_string)
         .collect()
 }
 
@@ -115,20 +113,77 @@ pub struct Created {
     pub notes: Vec<String>,
 }
 
-/// Two strategies: by default git checks out tracked files and we clone only the warm
-/// dirs; `--fork` clones the whole tree by reference and rebuilds the index in place.
-pub fn create(
-    name: &str,
-    base: Option<&str>,
-    fork: bool,
-    warm: Option<Vec<String>>,
-) -> Result<Created> {
+#[derive(Debug, PartialEq)]
+enum Materialization {
+    Plain,
+    Ignored,
+    Dirty,
+    /// Explicit --dirty without reflink: the caches are not worth a byte copy, the
+    /// handful of edited files is.
+    DirtyPlain,
+}
+
+fn materialization(dirty: bool, reflink: bool) -> Materialization {
+    match (dirty, reflink) {
+        (false, false) => Materialization::Plain,
+        (true, false) => Materialization::DirtyPlain,
+        (false, true) => Materialization::Ignored,
+        (true, true) => Materialization::Dirty,
+    }
+}
+
+/// Uncommitted work: tracked files that differ from HEAD, plus untracked non-ignored ones.
+fn uncommitted(root: &Path) -> Vec<String> {
+    let mut paths: Vec<String> = try_git(&["diff", "--name-only", "-z", "HEAD"], Some(root))
+        .split('\0')
+        .map(str::to_string)
+        .collect();
+    paths.extend(
+        try_git(
+            &["ls-files", "--others", "--exclude-standard", "-z"],
+            Some(root),
+        )
+        .split('\0')
+        .map(str::to_string),
+    );
+    paths.retain(|p| !p.is_empty());
+    paths
+}
+
+fn add_stats(total: &mut cow::CloneStats, next: cow::CloneStats) {
+    total.cloned += next.cloned;
+    total.copied += next.copied;
+    total.links += next.links;
+    total.bytes_shared += next.bytes_shared;
+    total.bytes_copied += next.bytes_copied;
+}
+
+fn clone_entry(root: &Path, dest: &Path, entry: &str) -> Result<cow::CloneStats> {
+    let source = root.join(entry);
+    let target = dest.join(entry);
+    if std::fs::symlink_metadata(&source)?.is_dir() {
+        return Ok(cow::clone_tree(&source, &target, &|_, _| false)?);
+    }
+    let Some(name) = source.file_name().map(|name| name.to_string_lossy()) else {
+        bail!("ignored entry has no file name: {entry}");
+    };
+    let Some(source_parent) = source.parent() else {
+        bail!("ignored entry has no parent: {entry}");
+    };
+    let Some(target_parent) = target.parent() else {
+        bail!("ignored entry has no destination parent: {entry}");
+    };
+    Ok(cow::clone_tree(source_parent, target_parent, &|rel, _| {
+        rel != name
+    })?)
+}
+
+/// By default git checks out tracked files and ignored entries are cloned by reference.
+pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     let root = main_root()?;
     let base = base
         .map(str::to_string)
         .unwrap_or_else(|| trunk_name(&root));
-    let warm: Vec<String> =
-        warm.unwrap_or_else(|| WARM_DEFAULT.iter().map(|s| s.to_string()).collect());
     let dest = lanes_dir(&root).join(name);
     if dest.exists() {
         bail!("lane {name} already exists at {}", dest.display());
@@ -142,55 +197,97 @@ pub fn create(
         "reflink: {} ({detail})",
         if supported { "yes" } else { "no" }
     )];
-    let dest_str = dest.to_string_lossy().to_string();
-
-    let stats = if fork {
-        git(
-            &[
-                "worktree",
-                "add",
-                "--no-checkout",
-                "-b",
-                name,
-                &dest_str,
-                &base,
-            ],
+    if !supported {
+        notes.push("no reflink here; leaving a plain worktree".into());
+    }
+    if !dirty {
+        let carried = try_git(
+            &["status", "--porcelain", "--untracked-files=no"],
             Some(&root),
-        )?;
-        let skip = |rel: &str, _is_dir: bool| rel == ".git" || rel.starts_with(".git/");
-        let stats = cow::clone_tree(&root, &dest, &skip)?;
-        // Repopulate the index from the base tree without rewriting a single file.
-        git(&["reset", "--mixed", "--quiet", &base], Some(&dest))?;
-        try_git(&["update-index", "--refresh"], Some(&dest));
-        let carried = try_git(&["status", "--porcelain"], Some(&dest))
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .count();
+        )
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
         if carried > 0 {
             notes.push(format!(
-                "carried {carried} uncommitted change(s) from the parent tree"
+                "warning: {carried} uncommitted change(s) were not carried\n    lane rm {name} && lane new {name} --dirty   to start over with them"
             ));
         }
-        stats
-    } else {
-        git(
-            &["worktree", "add", "-b", name, &dest_str, &base],
-            Some(&root),
-        )?;
-        let tracked = tracked_set(&root);
-        let warm_set: HashSet<&str> = warm.iter().map(String::as_str).collect();
-        let skip = |rel: &str, is_dir: bool| {
-            let top = rel.split(std::path::MAIN_SEPARATOR).next().unwrap_or(rel);
-            if top == ".git" {
-                return true;
+    }
+    let dest_str = dest.to_string_lossy().to_string();
+
+    let stats = match materialization(dirty, supported) {
+        Materialization::Dirty => {
+            git(
+                &[
+                    "worktree",
+                    "add",
+                    "--no-checkout",
+                    "-b",
+                    name,
+                    &dest_str,
+                    &base,
+                ],
+                Some(&root),
+            )?;
+            let skip = |rel: &str, _is_dir: bool| rel == ".git" || rel.starts_with(".git/");
+            let stats = cow::clone_tree(&root, &dest, &skip)?;
+            // Repopulate the index from the base tree without rewriting a single file.
+            git(&["reset", "--mixed", "--quiet", &base], Some(&dest))?;
+            try_git(&["update-index", "--refresh"], Some(&dest));
+            let carried = try_git(&["status", "--porcelain"], Some(&dest))
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .count();
+            if carried > 0 {
+                notes.push(format!(
+                    "carried {carried} uncommitted change(s) from the parent tree"
+                ));
             }
-            if is_dir {
-                // Descend only into warm entries, and only at the top level.
-                return !rel.contains(std::path::MAIN_SEPARATOR) && !warm_set.contains(top);
+            stats
+        }
+        mode => {
+            let ignored = if mode == Materialization::Ignored {
+                ignored_entries(&root)
+            } else {
+                Vec::new()
+            };
+            let carry = if mode == Materialization::DirtyPlain {
+                uncommitted(&root)
+            } else {
+                Vec::new()
+            };
+            let excluded = excluded(&root);
+            git(
+                &["worktree", "add", "-b", name, &dest_str, &base],
+                Some(&root),
+            )?;
+            let mut stats = cow::CloneStats::default();
+            for entry in ignored {
+                if excluded.contains(&entry) {
+                    continue;
+                }
+                let next = clone_entry(&root, &dest, &entry)
+                    .with_context(|| format!("cloning ignored entry {entry}"))?;
+                add_stats(&mut stats, next);
             }
-            tracked.contains(rel) || !warm_set.contains(top)
-        };
-        cow::clone_tree(&root, &dest, &skip)?
+            for path in &carry {
+                let (from, to) = (root.join(path), dest.join(path));
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(&from, &to)
+                    .with_context(|| format!("carrying uncommitted {path}"))?;
+                stats.copied += 1;
+            }
+            if !carry.is_empty() {
+                notes.push(format!(
+                    "carried {} uncommitted change(s) by copy; no reflink here",
+                    carry.len()
+                ));
+            }
+            stats
+        }
     };
 
     Ok(Created {
@@ -247,4 +344,65 @@ pub fn fast_forward(root: &Path, trunk: &str, branch: &str) -> Result<()> {
         Some(root),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_reflink_skips_the_caches_but_still_honours_dirty() {
+        assert_eq!(materialization(false, false), Materialization::Plain);
+        assert_eq!(materialization(true, false), Materialization::DirtyPlain);
+    }
+
+    #[test]
+    fn reflink_selects_the_requested_mode() {
+        assert_eq!(materialization(false, true), Materialization::Ignored);
+        assert_eq!(materialization(true, true), Materialization::Dirty);
+    }
+
+    #[test]
+    fn uncommitted_finds_tracked_edits_and_untracked_files() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path();
+        let run = |args: &[&str]| {
+            git(args, Some(r)).ok();
+        };
+        run(&["init", "-qb", "main"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::create_dir_all(r.join("src"))?;
+        std::fs::write(r.join("src/a.rs"), "one\n")?;
+        std::fs::write(r.join(".gitignore"), "ignored.txt\n")?;
+        run(&["add", "-A"]);
+        run(&["commit", "-qm", "base"]);
+
+        std::fs::write(r.join("src/a.rs"), "two\n")?; // tracked edit
+        std::fs::write(r.join("scratch.txt"), "x")?; // untracked, not ignored
+        std::fs::write(r.join("ignored.txt"), "x")?; // ignored, not uncommitted work
+
+        let mut found = uncommitted(r);
+        found.sort();
+        assert_eq!(
+            found,
+            vec!["scratch.txt".to_string(), "src/a.rs".to_string()]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn an_ignored_file_is_cloned() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let dest = tempfile::tempdir()?;
+        std::fs::write(root.path().join(".env"), "SECRET=1")?;
+
+        clone_entry(root.path(), dest.path(), ".env")?;
+
+        assert_eq!(
+            std::fs::read_to_string(dest.path().join(".env"))?,
+            "SECRET=1"
+        );
+        Ok(())
+    }
 }

@@ -28,7 +28,8 @@ reflink on this filesystem: yes (reflink available)
 ```
 
 `yes` on APFS, btrfs, XFS with `reflink=1`, bcachefs, recent ZFS. `no` means
-lanes still work, warm directories just get copied instead of shared.
+lanes still work as plain worktrees. Ignored files are not cloned because a full
+byte copy would do the expensive work lane exists to avoid.
 
 ---
 
@@ -43,20 +44,28 @@ lane new fix-login
   /Users/you/.lanes-yourproject/fix-login
 ```
 
-Tracked files come from git. `node_modules`, `target`, `.venv`, `dist` and
-friends arrive by reference — the same bytes on disk, no copy, no reinstall,
-no cold rebuild. That's the difference between a worktree you open casually
-and one you avoid.
+Tracked files come from git. Everything git ignores, at any depth, arrives by
+reference — nested `node_modules`, `target`, `.env`, and whatever your own ignore
+rules name. Uncommitted work is not carried. The shared bytes mean no copy, no
+reinstall, and no cold rebuild.
 
 Carry uncommitted work across too:
 
 ```bash
-lane new spike --fork
+lane new spike --dirty
   carried 3 uncommitted change(s) from the parent tree
 ```
 
-`--fork` clones the entire tree by reference, dirty state included. Use it when
-you want to hand your current mess to an agent and keep working yourself.
+`--dirty` does the same as the default and also carries your uncommitted work.
+Use it when you want to hand your current mess to an agent and keep working
+yourself. Without reflink support, either mode leaves a plain worktree.
+
+Opt a gitignored entry out with multi-valued configuration:
+
+```bash
+git config --add lane.exclude target
+git config --add lane.exclude packages/legacy/node_modules
+```
 
 ### Leave notes while you work
 
@@ -220,7 +229,7 @@ Land them in any order.
 | command | |
 |---|---|
 | `lane init` | scaffold, probe reflink |
-| `lane new <name> [--fork] [--base <ref>]` | create a lane |
+| `lane new <name> [--dirty] [--base <ref>]` | create a lane |
 | `lane ls` | lanes, branch, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
 | `lane note -p <file> -a <anchor> "<text>"` | record a finding |

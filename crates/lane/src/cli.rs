@@ -55,9 +55,9 @@ enum Command {
         name: String,
         #[arg(long)]
         base: Option<String>,
-        /// clone the entire tree by reference, dirty state included
+        /// carry uncommitted work into the lane
         #[arg(long)]
-        fork: bool,
+        dirty: bool,
         /// print path last, for shell fn
         #[arg(long)]
         cd: bool,
@@ -135,9 +135,9 @@ pub fn run() -> Result<i32> {
         Command::New {
             name,
             base,
-            fork,
+            dirty,
             cd,
-        } => new(&name, base.as_deref(), fork, cd),
+        } => new(&name, base.as_deref(), dirty, cd),
         Command::Ls => ls(),
         Command::Path { name } => path(&name),
         Command::Note { text, path, anchor } => note(&text, &path, &anchor),
@@ -211,13 +211,13 @@ fn init() -> Result<i32> {
         if ok { "yes" } else { "no" }
     );
     if !ok {
-        println!("  lanes will still work; warm dirs get copied instead of shared");
+        println!("  lanes will still work as plain worktrees; ignored files will not be cloned");
     }
     Ok(0)
 }
 
-fn new(name: &str, base: Option<&str>, fork: bool, cd: bool) -> Result<i32> {
-    let created = wt::create(name, base, fork, None)?;
+fn new(name: &str, base: Option<&str>, dirty: bool, cd: bool) -> Result<i32> {
+    let created = wt::create(name, base, dirty)?;
     // With --cd, stdout is reserved for the path so the shell can capture it without a pipe.
     let tty = if cd {
         std::io::stderr().is_terminal()

@@ -44,24 +44,32 @@ echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
 "$LANE" new fix-login > /tmp/new.out 2>&1
 LP="$TMP/.lanes-repo/fix-login"
+REFLINK=$(grep -c 'reflink: yes' /tmp/new.out)
+want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "lane exists" "$([ -d "$LP" ] && echo yes)" "yes"
-is "warm dir present in lane" "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes)" "yes"
+is "warm dir present in lane iff reflink" \
+   "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes || echo no)" "$(want)"
 is "tracked file present" "$([ -f "$LP/src/auth.rs" ] && echo yes)" "yes"
 is "lane status clean" "$(git -C "$LP" status --porcelain | wc -l | tr -d ' ')" "0"
 is "reflink verdict reported" "$(grep -c 'reflink:' /tmp/new.out)" "1"
 is "tracked files not re-cloned" \
    "$(grep -o 'cloned' /tmp/new.out | head -1)" "cloned"
 
-echo "== 3. fork mode carries dirty state without rewriting files =="
+echo "== 3. dirty mode carries dirty state without rewriting files =="
 setup
 echo "// scratch work" >> src/auth.rs
-"$LANE" new spike --fork > /tmp/fork.out 2>&1
+"$LANE" new spike --dirty > /tmp/dirty.out 2>&1
 LP="$TMP/.lanes-repo/spike"
-is "dirty change carried into fork" "$(grep -c 'scratch work' "$LP/src/auth.rs")" "1"
-is "fork reports carried changes" "$(grep -c 'carried' /tmp/fork.out)" "1"
+REFLINK=$(grep -c 'reflink: yes' /tmp/dirty.out)
+want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
+is "dirty change carried iff reflink" \
+   "$(grep -q 'scratch work' "$LP/src/auth.rs" && echo yes || echo no)" "$(want)"
+is "dirty mode reports carried changes iff reflink" \
+   "$(grep -q 'carried' /tmp/dirty.out && echo yes || echo no)" "$(want)"
 is "index rebuilt: exactly one modified file" \
-   "$(git -C "$LP" status --porcelain | grep -c '^ M')" "1"
-is "warm dir also carried" "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes)" "yes"
+   "$(git -C "$LP" status --porcelain | grep -c '^ M')" "$REFLINK"
+is "warm dir also carried iff reflink" \
+   "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes || echo no)" "$(want)"
 
 echo "== 4. note inside lane, done lands memory on trunk =="
 setup
@@ -364,6 +372,39 @@ echo "fn x() {}" > src/x.rs && git add -A && git commit -qm x > /dev/null
 lane done > /dev/null 2>&1
 is "done lands the shell in the main worktree" "$PWD" "$(cd "$TMP/repo" && pwd -P)"
 is "that directory exists" "$([ -d "$PWD" ] && echo yes || echo no)" "yes"
+
+echo "== 20. a lane carries what git ignores =="
+setup
+mkdir -p packages/a/node_modules packages/b/node_modules
+echo cache > packages/a/node_modules/dep
+echo cache > packages/b/node_modules/dep
+echo "export const a = 1" > packages/a/index.ts
+echo "SECRET=1" > .env
+printf 'node_modules/\n.env\n' > .gitignore
+git add -A && git commit -qm monorepo
+
+"$LANE" new carry > /tmp/carry.out 2>&1
+LP="$TMP/.lanes-repo/carry"
+REFLINK=$(grep -c 'reflink: yes' /tmp/carry.out)
+want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
+is "a nested node_modules is carried iff reflink" \
+   "$([ -f "$LP/packages/a/node_modules/dep" ] && echo yes || echo no)" "$(want)"
+is "an ignored file is carried iff reflink" \
+   "$([ -f "$LP/.env" ] && echo yes || echo no)" "$(want)"
+is "tracked files always come from git" \
+   "$([ -f "$LP/packages/a/index.ts" ] && echo yes || echo no)" "yes"
+"$LANE" rm carry --force > /dev/null 2>&1
+
+echo "// scratch" >> src/auth.rs
+"$LANE" new clean > /tmp/clean.out 2>&1
+is "a dirty tree without --dirty warns and names the recovery" \
+   "$(grep -c 'lane rm clean && lane new clean --dirty' /tmp/clean.out)" "1"
+"$LANE" rm clean --force > /dev/null 2>&1
+"$LANE" new carried --dirty > /tmp/carried.out 2>&1
+REFLINK=$(grep -c 'reflink: yes' /tmp/carried.out)
+want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
+is "--dirty carries the change iff reflink" \
+   "$(grep -q 'scratch' "$TMP/.lanes-repo/carried/src/auth.rs" && echo yes || echo no)" "$(want)"
 
 echo
 echo "passed: $pass   failed: $fail"

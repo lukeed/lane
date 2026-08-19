@@ -5,7 +5,7 @@ Copy-on-write worktrees with memory that survives them. One tool.
 ```
 lane init                            probe reflink, scaffold memory + merge rules
 lane new fix-login                   CoW worktree + branch
-lane new spike --fork                clone the whole tree by reference, dirt included
+lane new spike --dirty               carry uncommitted work too
 lane ls
 lane note -p src/auth.rs -a "fn verify" "..."
 lane why src/auth.rs                 read what earlier lanes learned
@@ -20,25 +20,33 @@ on Linux via `rustix`, `clonefile(2)` on macOS — rather than shelling out to
 or a silent full copy. `cp` will not tell you.
 
 Works on btrfs, XFS with `reflink=1`, APFS, bcachefs, recent ZFS. Everywhere
-else `probe()` reports it, `lane new` prints the verdict, and each file falls
-back to a byte copy — correct tree, just an expensive one.
+else `probe()` reports it and `lane new` leaves a plain worktree. Byte-copying
+an entire build cache would perform the expensive operation lane exists to avoid.
 
 Two materialization strategies:
 
-| | tracked files | untracked + ignored | dirty state |
+| | tracked files | everything git ignores, at any depth | uncommitted work |
 |---|---|---|---|
 | default | git checks them out | cloned by reference | not carried |
-| `--fork` | cloned by reference | cloned by reference | carried |
+| `--dirty` | same | same | carried |
 
 Default is the safe one and still fixes the real problem: `git worktree add`
-gives you a clean tree with a stone-cold `node_modules` and `target`. Those
-are gitignored, so git will never materialize them, and they are the entire
-reason a fresh worktree feels expensive.
+gives you a clean tree without anything git ignores. Lane asks git for those
+entries, including nested paths such as `packages/a/node_modules` and files such
+as `.env`, then clones them by reference. Untracked files that are not ignored
+and uncommitted tracked changes are left behind unless `--dirty` is passed.
 
-`--fork` uses `--no-checkout`, clones everything, then rebuilds the index with
+`--dirty` uses `--no-checkout`, clones everything, then rebuilds the index with
 `reset --mixed` + `update-index --refresh` — populating the index from the base
 tree *without rewriting a single file*, so the sharing survives. Test 3 asserts
 exactly one modified file afterward, not several hundred.
+
+Exclude a reported path from cloning with multi-valued git configuration:
+
+```bash
+git config --add lane.exclude target
+git config --add lane.exclude packages/legacy/node_modules
+```
 
 ## Memory
 
@@ -113,8 +121,8 @@ one is a line in the table in `crates/lane/src/syntax.rs`.
 ## Tests
 
 ```
-cargo test        # 34 assertions: clone layer, anchors, hashing, state, verdicts
-./test_lane.sh    # 64 assertions against real git repos in a tmpdir
+cargo test        # 43 tests: clone layer, worktrees, anchors, hashing, state, verdicts
+./test_lane.sh    # 77 assertions against real git repos in a tmpdir
 ```
 
 ## What the clone layer is tested against

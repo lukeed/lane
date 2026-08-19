@@ -16,7 +16,7 @@ counts before starting, and update your row when done.
 | 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | DONE |
 | 015 | Capture decisions from commit trailers, without importing the git log | P2 | M | — | TODO |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | DONE |
-| 007 | Carry what git ignores, and nothing at all without reflink | P2 | M | — | TODO |
+| 007 | Carry what git ignores, and nothing at all without reflink | P2 | M | — | DONE |
 | 016 | Fail `lane done` before it writes, not after | P2 | S | — | TODO |
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |

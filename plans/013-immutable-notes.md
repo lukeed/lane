@@ -90,19 +90,56 @@ pins and one leaves alone → git takes the pin; one pins and one unpins → a r
 disagreement, surfaced as a real conflict. That last case is only loud once `merge=union`
 stops covering note files, which this plan does.
 
-### Immutability makes the fingerprint version load-bearing
+### The fingerprint has to survive a grammar upgrade
 
 `sig` and `body_hash` are sha256 of the *normalized* span — comments stripped via
 tree-sitter, whitespace collapsed — truncated to 8 bytes. They are not git oids and must
-not become them; a blob oid covers the whole file, which would throw away the per-anchor
+not become them; a blob oid covers the whole file, which throws away the per-anchor
 granularity the tool exists for.
 
-Because normalization depends on the grammar, **upgrading a tree-sitter crate can change
-every hash**. Today that costs one noisy audit and then the fingerprints refresh in place.
-Under this plan the creation fingerprint lives in an immutable note, so it can never be
-refreshed — a grammar bump plus a deleted `state/` would report drift on everything,
-forever. So the note records the normalization version, and a mismatch means "cannot
-compare", not "drifted".
+Normalization depends on the grammar, so **upgrading a tree-sitter crate can move every
+hash**. Today that costs one noisy audit and the fingerprints refresh in place. Under this
+plan the creation fingerprint lives in an immutable note and can never be rewritten, so a
+version marker alone would only detect the problem, not resolve it.
+
+The note therefore carries two fingerprints:
+
+- `sig` / `body_hash` — normalized, so comment and whitespace churn is not drift
+- `raw_hash` — the span's bytes, unnormalized, which does not depend on comment
+  classification at all
+
+plus `norm`, the normalization version they were taken under. `check` then has three
+cases rather than a guess:
+
+| `norm` | `raw_hash` | outcome |
+|---|---|---|
+| matches | — | compare normalized hashes; today's behaviour |
+| differs | matches | the bytes are identical, so drift is impossible — adopt the new normalized hash silently |
+| differs | differs | something moved and we cannot tell what — adopt, and **report it** |
+
+The second row is the common case: most grammar upgrades change how comments are
+classified, not where a function starts and ends, so most notes are provably unchanged and
+need no attention.
+
+The third row is the honest residue. Span *extents* also come from the grammar, so an
+upgrade that moves a node boundary changes `raw_hash` even though the code did not, and
+that is indistinguishable from a real edit made in the same window. Those notes are
+re-baselined and counted in the audit output — never silently. The alternative, storing the
+span text itself so any future normalizer could be applied to both sides, is exact but
+embeds a whole file in the note for an `@file` anchor. Not worth it for a once-a-year event.
+
+### On the hash function
+
+sha256 stays. blake3 was measured at these span sizes and is **slower** here — 368-byte
+spans on aarch64: 904 MB/s for sha256 against 378 MB/s for blake3, because its tree
+parallelism needs kilobytes to pay for its per-call setup, and this machine has SHA
+extensions. A whole audit hashes well under a megabyte, so the number is irrelevant either
+way; it just removes any argument for a new dependency.
+
+fxhash and rustc-hash are disqualified on a different axis: both are in-memory hashmap
+hashes with no stability guarantee across versions. Committing one to disk would mean
+fingerprints changing when a dependency is bumped — the exact problem `norm` exists to
+handle, self-inflicted, for no gain.
 
 ## Current state
 
@@ -170,9 +207,10 @@ pub struct Meta {
     pub anchor: String,
     pub created: String,
     pub branch: String,
-    pub norm: String,       // normalization version this fingerprint was taken under
+    pub norm: String,       // normalization version these fingerprints were taken under
     pub sig: String,        // at creation; the fallback baseline
     pub body_hash: String,
+    pub raw_hash: String,   // unnormalized, so a grammar upgrade can be resolved not guessed
     pub lines: String,
     pub supersedes: String,
     pub pinned: bool,
@@ -184,7 +222,8 @@ Add `Note::path(&self) -> String` returning `path_from_location(file)`, and make
 
 Add `pub const NORM_VERSION: &str = "1";` next to `sha` in `syntax.rs`, with a one-line
 comment saying to bump it whenever a grammar upgrade or a change to `strip_comments` or
-`normalize` can move an existing hash.
+`normalize` can move an existing hash. Extend `Source::hashes` to return a third value,
+`sha(&self.span_text(span))` — the unnormalized span — and update its two call sites.
 
 **Verify**: `grep -c 'meta.path' crates/lane/src/` → `0`.
 
@@ -196,6 +235,7 @@ pub struct NoteState {
     pub sig: String,
     pub body_hash: String,
     pub lines: String,
+    pub raw_hash: String,
     pub status: String,
     pub checked: String,
     pub norm: String,
@@ -222,12 +262,14 @@ The baseline is the newest state entry for that id, falling back to the note's c
 fingerprint. A fresh clone with no `state/` is therefore correct, just noisier on its first
 audit.
 
-If the baseline's `norm` differs from `NORM_VERSION`, the hashes are not comparable: return
-`FRESH` with the freshly computed hashes and let the audit adopt them, rather than
-reporting drift nobody caused.
+If the baseline's `norm` differs from `NORM_VERSION`, fall back to `raw_hash` per the table
+above: equal means the span's bytes are unchanged and the new normalized hashes are adopted
+silently; unequal means adopt but flag, and `audit::report` prints
+`re-baselined N note(s) after a normalization change` so it is never silent.
 
-**Verify**: two unit tests — a stale creation fingerprint with a matching state entry
-reports `fresh`; a baseline with an old `norm` re-baselines instead of drifting.
+**Verify**: three unit tests — a stale creation fingerprint with a matching state entry
+reports `fresh`; an old `norm` with an unchanged `raw_hash` re-baselines silently; an old
+`norm` with a changed `raw_hash` re-baselines and is counted.
 
 ### Step 5: Audit writes state and log, never notes
 
@@ -320,6 +362,8 @@ repo may have its own `attic/`.
 - [ ] `lane init` writes exactly one `merge=union` rule, for `log/*.jsonl`
 - [ ] After `lane done`, `state/` and `log/` hold one file each, named for the trunk
 - [ ] A repo with its own root-level `attic/` gets notes at `.context/-/attic/`
+- [ ] Bumping `NORM_VERSION` by hand and re-auditing an unchanged tree re-baselines
+      silently and reports nothing; doing it after editing a span reports the count
 - [ ] `plans/README.md` rows for 013 and 009 updated
 
 ## STOP conditions
@@ -342,9 +386,14 @@ repo may have its own `attic/`.
   worth keeping goes in `log/`; a fact that is true forever goes in the note.
 - `NORM_VERSION` must be bumped by any grammar upgrade or any change to `strip_comments`
   or `normalize` that can move an existing hash. Under immutability this is not optional:
-  the creation fingerprint can never be rewritten, so a version mismatch is the only way to
-  say "not comparable". A dependency bump to a `tree-sitter-*` crate without a bump here
-  should fail review.
+  the creation fingerprint can never be rewritten, so the version plus `raw_hash` is the
+  only way to tell "not comparable" from "drifted". A dependency bump to a `tree-sitter-*`
+  crate without a bump here should fail review.
+- Filenames stay `<ulid>-<slug>.md`. The ULID gives uniqueness and creation-order sort; the
+  slug is what makes `ls` and `grep -rl` on `.context/-/` legible, which is the affordance
+  the whole design is sold on. It is immutable derived data, so it cannot drift out of
+  sync the way `path:` could. `<ulid>.md` was considered and rejected: it saves nothing and
+  turns a directory listing into five opaque identifiers.
 - The rollup at `done` is what makes per-writer files cheap. If a future command lands a
   lane by some other route, it owes the same rollup, or accumulation comes back.
 - Deferred: an orphaned `log/<branch>.jsonl` from a branch deleted by hand is left in

@@ -21,6 +21,7 @@ counts before starting, and update your row when done.
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
 | 018 | Keep the pending queue out of the worktree | P1 | S | — | DONE |
 | 017 | Teach agents to use lane, via `lane install skill` | P2 | M | 018 | DONE |
+| 019 | Put lanes inside the repository, and make their paths survive a move | P1 | M | — | TODO |
 | 020 | Let `lane init` repair a protocol it wrote earlier | P1 | S | — | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
@@ -65,6 +66,10 @@ immutable-notes design forced the question of what a note's path really is.
   are doing both, note the ordering caveat in 014 step 2.
 - **017 depends on 018.** Both edit `init()` in `cli.rs`; 018 removes its `.gitignore`
   write, 017 adds a line to `PROTOCOL`. Landing 018 first keeps the rebase trivial.
+- **019 must land with no lanes open.** It relocates them; a lane created under the old
+  sibling layout is invisible to `lane ls` afterwards. Land or remove every lane first.
+- **021 is independent of 019** but shares its theme, and touches `cow.rs`, which 019
+  explicitly excludes so the two can run in parallel lanes.
 - **020 is independent of everything.** It only touches `init()`'s `AGENTS.md` branch and
   is the one plan with a real, unsynthesised fixture: this repository's own stale protocol.
 - **015 is independent of everything.** It adds a producer for `pending.jsonl`; nothing

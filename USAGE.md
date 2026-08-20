@@ -307,4 +307,8 @@ tracked changes either way. Untracked files are fine and need no stashing.
 **`main has uncommitted changes`** — clean the named tracked files in the main
 worktree; commit or stash there first. Nothing in the lane was touched.
 
+**`another lane is landing; try again`** — another landing or trunk-side audit
+holds the memory lock. It exits immediately rather than waiting; rerun the
+command after that operation finishes.
+
 **A note is simply wrong** — delete the file and commit. Nothing else references it.

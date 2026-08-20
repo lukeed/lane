@@ -64,8 +64,9 @@ git config --add lane.exclude packages/legacy/node_modules
 ```
 
 A note file is written once and never modified, so two branches can never edit
-the same bytes and a merge has nothing to resolve. Everything that changes over
-time is per-writer instead: one branch, one file. `lane done` folds a lane's
+the same bytes and a merge has nothing to resolve. State files are written by
+more than one branch, but a lock held for the duration of `lane done`
+serializes those writes, so a landing is exclusive. `lane done` folds a lane's
 state and log into the trunk's, so nothing accumulates.
 
 `-` is reserved. Everything under it mirrors your paths, which is why a repo may

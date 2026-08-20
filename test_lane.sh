@@ -588,7 +588,27 @@ setup
 sedi 's/rotate(token)/rotate(token.trim())/' src/auth.rs
 "$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
 is "an unsure verdict leaves it flagged" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+  "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+
+echo "== 28. landings are serialized and marked =="
+setup
+"$LANE" new solo > /dev/null 2>&1
+( cd "$TMP/repo/.lanes/solo" && echo "work" > src/new.rs && git add -A && git commit -qm "add work" )
+( cd "$TMP/repo/.lanes/solo" && "$LANE" done --review none > /dev/null 2>&1 )
+is "trunk ends with the sync marker" \
+  "$(git log -1 --format=%s | grep -c '^lane: sync solo memory$')" "1"
+is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
+
+"$LANE" new sq > /dev/null 2>&1
+( cd "$TMP/repo/.lanes/sq" && echo "a" > src/a.rs && git add -A && git commit -qm "one" \
+  && echo "b" > src/b.rs && git add -A && git commit -qm "two" )
+BEFORE=$(git rev-list --count HEAD)
+( cd "$TMP/repo/.lanes/sq" && "$LANE" done --squash --review none > /dev/null 2>&1 )
+is "squash lands exactly one commit" \
+  "$(( $(git rev-list --count HEAD) - BEFORE ))" "1"
+is "and names it merged" \
+  "$(git log -1 --format=%s | grep -c '^lane: merged sq$')" "1"
+is "and removed the branch" "$(git branch --list sq | wc -l | tr -d ' ')" "0"
 
 echo
 echo "passed: $pass   failed: $fail"

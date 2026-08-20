@@ -29,6 +29,7 @@ counts before starting, and update your row when done.
 | 024 | Stop an audit from erasing the drift it just found | P1 | M | — | DONE |
 | 025 | Stop counting reads, and make `lane why` a pure read | P2 | M | — | DONE |
 | 026 | Serialize landings with a lock, and mark them in trunk's history | P1 | M | — | DONE |
+| 027 | Preserve the baseline that was actually compared against | P1 | M | — | IN PROGRESS |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |
@@ -76,6 +77,8 @@ immutable-notes design forced the question of what a note's path really is.
   sibling layout is invisible to `lane ls` afterwards. Land or remove every lane first.
 - **021 is independent of 019** but shares its theme, and touches `cow.rs`, which 019
   explicitly excludes so the two can run in parallel lanes.
+- **027 repairs 024.** 024's guarantee — drift stays flagged — is void across a branch
+  boundary, which is every lane. Its tests were single-branch and could not see it.
 - **020 is independent of everything.** It only touches `init()`'s `AGENTS.md` branch and
   is the one plan with a real, unsynthesised fixture: this repository's own stale protocol.
 - **015 is independent of everything.** It adds a producer for `pending.jsonl`; nothing

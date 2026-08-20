@@ -19,7 +19,7 @@ counts before starting, and update your row when done.
 | 007 | Carry what git ignores, and nothing at all without reflink | P2 | M | — | DONE |
 | 016 | Fail `lane done` before it writes, not after | P2 | S | — | DONE |
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
-| 018 | Keep the pending queue out of the worktree | P1 | S | — | TODO |
+| 018 | Keep the pending queue out of the worktree | P1 | S | — | IN PROGRESS |
 | 017 | Teach agents to use lane, via `lane install skill` | P2 | M | 018 | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |

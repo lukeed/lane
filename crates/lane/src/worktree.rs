@@ -8,7 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const LANES_DIRNAME: &str = ".lanes";
+const TREES_DIRNAME: &str = "trees";
+const TREES_PATH: &str = ".lane/trees";
 
 /// Root of the primary worktree, even when called from inside a lane.
 pub fn main_root() -> Result<PathBuf> {
@@ -32,7 +33,7 @@ pub fn trunk_name(root: &Path) -> String {
 }
 
 pub fn lanes_dir(root: &Path) -> PathBuf {
-    root.join(LANES_DIRNAME)
+    root.join(crate::store::LANE_DIR).join(TREES_DIRNAME)
 }
 
 /// Tracked changes only: untracked files do not block a rebase.
@@ -52,7 +53,7 @@ fn ignored_entries(root: &Path) -> Vec<String> {
         .split('\0')
         .filter_map(|e| e.strip_prefix("!! "))
         .map(|p| p.trim_end_matches('/').to_string())
-        .filter(|p| !p.is_empty() && p != ".git" && p != LANES_DIRNAME)
+        .filter(|p| !p.is_empty() && p != ".git" && p != TREES_PATH)
         .collect()
 }
 
@@ -93,7 +94,7 @@ fn prepare_lanes_dir(root: &Path) -> Result<()> {
         std::fs::write(ignore, "*\n")?;
     }
     let exclude = git(&["rev-parse", "--git-path", "info/exclude"], Some(root))?;
-    append_line(Path::new(&exclude), &format!("{LANES_DIRNAME}/"))
+    append_line(Path::new(&exclude), &format!("{TREES_PATH}/"))
 }
 
 fn excluded(root: &Path) -> HashSet<String> {
@@ -271,8 +272,8 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             let skip = |rel: &str, _is_dir: bool| {
                 rel == ".git"
                     || rel.starts_with(".git/")
-                    || rel == LANES_DIRNAME
-                    || rel.starts_with(".lanes/")
+                    || rel == TREES_PATH
+                    || rel.starts_with(".lane/trees/")
             };
             let stats = cow::clone_tree(&root, &dest, &skip)?;
             // Repopulate the index from the base tree without rewriting a single file.
@@ -455,7 +456,7 @@ mod tests {
     fn lanes_live_inside_the_repository() {
         let root = Path::new("/repo");
 
-        assert_eq!(lanes_dir(root), root.join(".lanes"));
+        assert_eq!(lanes_dir(root), root.join(".lane/trees"));
     }
 
     #[test]
@@ -468,17 +469,17 @@ mod tests {
         run(&["init", "-qb", "main"]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
-        std::fs::write(r.join(".gitignore"), ".lanes/\ncache/\n")?;
+        std::fs::write(r.join(".gitignore"), ".lane/trees/\ncache/\n")?;
         run(&["add", ".gitignore"]);
         run(&["commit", "-qm", "base"]);
-        std::fs::create_dir_all(r.join(".lanes/other"))?;
+        std::fs::create_dir_all(r.join(".lane/trees/other"))?;
         std::fs::create_dir_all(r.join("cache"))?;
         std::fs::write(r.join("cache/blob"), "cache")?;
 
         let entries = ignored_entries(r);
 
         assert!(entries.contains(&"cache".to_string()));
-        assert!(!entries.contains(&LANES_DIRNAME.to_string()));
+        assert!(!entries.contains(&TREES_PATH.to_string()));
         Ok(())
     }
 

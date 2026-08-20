@@ -457,6 +457,17 @@ Why: src/auth.rs#fn verify | early return leaks token length"
 is "an identical note is not duplicated" \
    "$(grep -rl 'early return leaks' .context/- --include='*.md' | wc -l | tr -d ' ')" "1"
 
+git commit -q --allow-empty -m "silent commit
+
+Why: src/auth.rs#fn verify | a trailer that should warn when lane is missing" 2>/tmp/nolane.err
+# re-run the hook with lane off PATH, to exercise the branch
+( PATH=/usr/bin:/bin sh .git/hooks/post-commit ) 2>/tmp/nolane2.err
+is "a dropped trailer warns" "$(grep -c 'not on PATH' /tmp/nolane2.err)" "1"
+is "and names the recovery" "$(grep -c 'lane capture HEAD' /tmp/nolane2.err)" "1"
+git commit -q --allow-empty -m "no trailer here"
+( PATH=/usr/bin:/bin sh .git/hooks/post-commit ) 2>/tmp/nolane3.err
+is "a commit without a trailer stays silent" "$(wc -c < /tmp/nolane3.err | tr -d ' ')" "0"
+
 echo "== 23. lane install skill =="
 setup
 "$LANE" install skill > /tmp/skill.out 2>&1

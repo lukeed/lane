@@ -330,7 +330,12 @@ const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
 
 const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
 const POST_COMMIT_BLOCK: &str = "# lane: capture Why trailers\n\
-command -v lane >/dev/null 2>&1 && lane capture HEAD || true\n";
+if command -v lane >/dev/null 2>&1; then\n\
+  lane capture HEAD || true\n\
+elif git log -1 --format=%B | grep -qi '^Why:'; then\n\
+  echo \"lane: not on PATH, so the Why trailer in this commit was not captured\" >&2\n\
+  echo \"lane: run 'lane capture HEAD' once lane is installed to record it\" >&2\n\
+fi\n";
 const PREPARE_MARKER: &str = "# lane: offer the Why form when an editor will open";
 const PREPARE_BLOCK: &str = "# lane: offer the Why form when an editor will open\n\
 case \"$2\" in\n\
@@ -402,6 +407,9 @@ fn hooks_install() -> Result<i32> {
     for spec in specs {
         if spec.path.exists() {
             println!("{} already installed", spec.path.display());
+            println!(
+                "existing hook kept as-is; remove it and re-run, or `lane uninstall hooks && lane install hooks`"
+            );
             continue;
         }
         std::fs::write(&spec.path, format!("#!/bin/sh\n{}", spec.block))?;

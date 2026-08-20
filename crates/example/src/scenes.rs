@@ -282,13 +282,17 @@ pub const SCENES: &[Scene] = &[
                  duration — one held by the process itself, so it cannot be left behind by a\n\
                  crash.",
             ),
-            Say("Simulating a landing already in progress, then trying to land into it:"),
+            Say(
+                "There is no lane command for \"pretend another agent is finishing right\n\
+                 now\", so the line below stands in for one: it takes the same lock and holds\n\
+                 it for three seconds while a landing is attempted underneath.",
+            ),
             Do(
-                "python3 -c \"import fcntl,os,subprocess,sys; d=subprocess.run(['git','rev-parse','--path-format=absolute','--git-common-dir'],capture_output=True,text=True).stdout.strip(); os.makedirs(d+'/lane',exist_ok=True); f=open(d+'/lane/main.lock','w'); fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB); import time; print('another landing is in progress'); subprocess.run(['lane','done','--review','none'],cwd='.lanes/fix-empty-token')\"",
+                "python3 -c \"import fcntl,time;f=open('.git/lane/main.lock','w');fcntl.flock(f,fcntl.LOCK_EX);time.sleep(3)\" & sleep 1; ( cd .lanes/fix-empty-token && lane done --review none ); wait",
             ),
             Say(
-                "It refuses immediately and says why, rather than blocking or corrupting the\n\
-                 shared state. Try again a second later and it simply works.",
+                "It refuses at once and says why, rather than blocking or corrupting the\n\
+                 shared state. A second later the same command simply works.",
             ),
         ],
         records: "saw a concurrent landing refused",

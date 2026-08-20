@@ -857,4 +857,37 @@ mod tests {
     fn the_old_hooks_install_spelling_no_longer_parses() {
         assert!(Cli::try_parse_from(["lane", "hooks", "install"]).is_err());
     }
+
+    #[test]
+    fn a_different_marked_protocol_is_replaced() {
+        let existing = format!(
+            "# AGENTS\n{}",
+            PROTOCOL.replace("lane note -p", "lane note edited")
+        );
+        assert!(matches!(
+            protocol_action(Some(&existing)),
+            ProtocolAction::Replace(_)
+        ));
+    }
+
+    #[test]
+    fn the_exact_legacy_protocol_is_upgraded() {
+        let existing = format!("# AGENTS\n\n{PROTOCOL_V1}");
+        assert!(matches!(
+            protocol_action(Some(&existing)),
+            ProtocolAction::Upgrade(_)
+        ));
+    }
+
+    #[test]
+    fn a_modified_legacy_protocol_is_refused() {
+        let existing = format!(
+            "# AGENTS\n\n{}",
+            PROTOCOL_V1.replace("lane note -a", "lane note -p <path> -a")
+        );
+        assert!(matches!(
+            protocol_action(Some(&existing)),
+            ProtocolAction::Refuse
+        ));
+    }
 }

@@ -480,6 +480,29 @@ is "the skill installs into the worktree you ran it from" \
    "$([ -f "$TMP/.lanes-repo/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
 "$LANE" rm skillhome --force > /dev/null 2>&1
 
+echo "== 24. init repairs a protocol it wrote earlier =="
+setup
+is "init writes the marked protocol" \
+   "$(grep -c 'lane:protocol' AGENTS.md)" "2"
+cat > AGENTS.md <<'AGENTSEOF'
+# AGENTS
+
+## Context memory
+
+- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.
+- Record non-obvious findings with `lane note -a <anchor> "..."`.
+- Do not edit `.context/` by hand; `lane done` manages it.
+AGENTSEOF
+"$LANE" init > /dev/null 2>&1
+is "a legacy protocol is upgraded" \
+   "$(grep -c 'lane note -p <path>' AGENTS.md)" "1"
+printf '# AGENTS\n\n## Context memory\n\n- my own notes, do not touch\n' > AGENTS.md
+BEFORE=$(cat AGENTS.md)
+"$LANE" init > /dev/null 2>&1
+is "an edited protocol is refused, not overwritten" "$(cat AGENTS.md)" "$BEFORE"
+is "and the bullet the user wrote is still there" \
+   "$(grep -c 'my own notes' AGENTS.md)" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

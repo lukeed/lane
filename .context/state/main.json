@@ -38,5 +38,48 @@
     "status": "fresh",
     "checked": "2026-08-20T05:18:28Z",
     "norm": "1"
+  },
+  "01M0ESRPDEXQZCBMT3TB36B26X": {
+    "sig": "e3b0c44298fc1c14",
+    "body_hash": "49d298450869b51d",
+    "raw_hash": "d147626bbb7aa7ad",
+    "status": "fresh",
+    "checked": "2026-08-20T05:19:41Z",
+    "norm": "1",
+    "reads": 1
+  },
+  "01M0ESRPDGANMXC60YCD3VYVS5": {
+    "sig": "e3b0c44298fc1c14",
+    "body_hash": "0498c072a23d59c9",
+    "raw_hash": "946f591df3aed085",
+    "status": "fresh",
+    "checked": "2026-08-20T05:19:41Z",
+    "norm": "1",
+    "reads": 1
+  },
+  "01M0ESRPDTEV5NDTCKAQ99GAT2": {
+    "sig": "e3b0c44298fc1c14",
+    "body_hash": "49d298450869b51d",
+    "raw_hash": "d147626bbb7aa7ad",
+    "status": "fresh",
+    "checked": "2026-08-20T05:19:41Z",
+    "norm": "1",
+    "reads": 1
+  },
+  "01M0ESRPDVY1HE58A16HGPM0Q0": {
+    "sig": "d6eb344e91ff262a",
+    "body_hash": "e27981f13bd675d7",
+    "raw_hash": "4680ea34f4ca0572",
+    "status": "fresh",
+    "checked": "2026-08-20T05:19:41Z",
+    "norm": "1"
+  },
+  "01M0ESRPE01X3PWQH9H3DTD5VB": {
+    "sig": "9a89d112d0fe97ca",
+    "body_hash": "ba757fee94513afb",
+    "raw_hash": "10addc908e8f4be2",
+    "status": "fresh",
+    "checked": "2026-08-20T05:19:41Z",
+    "norm": "1"
   }
 }

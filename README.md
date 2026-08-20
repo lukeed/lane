@@ -145,7 +145,7 @@ See USAGE.md.
 
 ## Still stubbed
 
-- **Commit decisions are explicit.** `lane hooks install` captures targeted `Why:`
+- **Commit decisions are explicit.** `lane install hooks` captures targeted `Why:`
   trailers into `pending.jsonl`. Agent sessions are not distilled yet; without a
   trailer, `lane note` still needs calling.
 - **A file whose language has no grammar resolves `@file` and nothing else.**

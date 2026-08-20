@@ -34,7 +34,7 @@ src/auth.rs#fn verify
       01M0B9MBYB · main · 2026-08-19
 ```
 
-Setup is `lane hooks install`, once. It covers every lane, because worktrees
+Setup is `lane install hooks`, once. It covers every lane, because worktrees
 share the hooks directory.
 
 ## The two sentences are different

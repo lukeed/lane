@@ -77,7 +77,7 @@ lane note -p src/auth.rs -a "fn verify" \
 Install the commit hooks once to leave the same kind of note in a commit message:
 
 ```bash
-lane hooks install
+lane install hooks
 
 git commit -m "make verify constant-time
 
@@ -218,6 +218,10 @@ you keep both:
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.
 ```
 
+That stub is always in context and stays short. `lane install skill` writes the
+fuller version — the daily loop, the `Why:` trailer form, the anchor grammar —
+to `.agents/skills/lane/SKILL.md`, loaded only when an agent is doing lane work.
+
 Notes are plain markdown at predictable paths, so an agent finds them without
 any tool integration — the reason to store them as files rather than in a
 sidecar object store.
@@ -248,8 +252,8 @@ Land them in any order.
 | `lane ls` | lanes, branch, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
 | `lane note -p <file> -a <anchor> "<text>"` | record a finding |
-| `lane hooks install` | install commit decision capture hooks |
-| `lane hooks uninstall` | remove lane's hook blocks |
+| `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
+| `lane uninstall skill|hooks` | remove them |
 | `lane why <file> [-a <anchor>]` | read context, bump read counts |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>] [--review ...]` | run the memory pass alone |

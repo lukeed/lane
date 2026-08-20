@@ -164,7 +164,11 @@ fn write_state_file(path: &Path, state: &State) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, text)?;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+    use std::io::Write;
+    tmp.write_all(text.as_bytes())?;
+    tmp.persist(path).map_err(|e| e.error)?;
     Ok(())
 }
 
@@ -615,6 +619,79 @@ mod tests {
         let mut existing = read_state_file(&path);
         existing.insert(id.to_string(), entry);
         write_state_file(&path, &existing).unwrap();
+    }
+
+    #[test]
+    fn writing_identical_state_does_not_touch_the_file() {
+        let root = tempfile::tempdir().unwrap();
+        let path = state_file_for(root.path(), "main");
+        let state = State::from([(
+            "01M0A".into(),
+            NoteState {
+                sig: "same".into(),
+                ..Default::default()
+            },
+        )]);
+
+        write_state_file(&path, &state).unwrap();
+        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
+        write_state_file(&path, &state).unwrap();
+
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn writing_changed_state_replaces_it_completely() {
+        let root = tempfile::tempdir().unwrap();
+        let path = state_file_for(root.path(), "main");
+        let first = State::from([(
+            "01M0A".into(),
+            NoteState {
+                sig: "old".into(),
+                ..Default::default()
+            },
+        )]);
+        let changed = State::from([(
+            "01M0A".into(),
+            NoteState {
+                sig: "new".into(),
+                ..Default::default()
+            },
+        )]);
+
+        write_state_file(&path, &first).unwrap();
+        write_state_file(&path, &changed).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            serde_json::from_str::<State>(&text).unwrap()["01M0A"].sig,
+            "new"
+        );
+        assert!(!text.contains("old"));
+    }
+
+    #[test]
+    fn writing_state_replaces_invalid_json() {
+        let root = tempfile::tempdir().unwrap();
+        let path = state_file_for(root.path(), "main");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{invalid old bytes").unwrap();
+        let state = State::from([(
+            "01M0A".into(),
+            NoteState {
+                sig: "good".into(),
+                ..Default::default()
+            },
+        )]);
+
+        write_state_file(&path, &state).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(serde_json::from_str::<State>(&text).is_ok());
+        assert!(!text.contains("invalid old bytes"));
     }
 
     #[test]

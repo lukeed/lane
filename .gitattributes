@@ -1,0 +1,1 @@
+.context/log/*.jsonl merge=union

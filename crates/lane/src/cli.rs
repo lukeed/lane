@@ -738,3 +738,31 @@ fn shellenv() -> Result<i32> {
     );
     Ok(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_and_uninstall_take_hooks_or_skill() {
+        let cli = Cli::try_parse_from(["lane", "install", "skill"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Install {
+                what: Installable::Skill
+            }
+        ));
+        let cli = Cli::try_parse_from(["lane", "uninstall", "hooks"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Uninstall {
+                what: Installable::Hooks
+            }
+        ));
+    }
+
+    #[test]
+    fn the_old_hooks_install_spelling_no_longer_parses() {
+        assert!(Cli::try_parse_from(["lane", "hooks", "install"]).is_err());
+    }
+}

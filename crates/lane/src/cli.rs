@@ -10,6 +10,8 @@ use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
+use rustix::fs::{FlockOperation, flock};
+use std::fs::{File, OpenOptions};
 use std::io::{IsTerminal, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -118,6 +120,9 @@ enum Command {
         keep: bool,
         #[arg(long)]
         cd: bool,
+        /// squash lane commits into one landing commit
+        #[arg(long)]
+        squash: bool,
         #[command(flatten)]
         budget: BudgetArgs,
         #[command(flatten)]
@@ -187,11 +192,35 @@ pub fn run() -> Result<i32> {
             trunk,
             keep,
             cd,
+            squash,
             budget,
             review,
-        } => done(trunk.as_deref(), keep, cd, &budget, &review),
+        } => done(trunk.as_deref(), keep, cd, squash, &budget, &review),
         Command::Rm { name, force } => rm(&name, force),
         Command::Shellenv => shellenv(),
+    }
+}
+
+struct LandingLock {
+    _file: File,
+}
+
+impl LandingLock {
+    fn acquire(trunk: &str) -> Result<Self> {
+        let common = git(
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            None,
+        )?;
+        let path = PathBuf::from(common)
+            .join("lane")
+            .join(format!("{trunk}.lock"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let file = OpenOptions::new().create(true).write(true).open(path)?;
+        flock(&file, FlockOperation::NonBlockingLockExclusive)
+            .map_err(|err| anyhow::anyhow!("another lane is landing; try again ({err})"))?;
+        Ok(Self { _file: file })
     }
 }
 
@@ -792,6 +821,11 @@ fn options(base: &str, budget: &BudgetArgs, review: &ReviewArgs) -> audit::Optio
 
 fn audit_cmd(base: &str, budget: &BudgetArgs, review: &ReviewArgs, json: bool) -> Result<i32> {
     let root = git::repo_root()?;
+    let _lock = if root == wt::main_root()? {
+        Some(LandingLock::acquire(&wt::trunk_name(&root))?)
+    } else {
+        None
+    };
     let reviewer = review::build(review.review.as_deref(), review.review_cmd.as_deref());
     let out = audit::run(&root, &options(base, budget, review), reviewer.as_ref())?;
 
@@ -825,6 +859,7 @@ fn done(
     trunk: Option<&str>,
     keep: bool,
     cd: bool,
+    squash: bool,
     budget: &BudgetArgs,
     review: &ReviewArgs,
 ) -> Result<i32> {
@@ -856,6 +891,8 @@ fn done(
         return Ok(1);
     }
 
+    let _lock = LandingLock::acquire(&trunk)?;
+
     let info: &mut dyn std::io::Write = if cd {
         &mut std::io::stderr()
     } else {
@@ -882,19 +919,23 @@ fn done(
     if !changed.trim().is_empty() {
         try_git(&["add", CONTEXT_DIR, "AGENTS.md"], Some(&lane_path));
         git(
-            &[
-                "commit",
-                "-q",
-                "-m",
-                &format!("memory: update context from lane {branch}"),
-            ],
+            &["commit", "-q", "-m", &format!("lane: sync {branch} memory")],
             Some(&lane_path),
         )?;
         writeln!(info, "committed memory update")?;
     }
 
-    wt::fast_forward(&root, &trunk, &branch)?;
-    writeln!(info, "fast-forwarded {trunk}")?;
+    if squash {
+        git(&["merge", "--squash", &branch], Some(&root))?;
+        git(
+            &["commit", "-q", "-m", &format!("lane: merged {branch}")],
+            Some(&root),
+        )?;
+        writeln!(info, "squash-merged {branch} into {trunk}")?;
+    } else {
+        wt::fast_forward(&root, &trunk, &branch)?;
+        writeln!(info, "fast-forwarded {trunk}")?;
+    }
 
     if !keep {
         std::env::set_current_dir(&root)?;
@@ -944,6 +985,21 @@ fn shellenv() -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flock_excludes_a_second_open_file_description() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("landing.lock");
+        let first = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let second = OpenOptions::new().write(true).open(path).unwrap();
+
+        flock(&first, FlockOperation::NonBlockingLockExclusive).unwrap();
+        assert!(flock(&second, FlockOperation::NonBlockingLockExclusive).is_err());
+    }
 
     #[test]
     fn install_and_uninstall_take_hooks_or_skill() {

@@ -43,7 +43,7 @@ EOF
 echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
 "$LANE" new fix-login > /tmp/new.out 2>&1
-LP="$TMP/repo/.lanes/fix-login"
+LP="$TMP/repo/.lane/trees/fix-login"
 REFLINK=$(grep -c 'reflink: yes' /tmp/new.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "lane exists" "$([ -d "$LP" ] && echo yes)" "yes"
@@ -59,7 +59,7 @@ echo "== 3. dirty mode carries dirty state without rewriting files =="
 setup
 echo "// scratch work" >> src/auth.rs
 "$LANE" new spike --dirty > /tmp/dirty.out 2>&1
-LP="$TMP/repo/.lanes/spike"
+LP="$TMP/repo/.lane/trees/spike"
 REFLINK=$(grep -c 'reflink: yes' /tmp/dirty.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 # --dirty honours the flag on any filesystem: reflinked whole-tree with it, copied without.
@@ -75,7 +75,7 @@ is "warm dir also carried iff reflink" \
 echo "== 4. note inside lane, done lands memory on trunk =="
 setup
 "$LANE" new fix-login > /dev/null 2>&1
-LP="$TMP/repo/.lanes/fix-login"
+LP="$TMP/repo/.lane/trees/fix-login"
 cd "$LP"
 sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn verify" \
@@ -85,10 +85,10 @@ git add -A && git commit -qm "refactor verify"
 cd "$TMP/repo"
 is "trunk advanced" "$(git log --oneline main | grep -c 'refactor verify')" "1"
 is "memory committed to trunk" \
-   "$(git show main --name-only --format= | grep -c '^\.context/-/src/auth\.rs/')" "1"
+   "$(git show main --name-only --format= | grep -c '^\.lane/memory/src/auth\.rs/')" "1"
 is "note readable from trunk" \
    "$("$LANE" why src/auth.rs | grep -c 'constant-time')" "1"
-is "lane removed" "$([ -d "$TMP/repo/.lanes/fix-login" ] && echo yes || echo no)" "no"
+is "lane removed" "$([ -d "$TMP/repo/.lane/trees/fix-login" ] && echo yes || echo no)" "no"
 is "branch deleted" "$(git branch --list fix-login | wc -l | tr -d ' ')" "0"
 
 echo "== 5. staleness granularity survives the unified flow =="
@@ -117,21 +117,21 @@ git add -A && git commit -qm sfc2
 echo "== 6. PARALLEL: two lanes, same anchor, both land clean =="
 "$LANE" new thread-a > /dev/null 2>&1
 "$LANE" new thread-b > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/thread-a" && "$LANE" note -p src/auth.rs -a "fn verify" \
+( cd "$TMP/repo/.lane/trees/thread-a" && "$LANE" note -p src/auth.rs -a "fn verify" \
     "a: callers rely on false-on-expiry, not an error" > /dev/null && "$LANE" done > /tmp/a.out 2>&1 )
 is "lane a landed" "$?" "0"
-( cd "$TMP/repo/.lanes/thread-b" && "$LANE" note -p src/auth.rs -a "fn verify" \
+( cd "$TMP/repo/.lane/trees/thread-b" && "$LANE" note -p src/auth.rs -a "fn verify" \
     "b: token parse allocates; hot path, do not add regex" > /dev/null && "$LANE" done > /tmp/b.out 2>&1 )
 is "lane b landed after a, no conflict" "$?" "0"
 cd "$TMP/repo"
 is "both memories on trunk" \
-   "$(git grep -l 'callers rely on false-on-expiry\|do not add regex' main -- .context | wc -l | tr -d ' ')" "2"
+   "$(git grep -l 'callers rely on false-on-expiry\|do not add regex' main -- .lane | wc -l | tr -d ' ')" "2"
 
 echo "== 7. anchor deleted -> attic =="
 sedi 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn refresh" "rotation is idempotent upstream" > /dev/null
 "$LANE" audit > /dev/null
-is "evicted to attic" "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
+is "evicted to attic" "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
 echo "== 8. model-in-the-loop review =="
 setup
@@ -164,17 +164,17 @@ is "holds keeps note fresh" \
    "$("$LANE" check --json | python3 -c 'import json,sys;d=json.load(sys.stdin);print([x["tier"] for x in d if x["anchor"]=="fn verify"][0])')" \
    "fresh"
 is "superseded wrote a replacement note" \
-   "$(grep -rl 'session lock is now taken by the caller' .context --include='*.md' | grep -vc attic)" "1"
+   "$(grep -rl 'session lock is now taken by the caller' .lane --include='*.md' | grep -vc attic)" "1"
 is "replacement records supersedes" \
-   "$(grep -rh 'supersedes:' .context/-/src/sync.rs/*.md | wc -l | tr -d ' ')" "1"
+   "$(grep -rh 'supersedes:' .lane/memory/src/sync.rs/*.md | wc -l | tr -d ' ')" "1"
 is "superseded original in attic" \
-   "$(grep -rl 'caller must not hold' .context/attic | wc -l | tr -d ' ')" "1"
+   "$(grep -rl 'caller must not hold' .lane/attic | wc -l | tr -d ' ')" "1"
 is "contradicted note quarantined" \
-   "$(grep -rl 'never retries' .context/attic | wc -l | tr -d ' ')" "1"
+   "$(grep -rl 'never retries' .lane/attic | wc -l | tr -d ' ')" "1"
 is "contradicted removed from live store" \
-   "$(grep -rl 'never retries' .context --include='*.md' | grep -vc attic)" "0"
+   "$(grep -rl 'never retries' .lane --include='*.md' | grep -vc attic)" "0"
 is "the log records the reason" \
-   "$(grep -rh 'contradicted' .context/log/*.jsonl | wc -l | tr -d ' ')" "2"
+   "$(grep -rh 'contradicted' .lane/branch/*/log.jsonl | wc -l | tr -d ' ')" "2"
 
 echo "== 9. review is off by default (no key, no cmd) =="
 env -u ANTHROPIC_API_KEY -u LANE_REVIEW_CMD "$LANE" audit --json > /tmp/n.json
@@ -188,7 +188,7 @@ is "garbage response yields no verdicts" \
 echo "== 11. rm will not discard commits trunk does not have =="
 setup
 "$LANE" new scrap > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/scrap" && echo "fn work() {}" > src/work.rs \
+( cd "$TMP/repo/.lane/trees/scrap" && echo "fn work() {}" > src/work.rs \
   && git add -A && git commit -qm "unlanded work" > /dev/null )
 SHA=$(git rev-parse scrap)
 "$LANE" rm scrap > /tmp/rm.out 2>&1
@@ -197,10 +197,10 @@ is "rm says the branch was kept" "$(grep -c 'kept branch scrap' /tmp/rm.out)" "1
 is "unlanded branch survives" "$(git branch --list scrap | wc -l | tr -d ' ')" "1"
 is "unlanded commit still reachable" "$(git rev-parse scrap)" "$SHA"
 is "worktree is gone either way" \
-   "$([ -d "$TMP/repo/.lanes/scrap" ] && echo yes || echo no)" "no"
+   "$([ -d "$TMP/repo/.lane/trees/scrap" ] && echo yes || echo no)" "no"
 
 "$LANE" new scrap2 > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/scrap2" && echo "fn work() {}" > src/work2.rs \
+( cd "$TMP/repo/.lane/trees/scrap2" && echo "fn work() {}" > src/work2.rs \
   && git add -A && git commit -qm "throwaway" > /dev/null )
 "$LANE" rm scrap2 --force > /dev/null 2>&1
 is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' ')" "0"
@@ -208,7 +208,7 @@ is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' '
 echo "== 12. init scaffolding and the per-anchor budget =="
 setup
 is "gitattributes has one union rule, for the log" \
-   "$(grep -c 'log/\*.jsonl merge=union' .gitattributes)" "1"
+   "$(grep -c 'branch/\*/log.jsonl merge=union' .gitattributes)" "1"
 is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
 is "init does not touch .gitignore" "$(grep -c 'pending.jsonl' .gitignore)" "0"
 
@@ -219,12 +219,12 @@ done
 "$LANE" why src/auth.rs -a "fn verify" > /dev/null
 "$LANE" audit --max-notes 2 --json > /tmp/budget.json
 is "budget caps the anchor at 2 notes" \
-   "$(find .context/-/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
+   "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
 is "eviction reason is recorded" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/budget.json"));print(d["evicted"][0]["reason"])')" \
    "budget"
 is "evicted notes are recoverable from the attic" \
-   "$(find .context/attic -name '*.md' | wc -l | tr -d ' ')" "3"
+   "$(find .lane/attic -name '*.md' | wc -l | tr -d ' ')" "3"
 
 "$LANE" note -p src/auth.rs -a "fn verify" "a note the parent has not promoted" > /dev/null
 "$LANE" new inherit > /dev/null 2>&1
@@ -247,7 +247,7 @@ git checkout -q main && git checkout -qb branch-b
 git merge -q --no-edit branch-a > /tmp/merge.out 2>&1
 is "parallel memory merges without conflict" "$?" "0"
 is "both notes survived" \
-   "$(grep -rl 'a: alpha\|b: beta' .context --include='*.md' | wc -l | tr -d ' ')" "2"
+   "$(grep -rl 'a: alpha\|b: beta' .lane --include='*.md' | wc -l | tr -d ' ')" "2"
 
 echo "== 14. audit is idempotent and a damaged note stays readable =="
 setup
@@ -256,9 +256,9 @@ setup
 git add -A && git commit -qm seed
 "$LANE" audit > /dev/null
 is "a no-op audit writes nothing" \
-   "$(git status --porcelain -- .context | wc -l | tr -d ' ')" "0"
+   "$(git status --porcelain -- .lane | wc -l | tr -d ' ')" "0"
 
-F=$(find .context -name '*.md' -not -path '*attic*' | head -1)
+F=$(find .lane -name '*.md' -not -path '*attic*' | head -1)
 python3 - "$F" <<'DUP'
 import io, sys
 p = sys.argv[1]
@@ -270,7 +270,7 @@ is "a duplicated key does not hide the note" \
    "$("$LANE" why src/auth.rs 2>/dev/null | grep -c 'constant time')" "1"
 "$LANE" audit > /dev/null 2>&1
 is "and does not evict it" \
-   "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
+   "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
 is "and the damaged file is left alone" "$(cksum < "$F")" "$BEFORE"
 
 echo "== 15. a renamed file keeps its memory =="
@@ -284,14 +284,14 @@ is "audit reports the move" "$(grep -c 'moved   src/auth.rs -> src/token.rs' /tm
 is "the note followed the file" \
    "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
 is "nothing was evicted" \
-   "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
+   "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "0"
 is "the old directory is gone" \
-   "$([ -d .context/-/src/auth.rs ] && echo yes || echo no)" "no"
+   "$([ -d .lane/memory/src/auth.rs ] && echo yes || echo no)" "no"
 git add -A && git commit -qm memory
 git rm -q src/token.rs && git commit -qm delete
 "$LANE" audit > /dev/null 2>&1
 is "a genuine deletion still evicts" \
-   "$(find .context/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
+   "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
 echo "== 16. a lane that renames a file lands its memory on the new path =="
 setup
@@ -299,7 +299,7 @@ setup
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 "$LANE" new refactor > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/refactor" \
+( cd "$TMP/repo/.lane/trees/refactor" \
   && git mv src/auth.rs src/token.rs && git commit -qm rename > /dev/null \
   && "$LANE" done > /tmp/lanemv.out 2>&1 )
 cd "$TMP/repo"
@@ -312,16 +312,16 @@ setup
 "$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
-N=$(find .context/- -name '*.md' | head -1)
+N=$(find .lane/memory -name '*.md' | head -1)
 BEFORE=$(cksum < "$N")
 sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
 "$LANE" audit > /dev/null
 is "a drifted note file is not rewritten" "$(cksum < "$N")" "$BEFORE"
 is "the note carries no path field" "$(grep -c '^path:' "$N")" "0"
 is "the fingerprint lives in state" \
-   "$(find .context/state -name '*.json' | wc -l | tr -d ' ')" "1"
+   "$(find .lane/branch -name 'state.json' | wc -l | tr -d ' ')" "1"
 is "state records the drift" \
-   "$(python3 -c 'import json,glob;d=json.load(open(glob.glob(".context/state/*.json")[0]));print(list(d.values())[0]["status"])')" \
+   "$(python3 -c 'import json,glob;d=json.load(open(glob.glob(".lane/branch/*/state.json")[0]));print(list(d.values())[0]["status"])')" \
    "body-drift"
 
 mkdir -p attic && echo "user content" > attic/f.txt
@@ -329,18 +329,18 @@ git add -A && git commit -qm user-attic
 "$LANE" note -p attic/f.txt -a "@file" "a repo may have its own attic" > /dev/null
 "$LANE" audit > /dev/null
 is "a user path named attic does not collide" \
-   "$(find '.context/-/attic' -name '*.md' | wc -l | tr -d ' ')" "1"
+   "$(find '.lane/memory/attic' -name '*.md' | wc -l | tr -d ' ')" "1"
 git add -A && git commit -qm memory
 
 "$LANE" new land > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/land" \
+( cd "$TMP/repo/.lane/trees/land" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
   && "$LANE" done > /dev/null 2>&1 )
 cd "$TMP/repo"
 is "done rolls the lane's state into trunk's" \
-   "$(find .context/state -name '*.json' | wc -l | tr -d ' ')" "1"
+   "$(find .lane/branch -name 'state.json' | wc -l | tr -d ' ')" "1"
 is "the lane's own state file is gone" \
-   "$([ -f .context/state/land.json ] && echo yes || echo no)" "no"
+   "$([ -f .lane/branch/land/state.json ] && echo yes || echo no)" "no"
 
 echo "== 18. anchors we cannot resolve are kept, not discarded =="
 setup
@@ -352,11 +352,11 @@ is "note on an unparsed language warns" "$(grep -c 'warning:' /tmp/w.out)" "1"
 "$LANE" audit > /dev/null
 "$LANE" audit > /dev/null
 is "the unparsed note survives" \
-   "$(grep -rl 'swift: constant time' .context --include='*.md' | grep -vc attic)" "1"
+   "$(grep -rl 'swift: constant time' .lane --include='*.md' | grep -vc attic)" "1"
 is "check reports it as unverifiable" \
    "$("$LANE" check | awk '/^unverifiable/{print $2}')" "1"
 is "a typo in a language we DO parse still evicts" \
-   "$(grep -rl 'typo anchor' .context/attic | wc -l | tr -d ' ')" "1"
+   "$(grep -rl 'typo anchor' .lane/attic | wc -l | tr -d ' ')" "1"
 
 echo "== 19. shell integration survives failure and survives done =="
 setup
@@ -371,7 +371,7 @@ cd "$TMP/repo"
 lane new dup > /dev/null 2>&1
 lane new dup > /dev/null 2>&1
 is "a failed new leaves the shell where it was" \
-   "$PWD" "$(cd "$TMP/repo/.lanes/dup" && pwd -P)"
+   "$PWD" "$(cd "$TMP/repo/.lane/trees/dup" && pwd -P)"
 cd "$TMP/repo"
 
 lane new land > /dev/null 2>&1
@@ -391,7 +391,7 @@ printf 'node_modules/\n.env\n' > .gitignore
 git add -A && git commit -qm monorepo
 
 "$LANE" new carry > /tmp/carry.out 2>&1
-LP="$TMP/repo/.lanes/carry"
+LP="$TMP/repo/.lane/trees/carry"
 REFLINK=$(grep -c 'reflink: yes' /tmp/carry.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "a nested node_modules is carried iff reflink" \
@@ -411,12 +411,12 @@ is "a dirty tree without --dirty warns and names the recovery" \
 REFLINK=$(grep -c 'reflink: yes' /tmp/carried.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "--dirty carries the change" \
-   "$(grep -c 'scratch' "$TMP/repo/.lanes/carried/src/auth.rs")" "1"
+   "$(grep -c 'scratch' "$TMP/repo/.lane/trees/carried/src/auth.rs")" "1"
 
 echo "== 21. done refuses before it writes =="
 setup
 "$LANE" new spike > /dev/null 2>&1
-LP="$TMP/repo/.lanes/spike"
+LP="$TMP/repo/.lane/trees/spike"
 ( cd "$LP" && printf 'pub fn verify() {\n    lane version\n}\n' > src/auth.rs \
   && git commit -qam "lane work" > /dev/null )
 printf 'pub fn verify() {\n    my version\n}\n' > src/auth.rs   # dirty in main, same file
@@ -455,7 +455,7 @@ git commit -q --allow-empty -m "note it twice
 Why: src/auth.rs#fn verify | early return leaks token length"
 "$LANE" audit > /dev/null
 is "an identical note is not duplicated" \
-   "$(grep -rl 'early return leaks' .context/- --include='*.md' | wc -l | tr -d ' ')" "1"
+   "$(grep -rl 'early return leaks' .lane/memory --include='*.md' | wc -l | tr -d ' ')" "1"
 
 git commit -q --allow-empty -m "silent commit
 
@@ -505,9 +505,9 @@ echo "edited by hand" >> .agents/skills/lane/SKILL.md
 is "an edited skill is not clobbered" "$?" "1"
 
 "$LANE" new skillhome > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/skillhome" && "$LANE" install skill > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/skillhome" && "$LANE" install skill > /dev/null 2>&1 )
 is "the skill installs into the worktree you ran it from" \
-   "$([ -f "$TMP/repo/.lanes/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
+   "$([ -f "$TMP/repo/.lane/trees/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
 "$LANE" rm skillhome --force > /dev/null 2>&1
 
 echo "== 24. init repairs a protocol it wrote earlier =="
@@ -525,9 +525,9 @@ cat > AGENTS.md <<'AGENTSEOF'
 
 ## Context memory
 
-- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.
+- Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.
 - Record non-obvious findings with `lane note -a <anchor> "..."`.
-- Do not edit `.context/` by hand; `lane done` manages it.
+- Do not edit `.lane/` by hand; `lane done` manages it.
 AGENTSEOF
 "$LANE" init > /dev/null 2>&1
 is "a legacy protocol is upgraded" \
@@ -546,12 +546,12 @@ setup
 RELATIVE_PATHS=$(git worktree add -h 2>&1 | grep -c 'relative-paths')
 "$LANE" new moved > /dev/null 2>&1
 is "the lane is inside the repo" \
-   "$([ -d .lanes/moved ] && echo yes || echo no)" "yes"
+   "$([ -d .lane/trees/moved ] && echo yes || echo no)" "yes"
 is "its gitdir pointer is relative when git supports it" \
-   "$(grep -c '^gitdir: \.\.' .lanes/moved/.git)" "$RELATIVE_PATHS"
+   "$(grep -c '^gitdir: \.\.' .lane/trees/moved/.git)" "$RELATIVE_PATHS"
 is "the main worktree stays clean" "$(git status --porcelain)" ""
 ( cd "$TMP" && mv repo moved-repo )
-MOVED_BRANCH=$(cd "$TMP/moved-repo/.lanes/moved" \
+MOVED_BRANCH=$(cd "$TMP/moved-repo/.lane/trees/moved" \
   && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
 is "git still works after a move when relative paths are supported" \
    "$MOVED_BRANCH" "$([ "$RELATIVE_PATHS" = "1" ] && echo moved || true)"
@@ -564,7 +564,7 @@ setup
 echo "// scratch" >> src/auth.rs
 "$LANE" new dirty-third --dirty > /dev/null 2>&1
 is "a dirty lane contains no other lanes" \
-   "$([ -e .lanes/dirty-third/.lanes ] && echo yes || echo no)" "no"
+   "$([ -e .lane/trees/dirty-third/.lane/trees ] && echo yes || echo no)" "no"
 
 echo "== 27. unresolved drift stays flagged =="
 setup
@@ -579,7 +579,7 @@ is "and is re-reported by the next audit" \
    "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
 "$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
 is "a holds verdict clears it and keeps the note" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)), end=":")'; grep -rl 'constant-time' .context/- --include='*.md' | wc -l | tr -d ' ')" "0:1"
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)), end=":")'; grep -rl 'constant-time' .lane/memory --include='*.md' | wc -l | tr -d ' ')" "0:1"
 
 # A reviewer running is not a resolution when it cannot vouch for the note.
 setup
@@ -593,17 +593,17 @@ is "an unsure verdict leaves it flagged" \
 echo "== 28. landings are serialized and marked =="
 setup
 "$LANE" new solo > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/solo" && echo "work" > src/new.rs && git add -A && git commit -qm "add work" )
-( cd "$TMP/repo/.lanes/solo" && "$LANE" done --review none > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/solo" && echo "work" > src/new.rs && git add -A && git commit -qm "add work" )
+( cd "$TMP/repo/.lane/trees/solo" && "$LANE" done --review none > /dev/null 2>&1 )
 is "trunk ends with the sync marker" \
   "$(git log -1 --format=%s | grep -c '^lane: sync solo memory$')" "1"
 is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
 
 "$LANE" new sq > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/sq" && echo "a" > src/a.rs && git add -A && git commit -qm "one" \
+( cd "$TMP/repo/.lane/trees/sq" && echo "a" > src/a.rs && git add -A && git commit -qm "one" \
   && echo "b" > src/b.rs && git add -A && git commit -qm "two" )
 BEFORE=$(git rev-list --count HEAD)
-( cd "$TMP/repo/.lanes/sq" && "$LANE" done --squash --review none > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/sq" && "$LANE" done --squash --review none > /dev/null 2>&1 )
 is "squash lands exactly one commit" \
   "$(( $(git rev-list --count HEAD) - BEFORE ))" "1"
 is "and names it merged" \
@@ -614,7 +614,7 @@ echo "== 29. reading context does not modify the tree =="
 setup
 "$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
-git add -A .context && git commit -qm "memory" > /dev/null
+git add -A .lane && git commit -qm "memory" > /dev/null
 "$LANE" why src/auth.rs > /dev/null
 is "lane why leaves the tree clean" "$(git status --porcelain)" ""
 "$LANE" why src/auth.rs > /dev/null
@@ -626,15 +626,15 @@ echo "== 30. drift survives a landing =="
 setup
 "$LANE" note -p src/auth.rs -a "fn verify" "callers rely on the parsed shape" > /dev/null
 "$LANE" audit > /dev/null
-git add -A .context && git commit -qm memory > /dev/null
+git add -A .lane && git commit -qm memory > /dev/null
 "$LANE" new carry > /dev/null 2>&1
-( cd "$TMP/repo/.lanes/carry" \
+( cd "$TMP/repo/.lane/trees/carry" \
   && sed 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs > t \
   && mv t src/auth.rs && git add -A && git commit -qm "change the span" > /dev/null \
   && "$LANE" audit --review none > /dev/null )
 is "a lane preserves the baseline it compared against" \
-   "$(python3 -c "import json;print(int(any(v.get('body_hash') for v in json.load(open('$TMP/repo/.lanes/carry/.context/state/carry.json')).values())))")" "1"
-( cd "$TMP/repo/.lanes/carry" && "$LANE" done --review none > /dev/null 2>&1 )
+   "$(python3 -c "import json;print(int(any(v.get('body_hash') for v in json.load(open('$TMP/repo/.lane/trees/carry/.lane/branch/carry/state.json')).values())))")" "1"
+( cd "$TMP/repo/.lane/trees/carry" && "$LANE" done --review none > /dev/null 2>&1 )
 is "and the drift survives the landing" \
    "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
 is "and is still reported by a later audit" \

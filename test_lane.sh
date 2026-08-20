@@ -62,12 +62,13 @@ echo "// scratch work" >> src/auth.rs
 LP="$TMP/.lanes-repo/spike"
 REFLINK=$(grep -c 'reflink: yes' /tmp/dirty.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
-is "dirty change carried iff reflink" \
-   "$(grep -q 'scratch work' "$LP/src/auth.rs" && echo yes || echo no)" "$(want)"
-is "dirty mode reports carried changes iff reflink" \
-   "$(grep -q 'carried' /tmp/dirty.out && echo yes || echo no)" "$(want)"
-is "index rebuilt: exactly one modified file" \
-   "$(git -C "$LP" status --porcelain | grep -c '^ M')" "$REFLINK"
+# --dirty honours the flag on any filesystem: reflinked whole-tree with it, copied without.
+is "dirty change carried" \
+   "$(grep -q 'scratch work' "$LP/src/auth.rs" && echo yes || echo no)" "yes"
+is "dirty mode reports what it carried" \
+   "$(grep -q 'carried' /tmp/dirty.out && echo yes || echo no)" "yes"
+is "exactly one modified file, not the whole tree" \
+   "$(git -C "$LP" status --porcelain | grep -c '^ M')" "1"
 is "warm dir also carried iff reflink" \
    "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes || echo no)" "$(want)"
 
@@ -403,8 +404,8 @@ is "a dirty tree without --dirty warns and names the recovery" \
 "$LANE" new carried --dirty > /tmp/carried.out 2>&1
 REFLINK=$(grep -c 'reflink: yes' /tmp/carried.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
-is "--dirty carries the change iff reflink" \
-   "$(grep -q 'scratch' "$TMP/.lanes-repo/carried/src/auth.rs" && echo yes || echo no)" "$(want)"
+is "--dirty carries the change" \
+   "$(grep -c 'scratch' "$TMP/.lanes-repo/carried/src/auth.rs")" "1"
 
 echo "== 21. done refuses before it writes =="
 setup

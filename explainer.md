@@ -23,7 +23,7 @@ Why: src/auth.rs#fn verify | early return leaks token length"
 ```
 
 One place. A `post-commit` hook reads the trailer, appends it to
-`.wt/pending.jsonl`, and the next audit promotes it. From that point it is
+`.git/lane/pending.jsonl`, and the next audit promotes it. From that point it is
 indistinguishable from a note made by hand:
 
 ```
@@ -72,7 +72,7 @@ a malformed note is worse than losing the note.
 
 ```
 git commit  →  Why: trailer  →  post-commit hook  ┐
-                                                  ├─→  .wt/pending.jsonl  →  audit  →  note
+                                                  ├─→  .git/lane/pending.jsonl  →  audit  →  note
 lane note -p … -a … "…"  ───────────────────────  ┘
 ```
 
@@ -110,7 +110,7 @@ for someone reading history, `.context/` for someone about to edit the function.
 ## What is automatic and what is not
 
 Automatic: the hook firing, parsing, validation, the append to
-`.wt/pending.jsonl`, promotion at the next audit, and deduplication. You never
+`.git/lane/pending.jsonl`, promotion at the next audit, and deduplication. You never
 run any of it.
 
 Not automatic: writing the `Why:` line at all. That is deliberate. A note

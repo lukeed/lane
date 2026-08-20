@@ -17,7 +17,7 @@ lane done                   # rebase, distill memory, fast-forward trunk, delete
 cargo install --path crates/lane
 eval "$(lane shellenv)"          # add to .zshrc: makes `lane new` cd into the lane
 cd yourproject && lane init
-git add .context .gitattributes AGENTS.md .gitignore
+git add .context .gitattributes AGENTS.md
 git commit -m "lane: context memory"
 ```
 
@@ -276,6 +276,7 @@ yourproject/
     log/<branch>.jsonl            verdicts and evictions, per branch
   .gitattributes                  one union rule, for log/*.jsonl
   AGENTS.md
+  .git/lane/pending.jsonl         notes not yet promoted, per worktree
 ../.lanes-yourproject/
   fix-login/                      the lane worktree
 ```

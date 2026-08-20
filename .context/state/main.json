@@ -14,7 +14,7 @@
     "status": "fresh",
     "checked": "2026-08-20T06:08:54Z",
     "norm": "1",
-    "reads": 3
+    "reads": 4
   },
   "01M0ESPFEX4KWAVB5BN4ZJ2ZWX": {
     "sig": "a4bcd7d4c565b528",
@@ -23,7 +23,7 @@
     "status": "fresh",
     "checked": "2026-08-20T06:08:54Z",
     "norm": "1",
-    "reads": 3
+    "reads": 4
   },
   "01M0ESPFF3M16TMEFZK9V3B7SG": {
     "sig": "b91957dbbe5addac",
@@ -32,7 +32,7 @@
     "status": "fresh",
     "checked": "2026-08-20T06:08:54Z",
     "norm": "1",
-    "reads": 3
+    "reads": 4
   },
   "01M0ESPFFA6RKDW9EPAF7YGQ3V": {
     "sig": "b91957dbbe5addac",
@@ -41,7 +41,7 @@
     "status": "fresh",
     "checked": "2026-08-20T06:08:54Z",
     "norm": "1",
-    "reads": 3
+    "reads": 4
   },
   "01M0ESRPDEXQZCBMT3TB36B26X": {
     "sig": "e3b0c44298fc1c14",
@@ -56,8 +56,8 @@
     "sig": "e3b0c44298fc1c14",
     "body_hash": "ce672dd23cfe24dc",
     "raw_hash": "133d43b6c520f161",
-    "status": "body-drift",
-    "checked": "2026-08-20T06:08:54Z",
+    "status": "fresh",
+    "checked": "2026-08-20T06:09:54Z",
     "norm": "1",
     "reads": 4
   },
@@ -85,7 +85,7 @@
     "status": "fresh",
     "checked": "2026-08-20T06:08:54Z",
     "norm": "1",
-    "reads": 3
+    "reads": 4
   },
   "01M0ESYXZH9H0Z631FGCPND97V": {
     "sig": "6b7dd66fe2601cc3",
@@ -118,15 +118,31 @@
     "status": "fresh",
     "checked": "2026-08-20T06:08:54Z",
     "norm": "1",
-    "reads": 2
+    "reads": 3
   },
   "01M0EVWZGPP2GNST4Y52MG8AS1": {
     "sig": "05a975d77f5b9730",
     "body_hash": "4069f7ea1e97e3f2",
     "raw_hash": "2b67bfef2b77fccd",
-    "status": "body-drift",
-    "checked": "2026-08-20T06:08:54Z",
+    "status": "fresh",
+    "checked": "2026-08-20T06:09:54Z",
     "norm": "1",
-    "reads": 1
+    "reads": 2
+  },
+  "01M0EWMNDA5DS5F6Z5R46N4TCP": {
+    "sig": "cd3ddeb4b8ef600f",
+    "body_hash": "29663c3af4800b9b",
+    "raw_hash": "88e4906dd68241fa",
+    "status": "fresh",
+    "checked": "2026-08-20T06:09:54Z",
+    "norm": "1"
+  },
+  "01M0EWMNDC9P82RZ0Z6VMNC3VP": {
+    "sig": "6fcce5fc87cb3571",
+    "body_hash": "872bb1a7c1049dc6",
+    "raw_hash": "cbfcdcdfea753fd2",
+    "status": "fresh",
+    "checked": "2026-08-20T06:09:54Z",
+    "norm": "1"
   }
 }

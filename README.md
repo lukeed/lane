@@ -125,6 +125,11 @@ Rust 1.85+, edition 2024. Anchor resolution ships grammars for rust, go, python,
 javascript, typescript, tsx, c, c++, java, bash, css, html and markdown; adding
 one is a line in the table in `crates/lane/src/syntax.rs`.
 
+## Tour
+
+Run the `example start` tour with `cargo run -p example -- start`.
+It builds a throwaway sandbox repository beside this checkout.
+
 ## Tests
 
 ```

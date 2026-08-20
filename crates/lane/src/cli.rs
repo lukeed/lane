@@ -277,6 +277,14 @@ fn protocol_action(existing: Option<&str>) -> ProtocolAction {
     }
 }
 
+fn replace_protocol(existing: &mut String, range: Range<usize>) {
+    let ends_at_eof = range.end == existing.len();
+    existing.replace_range(range, PROTOCOL.trim());
+    if ends_at_eof && !existing.ends_with('\n') {
+        existing.push('\n');
+    }
+}
+
 fn write_protocol(agents: &Path) -> Result<i32> {
     let existing = agents
         .exists()
@@ -295,13 +303,13 @@ fn write_protocol(agents: &Path) -> Result<i32> {
         ProtocolAction::Current => println!("{} protocol is current", agents.display()),
         ProtocolAction::Replace(range) => {
             let mut existing = existing.expect("existing protocol file");
-            existing.replace_range(range, PROTOCOL.trim());
+            replace_protocol(&mut existing, range);
             std::fs::write(agents, existing)?;
             println!("repaired {} protocol", agents.display());
         }
         ProtocolAction::Upgrade(range) => {
             let mut existing = existing.expect("existing protocol file");
-            existing.replace_range(range, PROTOCOL.trim());
+            replace_protocol(&mut existing, range);
             std::fs::write(agents, existing)?;
             println!("upgraded {} protocol", agents.display());
         }
@@ -874,6 +882,52 @@ mod tests {
             protocol_action(Some(&existing)),
             ProtocolAction::Replace(_)
         ));
+    }
+
+    #[test]
+    fn replacing_a_final_protocol_ends_with_one_newline() {
+        let root = tempfile::tempdir().unwrap();
+        let agents = root.path().join("AGENTS.md");
+        std::fs::write(
+            &agents,
+            format!(
+                "# AGENTS\n{}",
+                PROTOCOL
+                    .replace("lane note -p", "lane note edited")
+                    .trim_end()
+            ),
+        )
+        .unwrap();
+
+        write_protocol(&agents).unwrap();
+
+        let rewritten = std::fs::read_to_string(agents).unwrap();
+        assert!(rewritten.ends_with('\n'));
+        assert!(!rewritten.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn replacing_a_protocol_preserves_the_following_section() {
+        let root = tempfile::tempdir().unwrap();
+        let agents = root.path().join("AGENTS.md");
+        let following = "\n## Something else\n\nKeep this byte-identical.\n";
+        std::fs::write(
+            &agents,
+            format!(
+                "# AGENTS\n{}{}",
+                PROTOCOL.trim().replace("lane note -p", "lane note edited"),
+                following
+            ),
+        )
+        .unwrap();
+
+        write_protocol(&agents).unwrap();
+
+        let rewritten = std::fs::read_to_string(agents).unwrap();
+        assert_eq!(
+            rewritten,
+            format!("# AGENTS\n{}{}", PROTOCOL.trim(), following)
+        );
     }
 
     #[test]

@@ -502,6 +502,8 @@ AGENTSEOF
 "$LANE" init > /dev/null 2>&1
 is "a legacy protocol is upgraded" \
    "$(grep -c 'lane note -p <path>' AGENTS.md)" "1"
+is "an upgraded legacy protocol ends with a newline" \
+   "$([ -z "$(tail -c 1 AGENTS.md)" ] && echo yes || echo no)" "yes"
 printf '# AGENTS\n\n## Context memory\n\n- my own notes, do not touch\n' > AGENTS.md
 BEFORE=$(cat AGENTS.md)
 "$LANE" init > /dev/null 2>&1

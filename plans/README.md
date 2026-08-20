@@ -25,6 +25,7 @@ counts before starting, and update your row when done.
 | 020 | Let `lane init` repair a protocol it wrote earlier | P1 | S | — | DONE |
 | 021 | Stop a cloned symlink from pointing back at the parent worktree | P1 | S | — | DONE |
 | 022 | Say something when a `Why:` trailer cannot be captured | P2 | S | — | DONE |
+| 023 | Make an installed hook replaceable, and stop `uninstall` lying | P1 | S | — | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

@@ -468,7 +468,26 @@ git commit -q --allow-empty -m "no trailer here"
 ( PATH=/usr/bin:/bin sh .git/hooks/post-commit ) 2>/tmp/nolane3.err
 is "a commit without a trailer stays silent" "$(wc -c < /tmp/nolane3.err | tr -d ' ')" "0"
 
-echo "== 23. lane install skill =="
+echo "== 23. hooks can be upgraded and really removed =="
+setup
+"$LANE" install hooks > /dev/null
+printf '#!/bin/sh\n# lane: capture Why trailers\ncommand -v lane >/dev/null 2>&1 && lane capture HEAD || true\n' > .git/hooks/post-commit
+"$LANE" install hooks > /dev/null 2>&1
+is "a legacy hook is upgraded" \
+   "$(grep -c 'not on PATH' .git/hooks/post-commit)" "1"
+printf '#!/bin/sh\necho mine\n# lane: capture Why trailers\ncommand -v lane >/dev/null 2>&1 && lane capture HEAD || true\n' > .git/hooks/post-commit
+"$LANE" uninstall hooks > /dev/null 2>&1
+is "uninstall keeps the user's own lines" \
+   "$(grep -c 'echo mine' .git/hooks/post-commit)" "1"
+is "and really removes lane's block" \
+   "$(grep -c 'lane capture HEAD' .git/hooks/post-commit)" "0"
+rm .git/hooks/post-commit
+"$LANE" install hooks > /dev/null 2>&1
+"$LANE" uninstall hooks > /dev/null 2>&1
+is "a hook that was only lane's is deleted" \
+   "$([ -f .git/hooks/post-commit ] && echo yes || echo no)" "no"
+
+echo "== 24. lane install skill =="
 setup
 "$LANE" install skill > /tmp/skill.out 2>&1
 is "the skill lands at the conventional path" \

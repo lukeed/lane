@@ -128,15 +128,18 @@ excludes `.git` in exactly the shape yours should take:
         .filter(|p| !p.is_empty() && p != ".git")
 ```
 
-`crates/lane/src/worktree.rs:233`, the `--dirty` arm's walk filter, needing the second:
+`crates/lane/src/worktree.rs:243`, the `--dirty` arm's walk filter, needing the second:
 
 ```rust
             let skip = |rel: &str, _is_dir: bool| rel == ".git" || rel.starts_with(".git/");
 ```
 
 `crates/lane/src/worktree.rs` calls `git worktree add` twice — once in the
-`Materialization::Dirty` arm with `--no-checkout`, once around line 261 for every other arm.
-Both need the flag.
+`Materialization::Dirty` arm with `--no-checkout` (the argument list starts around line 233),
+once at line 272 for every other arm. Both need the flag.
+
+Line numbers in this plan were re-verified at dispatch, but confirm each excerpt by its
+content rather than trusting the number — this file has been edited by several plans.
 
 `crates/lane/src/git.rs` gives you `git` (fails loudly), `try_git` (failure is an empty
 string) and `git_ok` (exit status only), each taking `cwd: Option<&Path>`.
@@ -280,9 +283,9 @@ main-checkout case is unverified, and the reviewer will run it.
 Add to `test_lane.sh` as a new section before the summary, numbered one past the last. Note
 `setup` creates the repo at `$TMP/repo`, so lanes are now at `$TMP/repo/.lanes/<name>`, not
 `$TMP/.lanes-repo/<name>` — **every existing reference to the old path in this file must be
-updated too, or the suite will fail for reasons unrelated to your change.** Find them with
-`grep -n 'lanes-repo' test_lane.sh` before you start, and expect that to be the bulk of the
-diff.
+updated too, or the suite will fail for reasons unrelated to your change.** There are 18 of
+them; find them with `grep -n 'lanes-repo' test_lane.sh` before you start, and expect that
+to be the bulk of the diff.
 
 Four new assertions:
 

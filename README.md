@@ -127,8 +127,17 @@ one is a line in the table in `crates/lane/src/syntax.rs`.
 
 ## Tour
 
-Run the `example start` tour with `cargo run -p example -- start`.
-It builds a throwaway sandbox repository beside this checkout.
+```bash
+cargo run -p example -- start
+```
+
+Builds a throwaway sandbox repository next to this checkout, prints its path, and
+waits. Open that directory in an editor, then pick numbered options to drive real
+workflows — a note drifting, three lanes landing out of order, two landings
+colliding. Every command is printed before it runs, so you finish having seen the
+ones you would actually type. Delete the sandbox when you are done.
+
+The tour is a separate binary and shares nothing with `lane`.
 
 ## Tests
 

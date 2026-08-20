@@ -65,10 +65,10 @@ fn absolute_in_repo_symlink_follows_the_clone() {
     let source_file = src.path().join("tool");
 
     fs::write(&source_file, b"before clone").unwrap();
-    std::os::unix::fs::symlink(source_file.canonicalize().unwrap(), src.path().join("link"))
-        .unwrap();
+    std::os::unix::fs::symlink(&source_file, src.path().join("link")).unwrap();
 
-    let stats = cow::clone_tree(src.path(), &out, &|_, _| false).unwrap();
+    let canonical_src = src.path().canonicalize().unwrap();
+    let stats = cow::clone_tree(&canonical_src, &out, &|_, _| false).unwrap();
 
     assert_eq!(fs::read_link(out.join("link")).unwrap(), out.join("tool"));
     fs::write(&source_file, b"source copy").unwrap();
@@ -81,6 +81,33 @@ fn absolute_in_repo_symlink_follows_the_clone() {
     } else {
         assert_eq!(stats.copied, 1, "fallback copy must be exercised: {detail}");
     }
+}
+
+#[test]
+fn absolute_in_repo_symlink_outside_cloned_subdirectory_follows_the_clone() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let source_file = src.path().join("real/tool");
+    let destination_file = out.join("real/tool");
+
+    fs::create_dir_all(src.path().join("build")).unwrap();
+    fs::create_dir_all(source_file.parent().unwrap()).unwrap();
+    fs::create_dir_all(destination_file.parent().unwrap()).unwrap();
+    fs::write(&source_file, b"parent copy").unwrap();
+    fs::write(&destination_file, b"lane copy").unwrap();
+    std::os::unix::fs::symlink(&source_file, src.path().join("build/link")).unwrap();
+
+    cow::clone_tree_rooted(
+        &src.path().join("build"),
+        &out.join("build"),
+        &|_, _| false,
+        src.path(),
+        &out,
+    )
+    .unwrap();
+
+    assert_eq!(fs::read(out.join("build/link")).unwrap(), b"lane copy");
 }
 
 #[test]

@@ -44,9 +44,28 @@ fn classify(err: std::io::Error) -> CloneError {
 }
 
 /// An absolute link into the source tree must point into the clone instead.
-fn retarget(link: &Path, src_root: &Path, dst_root: &Path) -> Option<PathBuf> {
-    let rel = link.strip_prefix(src_root).ok()?;
-    Some(dst_root.join(rel))
+fn retarget(link: &Path, src_roots: &[PathBuf], dst_root: &Path) -> Option<PathBuf> {
+    src_roots
+        .iter()
+        .find_map(|root| link.strip_prefix(root).ok())
+        .map(|rel| dst_root.join(rel))
+}
+
+fn root_spellings(root: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut roots = vec![root.to_path_buf()];
+    let canonical = root.canonicalize()?;
+    if canonical != root {
+        roots.push(canonical.clone());
+    }
+    // Git reports /private paths even when symlinks retain the user's shorter spelling.
+    #[cfg(target_os = "macos")]
+    if let Ok(rel) = canonical.strip_prefix("/private") {
+        let alias = Path::new("/").join(rel);
+        if !roots.contains(&alias) && alias.canonicalize().ok().as_ref() == Some(&canonical) {
+            roots.push(alias);
+        }
+    }
+    Ok(roots)
 }
 
 /// Clone one regular file by reference.
@@ -161,8 +180,19 @@ pub fn clone_tree(
     dst: &Path,
     skip: &dyn Fn(&str, bool) -> bool,
 ) -> std::io::Result<CloneStats> {
+    clone_tree_rooted(src, dst, skip, src, dst)
+}
+
+/// Clone `src` into `dst`, retargeting absolute links relative to the containing trees.
+pub fn clone_tree_rooted(
+    src: &Path,
+    dst: &Path,
+    skip: &dyn Fn(&str, bool) -> bool,
+    src_root: &Path,
+    dst_root: &Path,
+) -> std::io::Result<CloneStats> {
     let mut stats = CloneStats::default();
-    let src_root = src.canonicalize()?;
+    let src_roots = root_spellings(src_root)?;
     let walker = walkdir::WalkDir::new(src).into_iter().filter_entry(|e| {
         let rel = match e.path().strip_prefix(src) {
             Ok(r) => r,
@@ -195,7 +225,7 @@ pub fn clone_tree(
         }
         if entry.file_type().is_symlink() {
             let dest = fs::read_link(entry.path())?;
-            let dest = retarget(&dest, &src_root, dst).unwrap_or(dest);
+            let dest = retarget(&dest, &src_roots, dst_root).unwrap_or(dest);
             std::os::unix::fs::symlink(dest, &target)?;
             stats.links += 1;
             continue;

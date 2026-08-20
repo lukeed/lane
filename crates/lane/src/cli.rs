@@ -4,7 +4,7 @@ use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
 use crate::review;
-use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, PENDING, SIG, UNVERIFIABLE};
+use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, SIG, UNVERIFIABLE};
 use crate::syntax::{Resolution, Source};
 use crate::util::now_iso;
 use crate::worktree as wt;
@@ -327,9 +327,6 @@ fn init() -> Result<i32> {
         let mut file = std::fs::OpenOptions::new().append(true).open(&agents)?;
         write!(file, "{PROTOCOL}")?;
     }
-
-    let ignore = root.join(".gitignore");
-    append_line(&ignore, PENDING)?;
 
     let (ok, detail) = crate::cow::probe(&root);
     println!("initialized .context/, union merge rules, AGENTS.md protocol");

@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat 7aa8d13..HEAD -- crates/lane/src/store.rs crates/lane/src/audit.rs crates/lane/src/cli.rs`
+> `git diff --stat d21d877..HEAD -- crates/lane/src/store.rs crates/lane/src/audit.rs crates/lane/src/cli.rs`
 
 ## Status
 
@@ -15,7 +15,7 @@
 - **Risk**: MED
 - **Depends on**: none
 - **Category**: tech-debt
-- **Planned at**: commit `7aa8d13`, 2026-08-20
+- **Planned at**: commit `7aa8d13`, 2026-08-20; re-verified at `d21d877`
 
 ## Why this matters
 
@@ -79,7 +79,7 @@ Everything that touches the counter, verified at `7aa8d13`:
 crates/lane/src/audit.rs:65     reads: previous.reads,          (carried through record_state)
 crates/lane/src/audit.rs:82     let counts = store::read_counts(root);
 crates/lane/src/audit.rs:175    std::cmp::Reverse(counts.get(&n.meta.id)...)
-crates/lane/src/cli.rs:749      store::bump_reads(&root, &shown)?;
+crates/lane/src/cli.rs:782      store::bump_reads(&root, &shown)?;
 crates/lane/src/store.rs:100    pub reads: u32,                 (field on NoteState)
 crates/lane/src/store.rs:165    pub fn read_counts(...)         (sums across all branches)
 crates/lane/src/store.rs:196    pub fn bump_reads(...)
@@ -108,7 +108,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
 | Linux gates | `./scripts/check-linux.sh` | exit 0, from a lane and from the main checkout |
 
-Record both baselines before starting; at `7aa8d13` they are 75 and 117.
+Record both baselines before starting; at `d21d877` they are 76 and 122.
 
 Capture every exit code without a pipe (`cmd > /tmp/out 2>&1; echo $?`). Piping to `tail`
 reports `tail`'s status and has already masked a failure in this project.
@@ -129,7 +129,7 @@ reports `tail`'s status and has already masked a failure in this project.
 
 ### Step 1: Make `lane why` a pure read
 
-Delete the `store::bump_reads` call at `cli.rs:749` and delete `bump_reads` itself.
+Delete the `store::bump_reads` call at `cli.rs:782` and delete `bump_reads` itself.
 
 **Verify**: in a scratch repo with notes, `lane why <path>` twice, then
 `git status --porcelain` → empty both times. This is the headline behaviour; confirm it

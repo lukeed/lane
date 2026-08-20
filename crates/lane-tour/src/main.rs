@@ -164,7 +164,7 @@ fn next_sandbox_path() -> io::Result<PathBuf> {
         .map(Path::to_path_buf)
         .ok_or_else(|| io::Error::other("current directory has no parent"))?;
     for number in 1_u64.. {
-        let candidate = parent.join(format!("lane-example-{number}"));
+        let candidate = parent.join(format!("lane-tour-{number}"));
         if !candidate.exists() {
             return Ok(candidate);
         }

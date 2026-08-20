@@ -150,7 +150,7 @@ one is a line in the table in `crates/lane/src/syntax.rs`.
 ## Tour
 
 ```bash
-cargo run -p example -- start
+cargo run -p lane-tour -- start
 ```
 
 Builds a throwaway sandbox repository next to this checkout, prints its path, and

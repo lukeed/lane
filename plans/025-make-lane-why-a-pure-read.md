@@ -88,10 +88,8 @@ crates/lane/src/store.rs:646    reads: 2,                       (test fixture)
 crates/lane/src/store.rs:657    reads: 3,                       (test fixture)
 ```
 
-`NoteState` is serialized with serde into `.context/state/<branch>.json`. Existing
-repositories have files containing a `reads` key; deserialization must tolerate it rather
-than fail. Check how `NoteState` derives `Deserialize` and whether it already ignores
-unknown fields — if it uses `deny_unknown_fields`, that is a STOP condition, report it.
+`NoteState` is serialized with serde into `.context/state/<branch>.json`. This repository
+is the only consumer and the tool is unreleased, so the field can simply go.
 
 `lane done`'s preflight lives in `cli.rs`'s `done()`. Plan 016 added it; read it before
 Step 3 so the new check matches its shape and its error style.
@@ -152,13 +150,11 @@ The key becomes `pinned > touched > tier_rank > id`. Do not reorder the remainin
 Remove `reads` from `NoteState` and from `roll_up`'s merge, and update the two test
 fixtures at `store.rs:646` and `:657`.
 
-**A state file written by an older lane still contains a `reads` key.** Confirm that
-deserialization ignores it. If `NoteState` does not already tolerate unknown fields, add
-`#[serde(default)]`-style tolerance or an explicit ignore — do not make old repositories
-fail to load. Prove it with a test that deserializes a JSON string containing `reads`.
-
-**Verify**: a unit test round-trips a `NoteState` from JSON that includes `"reads": 7` and
-succeeds.
+No compatibility shim is needed. This repository is the only one using lane, and it is
+unreleased at `0.1.0` — there are no state files in the wild to keep readable. Delete the
+field outright. If `.context/state/main.json` in this repository still carries `reads`
+keys after your change, the next `lane audit` rewrites the file without them; that is
+expected and needs no migration code.
 
 ### Step 4: Preflight trunk's state before writing anything
 
@@ -221,7 +217,6 @@ note is not a vote for it, because you often read one to find out it is wrong.
 - [ ] `cargo test` passes; `./test_lane.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` exit 0 from a lane and from the main checkout
-- [ ] A state file containing `"reads": 7` still deserializes
 - [ ] Eviction still occurs over budget, and is deterministic — same repo, same result
 - [ ] `lane done` refuses on a dirty trunk state file *before* writing a memory commit
 - [ ] `grep -rn 'bump_reads\|read_counts' crates/` → no matches
@@ -229,8 +224,6 @@ note is not a vote for it, because you often read one to find out it is wrong.
 
 ## STOP conditions
 
-- `NoteState` uses `deny_unknown_fields` or otherwise fails on an old state file. Report it;
-  breaking existing repositories is not acceptable for a ranking simplification.
 - Removing the term makes eviction non-deterministic, or makes a budget test order-dependent.
 - The preflight in Step 4 makes `lane done` refuse in a case that works today.
 - You conclude reads should be kept and relocated to `.git/` instead. That was considered

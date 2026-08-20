@@ -1,1 +1,10 @@
-{}
+{
+  "01M0ER1X7801FW524YV2G8TNQQ": {
+    "sig": "cb3f91d54eee30e5",
+    "body_hash": "1c2d438423040d54",
+    "raw_hash": "6dc44df640f1176d",
+    "status": "fresh",
+    "checked": "2026-08-20T04:49:45Z",
+    "norm": "1"
+  }
+}

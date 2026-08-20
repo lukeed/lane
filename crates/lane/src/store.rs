@@ -1,4 +1,4 @@
-//! The `.context/` store: load, promote, check, evict, and the read ledger.
+//! The `.context/` store: load, promote, check, and evict.
 
 use crate::git;
 use crate::note::{self, Meta, Note};
@@ -96,12 +96,6 @@ pub struct NoteState {
     pub checked: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub norm: String,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub reads: u32,
-}
-
-fn is_zero(n: &u32) -> bool {
-    *n == 0
 }
 
 pub type State = HashMap<String, NoteState>;
@@ -161,17 +155,6 @@ pub fn load_state(root: &Path) -> State {
     merged
 }
 
-/// Reads sum across branches; freshness does not.
-pub fn read_counts(root: &Path) -> HashMap<String, u32> {
-    let mut counts: HashMap<String, u32> = HashMap::new();
-    for part in all_state(root) {
-        for (id, entry) in part {
-            *counts.entry(id).or_insert(0) += entry.reads;
-        }
-    }
-    counts
-}
-
 fn write_state_file(path: &Path, state: &State) -> Result<()> {
     let mut sorted: Vec<(&String, &NoteState)> = state.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
@@ -191,17 +174,6 @@ fn write_state_file(path: &Path, state: &State) -> Result<()> {
 /// Write this branch's file, and only if it changed.
 pub fn save_state(root: &Path, state: &State) -> Result<()> {
     write_state_file(&state_file(root), state)
-}
-
-pub fn bump_reads(root: &Path, ids: &[String]) -> Result<()> {
-    if ids.is_empty() {
-        return Ok(());
-    }
-    let mut own = read_state_file(&state_file(root));
-    for id in ids {
-        own.entry(id.clone()).or_default().reads += 1;
-    }
-    save_state(root, &own)
 }
 
 /// Append-only, one file per branch, so this is the one thing union merge is for.
@@ -560,14 +532,11 @@ pub fn roll_up(root: &Path, from: &str, into: &str) -> Result<()> {
     for (id, entry) in mine {
         let merged = match theirs.remove(&id) {
             Some(have) => {
-                let reads = have.reads + entry.reads;
-                let mut newer = if have.checked >= entry.checked {
+                if have.checked >= entry.checked {
                     have
                 } else {
                     entry
-                };
-                newer.reads = reads;
-                newer
+                }
             }
             None => entry,
         };
@@ -643,7 +612,6 @@ mod tests {
             NoteState {
                 sig: "old".into(),
                 checked: "2026-01-01T00:00:00Z".into(),
-                reads: 2,
                 ..Default::default()
             },
         );
@@ -654,13 +622,10 @@ mod tests {
             NoteState {
                 sig: "new".into(),
                 checked: "2026-06-01T00:00:00Z".into(),
-                reads: 3,
                 ..Default::default()
             },
         );
         assert_eq!(load_state(root.path())["01M0A"].sig, "new");
-        // Freshness takes the newest; attention sums.
-        assert_eq!(read_counts(root.path())["01M0A"], 5);
     }
 
     /// A note plus a source file, ready to check.

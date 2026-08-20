@@ -744,7 +744,6 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
     }
 
     let mut checker = store::Checker::new(&root);
-    let mut shown = Vec::new();
     for ((file, anchor), mut group) in groups {
         println!("\n{file}#{anchor}");
         group.sort_by(|a, b| a.meta.id.cmp(&b.meta.id));
@@ -776,10 +775,8 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
                 },
                 note.meta.created.get(..10).unwrap_or("?")
             );
-            shown.push(note.meta.id);
         }
     }
-    store::bump_reads(&root, &shown)?;
     Ok(0)
 }
 

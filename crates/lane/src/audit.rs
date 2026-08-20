@@ -62,7 +62,6 @@ fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool 
                 now_iso()
             },
             norm: crate::syntax::NORM_VERSION.into(),
-            reads: previous.reads,
         },
     );
     unresolved
@@ -77,9 +76,26 @@ fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
     entry.norm = crate::syntax::NORM_VERSION.into();
 }
 
+fn eviction_key(
+    note: &Note,
+    touched: &HashSet<String>,
+    state: &store::State,
+) -> (u8, u8, u8, String) {
+    (
+        u8::from(!note.meta.pinned),
+        u8::from(!touched.contains(&note.path())),
+        store::tier_rank(
+            state
+                .get(&note.meta.id)
+                .map(|entry| entry.status.as_str())
+                .unwrap_or(FRESH),
+        ),
+        note.meta.id.clone(),
+    )
+}
+
 pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outcome> {
     let created = store::promote_pending(root)?;
-    let counts = store::read_counts(root);
     let touched: HashSet<String> = if opts.base.is_empty() {
         HashSet::new()
     } else {
@@ -169,21 +185,7 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
         }
 
         live.sort_by(|a, b| {
-            let key = |n: &Note| {
-                (
-                    u8::from(!n.meta.pinned),
-                    std::cmp::Reverse(counts.get(&n.meta.id).copied().unwrap_or(0)),
-                    u8::from(!touched.contains(&n.path())),
-                    store::tier_rank(
-                        state
-                            .get(&n.meta.id)
-                            .map(|st| st.status.as_str())
-                            .unwrap_or(FRESH),
-                    ),
-                    n.meta.id.clone(),
-                )
-            };
-            key(a).cmp(&key(b))
+            eviction_key(a, &touched, &state).cmp(&eviction_key(b, &touched, &state))
         });
 
         let (mut kept, mut chars) = (0usize, 0usize);
@@ -448,5 +450,27 @@ mod tests {
         assert_eq!(saved.body_hash, current.body_hash);
         assert_eq!(saved.raw_hash, current.raw_hash);
         assert_eq!(saved.status, FRESH);
+    }
+
+    #[test]
+    fn budget_uses_age_when_the_other_terms_tie() {
+        let older = Note::new(
+            Meta {
+                id: "01M0A".into(),
+                ..Default::default()
+            },
+            "older",
+        );
+        let newer = Note::new(
+            Meta {
+                id: "01M0B".into(),
+                ..Default::default()
+            },
+            "newer",
+        );
+        let state = store::State::new();
+        let touched = HashSet::new();
+
+        assert!(eviction_key(&older, &touched, &state) < eviction_key(&newer, &touched, &state));
     }
 }

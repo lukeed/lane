@@ -31,6 +31,7 @@ fn probe_returns_a_verdict() {
 }
 
 #[test]
+/// Symlinks survive, and absolute in-repo symlinks follow the clone.
 fn fallback_tree_is_byte_identical_and_symlinks_survive() {
     let src = tempfile::tempdir().unwrap();
     let dst = tempfile::tempdir().unwrap();
@@ -54,6 +55,68 @@ fn fallback_tree_is_byte_identical_and_symlinks_survive() {
     assert!(fs::symlink_metadata(out.join("link")).unwrap().is_symlink());
     assert_eq!(stats.links, 1);
     assert_eq!(stats.cloned + stats.copied, 2);
+}
+
+#[test]
+fn absolute_in_repo_symlink_follows_the_clone() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let source_file = src.path().join("tool");
+
+    fs::write(&source_file, b"before clone").unwrap();
+    std::os::unix::fs::symlink(source_file.canonicalize().unwrap(), src.path().join("link"))
+        .unwrap();
+
+    let stats = cow::clone_tree(src.path(), &out, &|_, _| false).unwrap();
+
+    assert_eq!(fs::read_link(out.join("link")).unwrap(), out.join("tool"));
+    fs::write(&source_file, b"source copy").unwrap();
+    fs::write(out.join("tool"), b"destination copy").unwrap();
+    assert_eq!(fs::read(out.join("link")).unwrap(), b"destination copy");
+
+    let (supported, detail) = cow::probe(src.path());
+    if supported {
+        assert_eq!(stats.cloned, 1, "reflink clone must be exercised");
+    } else {
+        assert_eq!(stats.copied, 1, "fallback copy must be exercised: {detail}");
+    }
+}
+
+#[test]
+fn absolute_external_symlink_is_byte_identical() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let external = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let external_file = external.path().join("tool");
+
+    fs::write(&external_file, b"external").unwrap();
+    std::os::unix::fs::symlink(&external_file, src.path().join("link")).unwrap();
+
+    cow::clone_tree(src.path(), &out, &|_, _| false).unwrap();
+
+    assert_eq!(
+        fs::read_link(src.path().join("link")).unwrap(),
+        fs::read_link(out.join("link")).unwrap()
+    );
+}
+
+#[test]
+fn relative_symlink_is_byte_identical() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+
+    fs::write(src.path().join("tool"), b"local").unwrap();
+    std::os::unix::fs::symlink("tool", src.path().join("link")).unwrap();
+
+    cow::clone_tree(src.path(), &out, &|_, _| false).unwrap();
+
+    assert_eq!(
+        fs::read_link(src.path().join("link")).unwrap(),
+        fs::read_link(out.join("link")).unwrap()
+    );
 }
 
 #[test]

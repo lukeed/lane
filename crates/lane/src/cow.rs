@@ -6,7 +6,7 @@
 
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub enum CloneError {
@@ -41,6 +41,12 @@ fn classify(err: std::io::Error) -> CloneError {
         Some(e) if UNSUPPORTED.contains(&e) => CloneError::Unsupported(err.to_string()),
         _ => CloneError::Io(err),
     }
+}
+
+/// An absolute link into the source tree must point into the clone instead.
+fn retarget(link: &Path, src_root: &Path, dst_root: &Path) -> Option<PathBuf> {
+    let rel = link.strip_prefix(src_root).ok()?;
+    Some(dst_root.join(rel))
 }
 
 /// Clone one regular file by reference.
@@ -156,6 +162,7 @@ pub fn clone_tree(
     skip: &dyn Fn(&str, bool) -> bool,
 ) -> std::io::Result<CloneStats> {
     let mut stats = CloneStats::default();
+    let src_root = src.canonicalize()?;
     let walker = walkdir::WalkDir::new(src).into_iter().filter_entry(|e| {
         let rel = match e.path().strip_prefix(src) {
             Ok(r) => r,
@@ -188,6 +195,7 @@ pub fn clone_tree(
         }
         if entry.file_type().is_symlink() {
             let dest = fs::read_link(entry.path())?;
+            let dest = retarget(&dest, &src_root, dst).unwrap_or(dest);
             std::os::unix::fs::symlink(dest, &target)?;
             stats.links += 1;
             continue;

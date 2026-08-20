@@ -329,15 +329,28 @@ const SKILL: &str = include_str!("../assets/skill.md");
 const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
 
 const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
+const POST_COMMIT_END: &str = "# lane: end";
 const POST_COMMIT_BLOCK: &str = "# lane: capture Why trailers\n\
 if command -v lane >/dev/null 2>&1; then\n\
   lane capture HEAD || true\n\
 elif git log -1 --format=%B | grep -qi '^Why:'; then\n\
   echo \"lane: not on PATH, so the Why trailer in this commit was not captured\" >&2\n\
   echo \"lane: run 'lane capture HEAD' once lane is installed to record it\" >&2\n\
-fi\n";
+fi\n\
+# lane: end\n";
+/// The post-commit body as shipped before end markers, recognised so it can be replaced.
+/// Never edit this; it is a fingerprint of what is already in users' hooks, not content.
+const POST_COMMIT_V1: &str = "# lane: capture Why trailers\n\
+command -v lane >/dev/null 2>&1 && lane capture HEAD || true\n";
 const PREPARE_MARKER: &str = "# lane: offer the Why form when an editor will open";
+const PREPARE_END: &str = "# lane: end";
 const PREPARE_BLOCK: &str = "# lane: offer the Why form when an editor will open\n\
+case \"$2\" in\n\
+  \"\"|template) printf '\\n# Why: <path>#<anchor> | what must stay true (optional, lane note)\\n' >> \"$1\" ;;\n\
+esac\n\
+# lane: end\n";
+// Prepare's V1 and current body are identical today; keep this fingerprint for its first update.
+const PREPARE_V1: &str = "# lane: offer the Why form when an editor will open\n\
 case \"$2\" in\n\
   \"\"|template) printf '\\n# Why: <path>#<anchor> | what must stay true (optional, lane note)\\n' >> \"$1\" ;;\n\
 esac\n";
@@ -345,7 +358,9 @@ esac\n";
 struct HookSpec {
     path: PathBuf,
     marker: &'static str,
+    end: &'static str,
     block: &'static str,
+    legacy: &'static str,
 }
 
 fn hook_specs(dir: &Path) -> [HookSpec; 2] {
@@ -353,14 +368,51 @@ fn hook_specs(dir: &Path) -> [HookSpec; 2] {
         HookSpec {
             path: dir.join("post-commit"),
             marker: POST_COMMIT_MARKER,
+            end: POST_COMMIT_END,
             block: POST_COMMIT_BLOCK,
+            legacy: POST_COMMIT_V1,
         },
         HookSpec {
             path: dir.join("prepare-commit-msg"),
             marker: PREPARE_MARKER,
+            end: PREPARE_END,
             block: PREPARE_BLOCK,
+            legacy: PREPARE_V1,
         },
     ]
+}
+
+enum HookAction {
+    Current(Range<usize>),
+    Replace(Range<usize>),
+    Upgrade(Range<usize>),
+    Refuse,
+    Foreign,
+}
+
+fn hook_action(existing: &str, spec: &HookSpec) -> HookAction {
+    let Some(start) = existing.find(spec.marker) else {
+        return HookAction::Foreign;
+    };
+
+    if let Some(end) = existing[start..].find(spec.end) {
+        let mut end = start + end + spec.end.len();
+        if existing[end..].starts_with('\n') {
+            end += 1;
+        }
+        return if &existing[start..end] == spec.block {
+            HookAction::Current(start..end)
+        } else {
+            HookAction::Replace(start..end)
+        };
+    }
+
+    if let Some(legacy) = existing[start..].find(spec.legacy) {
+        let start = start + legacy;
+        return HookAction::Upgrade(start..start + spec.legacy.len());
+    }
+
+    HookAction::Refuse
 }
 
 fn hooks_dir() -> Result<PathBuf> {
@@ -393,7 +445,10 @@ fn hooks_install() -> Result<i32> {
             continue;
         }
         let existing = std::fs::read_to_string(&spec.path)?;
-        if !existing.contains(spec.marker) {
+        if matches!(
+            hook_action(&existing, spec),
+            HookAction::Foreign | HookAction::Refuse
+        ) {
             foreign = true;
             eprintln!("{} already exists; add this block:", spec.path.display());
             eprint!("{}", spec.block);
@@ -406,10 +461,21 @@ fn hooks_install() -> Result<i32> {
     std::fs::create_dir_all(&dir)?;
     for spec in specs {
         if spec.path.exists() {
-            println!("{} already installed", spec.path.display());
-            println!(
-                "existing hook kept as-is; remove it and re-run, or `lane uninstall hooks && lane install hooks`"
-            );
+            let mut existing = std::fs::read_to_string(&spec.path)?;
+            match hook_action(&existing, &spec) {
+                HookAction::Current(_) => println!("{} is current", spec.path.display()),
+                HookAction::Replace(range) => {
+                    existing.replace_range(range, spec.block);
+                    std::fs::write(&spec.path, existing)?;
+                    println!("upgraded {}", spec.path.display());
+                }
+                HookAction::Upgrade(range) => {
+                    existing.replace_range(range, spec.block);
+                    std::fs::write(&spec.path, existing)?;
+                    println!("upgraded {}", spec.path.display());
+                }
+                HookAction::Refuse | HookAction::Foreign => unreachable!("checked above"),
+            }
             continue;
         }
         std::fs::write(&spec.path, format!("#!/bin/sh\n{}", spec.block))?;
@@ -420,15 +486,37 @@ fn hooks_install() -> Result<i32> {
 }
 
 fn hooks_uninstall() -> Result<i32> {
-    for spec in hook_specs(&hooks_dir()?) {
+    let specs = hook_specs(&hooks_dir()?);
+    let mut foreign = false;
+    for spec in &specs {
         if !spec.path.exists() {
             continue;
         }
         let existing = std::fs::read_to_string(&spec.path)?;
-        if !existing.contains(spec.marker) {
+        if matches!(hook_action(&existing, spec), HookAction::Refuse) {
+            foreign = true;
+            eprintln!("{} already exists; add this block:", spec.path.display());
+            eprint!("{}", spec.block);
+        }
+    }
+    if foreign {
+        return Ok(1);
+    }
+
+    for spec in specs {
+        if !spec.path.exists() {
             continue;
         }
-        let remaining = existing.replace(spec.block, "");
+        let mut existing = std::fs::read_to_string(&spec.path)?;
+        let range = match hook_action(&existing, &spec) {
+            HookAction::Foreign => continue,
+            HookAction::Current(range)
+            | HookAction::Replace(range)
+            | HookAction::Upgrade(range) => range,
+            HookAction::Refuse => unreachable!("checked above"),
+        };
+        existing.replace_range(range, "");
+        let remaining = existing;
         if remaining.trim() == "#!/bin/sh" {
             std::fs::remove_file(&spec.path)?;
         } else {
@@ -878,6 +966,43 @@ mod tests {
     #[test]
     fn the_old_hooks_install_spelling_no_longer_parses() {
         assert!(Cli::try_parse_from(["lane", "hooks", "install"]).is_err());
+    }
+
+    #[test]
+    fn a_current_delimited_hook_is_current() {
+        let specs = hook_specs(Path::new(".git/hooks"));
+        assert!(matches!(
+            hook_action(POST_COMMIT_BLOCK, &specs[0]),
+            HookAction::Current(_)
+        ));
+    }
+
+    #[test]
+    fn a_changed_delimited_hook_is_replaced() {
+        let specs = hook_specs(Path::new(".git/hooks"));
+        let changed = POST_COMMIT_BLOCK.replace("lane capture HEAD", "lane capture changed");
+        assert!(matches!(
+            hook_action(&changed, &specs[0]),
+            HookAction::Replace(_)
+        ));
+    }
+
+    #[test]
+    fn an_exact_legacy_hook_is_upgraded() {
+        let specs = hook_specs(Path::new(".git/hooks"));
+        assert!(matches!(
+            hook_action(POST_COMMIT_V1, &specs[0]),
+            HookAction::Upgrade(_)
+        ));
+    }
+
+    #[test]
+    fn a_foreign_hook_is_refused() {
+        let specs = hook_specs(Path::new(".git/hooks"));
+        assert!(matches!(
+            hook_action("#!/bin/sh\necho mine\n", &specs[0]),
+            HookAction::Foreign
+        ));
     }
 
     #[test]

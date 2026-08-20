@@ -117,7 +117,7 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 | Unit + integration | `cargo test` | baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
+| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
 | Linux gates | `./scripts/check-linux.sh` | passes from a lane *and* the main checkout |
 
 Record both baselines before starting; at `d8d8074` they are 72 and 113.
@@ -172,9 +172,14 @@ Same scenario, but audit with `--review cmd --review-cmd ./tests/fake-reviewer`.
 verdict is `holds`, the fingerprint must be refreshed and the next `lane check` must report
 `fresh`.
 
-Read `tests/fake-reviewer` first to see what verdict it returns and for which input; if it
-cannot be made to return `holds`, say so and extend it — it is a test fixture, not
-production code, and `test_lane.sh` is in scope.
+`tests/fake-reviewer` keys off marker words in the note text: it returns `holds` for a note
+containing `constant-time`, and `unsure` for anything it does not recognise. Both cases are
+therefore reachable without touching the fixture and without the network.
+
+**Also test `unsure`**, which is the case that distinguishes "a reviewer ran" from "the
+drift was resolved". A note the reviewer was unsure about must still report `body-drift`
+afterwards. This is the assertion most likely to be missed, because the reviewer ran and
+the audit looked successful.
 
 **Verify**: `lane check` → `fresh`, and the note is still in `.context/-/`.
 
@@ -200,12 +205,21 @@ is "and is re-reported by the next audit" \
 "$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
 is "a holds verdict clears it" \
    "$("$LANE" check --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["body-drift"])')" "0"
+
+# an unsure verdict must NOT clear it: the reviewer ran, the drift is unresolved
+setup
+"$LANE" note -p src/auth.rs -a "fn refresh" "callers depend on the rotated token" > /dev/null
+"$LANE" audit > /dev/null
+sedi 's/rotate(token)/rotate(token.trim())/' src/auth.rs
+"$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
+is "an unsure verdict leaves it flagged" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["body-drift"])')" "1"
 ```
 
 Confirm the first two fail against the pre-Step-1 binary. Check `lane check --json`'s actual
 key names before relying on them; adjust the extraction, not the assertion's intent.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 3.
+**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
 
 ### Step 5: Say what it means
 
@@ -218,12 +232,13 @@ is simply wrong — delete the file and commit, which is already the documented 
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes from a lane and from the main checkout
 - [ ] Edit a noted span, `lane audit --review none`, `lane check` → `body-drift 1`
 - [ ] A second `lane audit --review none` still reports it
 - [ ] A `holds` verdict clears it and the note survives
+- [ ] An `unsure` verdict leaves it flagged, even though a reviewer ran
 - [ ] A `fresh` note's fingerprint still updates, and a no-op audit still writes nothing
 - [ ] `git diff --stat -- crates/lane/src/review.rs crates/lane/assets/skill.md AGENTS.md` → empty
 

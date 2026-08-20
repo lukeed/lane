@@ -222,7 +222,8 @@ fn play_scene(
             Step::In(directory, command) => run_scene_command(&sandbox.join(directory), command),
             Step::Look(text) => {
                 print_wrapped(text, 2, "Look: ");
-                let _ = read_line("  [enter] to continue ");
+                println!("  [enter] to continue");
+                let _ = read_line("");
             }
         }
     }
@@ -302,15 +303,23 @@ fn read_line(prompt: &str) -> Option<String> {
 
 fn print_wrapped(text: &str, indent: usize, first_prefix: &str) {
     const WIDTH: usize = 78;
-    let padding = " ".repeat(indent);
-    for paragraph in text.lines() {
+    let prefix_width = first_prefix.chars().count();
+    for (index, paragraph) in text.split("\n\n").enumerate() {
+        if index > 0 {
+            println!();
+        }
+        let mut padding = " ".repeat(indent);
         let mut line = String::new();
         let mut prefix = first_prefix;
         for word in paragraph.split_whitespace() {
-            let width = indent + prefix.len() + line.len() + usize::from(!line.is_empty());
-            if width + word.len() > WIDTH && !line.is_empty() {
+            let width = padding.len()
+                + prefix.chars().count()
+                + line.chars().count()
+                + usize::from(!line.is_empty());
+            if width + word.chars().count() > WIDTH && !line.is_empty() {
                 println!("{padding}{prefix}{line}");
                 line.clear();
+                padding = " ".repeat(indent + prefix_width);
                 prefix = "";
             }
             if !line.is_empty() {

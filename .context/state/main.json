@@ -13,8 +13,7 @@
     "raw_hash": "8f1a51ad1c21bf66",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 4
+    "norm": "1"
   },
   "01M0ESPFEX4KWAVB5BN4ZJ2ZWX": {
     "sig": "a4bcd7d4c565b528",
@@ -22,8 +21,7 @@
     "raw_hash": "f3e43bebe5e34d8a",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 4
+    "norm": "1"
   },
   "01M0ESPFF3M16TMEFZK9V3B7SG": {
     "sig": "b91957dbbe5addac",
@@ -31,8 +29,7 @@
     "raw_hash": "17a9f083ffbb5e7d",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 4
+    "norm": "1"
   },
   "01M0ESPFFA6RKDW9EPAF7YGQ3V": {
     "sig": "b91957dbbe5addac",
@@ -40,14 +37,15 @@
     "raw_hash": "17a9f083ffbb5e7d",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 4
+    "norm": "1"
   },
   "01M0ESRPDGANMXC60YCD3VYVS5": {
-    "status": "body-drift",
-    "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 6
+    "sig": "e3b0c44298fc1c14",
+    "body_hash": "6fee47a009c899b3",
+    "raw_hash": "e560bc884ebadd4e",
+    "status": "fresh",
+    "checked": "2026-08-20T17:05:03Z",
+    "norm": "1"
   },
   "01M0ESRPDVY1HE58A16HGPM0Q0": {
     "sig": "d6eb344e91ff262a",
@@ -63,8 +61,7 @@
     "raw_hash": "10addc908e8f4be2",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 4
+    "norm": "1"
   },
   "01M0ESYXZH9H0Z631FGCPND97V": {
     "sig": "6b7dd66fe2601cc3",
@@ -72,8 +69,7 @@
     "raw_hash": "f74464b9de23a356",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 1
+    "norm": "1"
   },
   "01M0ESYXZNKCATJMA29RKWE8JH": {
     "sig": "a7fad34c8e29d463",
@@ -81,8 +77,7 @@
     "raw_hash": "02609d6d0c3f078c",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 2
+    "norm": "1"
   },
   "01M0ESYXZVNY1SVCQJRZ51K409": {
     "sig": "11a3ed632b3c2ed9",
@@ -90,8 +85,7 @@
     "raw_hash": "e4d48d229295c335",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 1
+    "norm": "1"
   },
   "01M0ET212YPCXNBNFFGK5EMV0W": {
     "sig": "8a140faca048dedd",
@@ -99,8 +93,7 @@
     "raw_hash": "f80ff5a0cece71f8",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 3
+    "norm": "1"
   },
   "01M0EVWZGPP2GNST4Y52MG8AS1": {
     "sig": "05a975d77f5b9730",
@@ -108,8 +101,7 @@
     "raw_hash": "2b67bfef2b77fccd",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 2
+    "norm": "1"
   },
   "01M0EWMNDA5DS5F6Z5R46N4TCP": {
     "sig": "cd3ddeb4b8ef600f",
@@ -152,16 +144,20 @@
     "norm": "1"
   },
   "01M0FTRYDMD4HECAQSTKJH7PKT": {
-    "status": "body-drift",
-    "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 1
+    "sig": "f2409b92e972e731",
+    "body_hash": "5f01363646e7d53b",
+    "raw_hash": "c93d12460a5a40f9",
+    "status": "fresh",
+    "checked": "2026-08-20T17:05:03Z",
+    "norm": "1"
   },
   "01M0FTSGYPQDM34YWCBXT9ZYA8": {
-    "status": "body-drift",
-    "checked": "2026-08-20T17:04:40Z",
-    "norm": "1",
-    "reads": 1
+    "sig": "f2409b92e972e731",
+    "body_hash": "5f01363646e7d53b",
+    "raw_hash": "c93d12460a5a40f9",
+    "status": "fresh",
+    "checked": "2026-08-20T17:05:03Z",
+    "norm": "1"
   },
   "01M0G14CM3EQ1WDH736MAW54RC": {
     "sig": "e38974ba210b0ef5",
@@ -177,6 +173,14 @@
     "raw_hash": "dbf99b60f400837c",
     "status": "fresh",
     "checked": "2026-08-20T17:04:40Z",
+    "norm": "1"
+  },
+  "01M0G248G7Z4VF20CD6MMDFTVN": {
+    "sig": "e38974ba210b0ef5",
+    "body_hash": "f056f87c972d2f0b",
+    "raw_hash": "04c7cfdd6c2fa2e7",
+    "status": "fresh",
+    "checked": "2026-08-20T17:05:03Z",
     "norm": "1"
   }
 }

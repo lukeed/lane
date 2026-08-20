@@ -204,9 +204,29 @@ let contained = dst.strip_prefix(src).ok().map(Path::to_path_buf);
 
 then treat a `rel` equal to that component, or beneath it, as skipped.
 
-This is the guard that matters. A hardcoded directory name is load-bearing and one
-refactor away from being dropped; a self-containment check protects every present and
-future caller, including the `--dirty` arm, without anyone having to remember.
+2b is the durable half: a hardcoded directory name is one refactor away from being
+dropped, while a self-containment check protects every present and future caller.
+
+**2c — exclude the whole lanes directory from the `--dirty` walk.** 2b is necessary and
+not sufficient. The `--dirty` arm does not go through `ignored_entries`, so 2a never
+applies to it; it clones the entire tree through its `skip` closure. 2b excludes only the
+destination, so *sibling* lanes are still copied in — verified:
+
+```
+second_clean_contains_first=no
+second_dirty_contains_first=yes
+```
+
+Add `.lanes` to the `--dirty` skip closure alongside `.git`, in the same shape:
+
+```rust
+let skip = |rel: &str, _is_dir: bool| {
+    rel == ".git" || rel.starts_with(".git/") || rel == ".lanes" || rel.starts_with(".lanes/")
+};
+```
+
+`--dirty` carries your uncommitted work. Other lanes are separate worktrees and are never
+part of that.
 
 Verify this directly rather than by reading: create a lane, put a large file in it, create
 a second lane, and confirm the second does not contain the first. Getting it wrong is
@@ -215,8 +235,10 @@ this repo means roughly half a million directory entries and several minutes of 
 
 **Verify**:
 - `lane new a`, then `lane new b`, then `[ -e <repo>/.lanes/b/.lanes ]` is false
-- with an uncommitted change present, `lane new c --dirty` completes and
-  `[ -e <repo>/.lanes/c/.lanes ]` is false
+- with an uncommitted change present, and lanes `a` and `b` already existing,
+  `lane new c --dirty` completes and `[ -e <repo>/.lanes/c/.lanes ]` is false — test this
+  with sibling lanes present, not just one lane, which is what the earlier version of this
+  plan missed
 - `lane new` output reports a file count in the same order of magnitude as before this change
 - a unit test in `cow.rs` proves `clone_tree` skips a destination nested inside its source,
   using a directory name that has nothing to do with lanes — the point is that the guard is
@@ -346,10 +368,13 @@ repository and are excluded via `.git/info/exclude`, so nothing is committed.
   reading ignore rules — `find`, `du`, `tar`, Spotlight, Time Machine — will see N checkouts.
   Reflink means the disk is shared and those tools do not know it. That is the accepted cost
   of this layout; do not try to solve it here.
-- Guard 2b is the durable one: it is stated in terms of the source and destination rather
-  than a directory name, so renaming `.lanes` or adding a second nested output directory
-  cannot reintroduce the recursion. Guard 2a is a name and will need updating if the
-  directory is ever renamed — the test in Step 6 is what catches that, so do not weaken it.
+- Guard 2b is the durable one: stated in terms of source and destination rather than a
+  directory name, so renaming `.lanes` cannot reintroduce the recursion. 2a and 2c are
+  names and will need updating if the directory is ever renamed — the tests in Step 6 are
+  what catch that, so do not weaken them.
+- 2b alone is not enough, and the reason is worth remembering: it reasons about the
+  destination, while 2a and 2c reason about the *category* of thing being cloned. A lane is
+  never cloneable content, whether or not it happens to be this run's destination.
 - `.git` has been excluded by these same two filters since the beginning, which is why it
   has never nested despite existing in every worktree. `.lanes` is the same problem with a
   different name.

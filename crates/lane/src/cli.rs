@@ -231,6 +231,7 @@ const PROTOCOL_END: &str = "<!-- /lane:protocol -->";
 
 enum ProtocolAction {
     Write,
+    Append,
     Current,
     Replace(Range<usize>),
     Upgrade(Range<usize>),
@@ -267,7 +268,7 @@ fn protocol_action(existing: Option<&str>) -> ProtocolAction {
     }
 
     let Some(section) = context_memory_section(existing) else {
-        return ProtocolAction::Refuse;
+        return ProtocolAction::Append;
     };
     if existing[section.clone()].trim() == PROTOCOL_V1.trim() {
         ProtocolAction::Upgrade(section)
@@ -286,6 +287,11 @@ fn write_protocol(agents: &Path) -> Result<i32> {
             std::fs::write(agents, format!("# AGENTS\n{PROTOCOL}"))?;
             println!("wrote {} protocol", agents.display());
         }
+        ProtocolAction::Append => {
+            let mut file = std::fs::OpenOptions::new().append(true).open(agents)?;
+            write!(file, "{PROTOCOL}")?;
+            println!("added protocol to {}", agents.display());
+        }
         ProtocolAction::Current => println!("{} protocol is current", agents.display()),
         ProtocolAction::Replace(range) => {
             let mut existing = existing.expect("existing protocol file");
@@ -301,7 +307,7 @@ fn write_protocol(agents: &Path) -> Result<i32> {
         }
         ProtocolAction::Refuse => {
             eprintln!(
-                "{} has a protocol lane did not write; replace it with:",
+                "{} has a Context memory section lane did not write; replace it with:",
                 agents.display()
             );
             eprintln!("{}", PROTOCOL.trim());
@@ -867,6 +873,15 @@ mod tests {
         assert!(matches!(
             protocol_action(Some(&existing)),
             ProtocolAction::Replace(_)
+        ));
+    }
+
+    #[test]
+    fn unrelated_agents_content_gets_a_protocol_appended() {
+        let existing = "# AGENTS\n\nSome existing house rules for this project.\n";
+        assert!(matches!(
+            protocol_action(Some(existing)),
+            ProtocolAction::Append
         ));
     }
 

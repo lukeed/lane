@@ -484,6 +484,12 @@ echo "== 24. init repairs a protocol it wrote earlier =="
 setup
 is "init writes the marked protocol" \
    "$(grep -c 'lane:protocol' AGENTS.md)" "2"
+printf '# AGENTS\n\nSome existing house rules for this project.\n' > AGENTS.md
+"$LANE" init > /dev/null 2>&1
+is "init adds a protocol to unrelated content" \
+   "$(grep -c 'lane:protocol' AGENTS.md)" "2"
+is "and preserves the unrelated content" \
+   "$(grep -c 'Some existing house rules' AGENTS.md)" "1"
 cat > AGENTS.md <<'AGENTSEOF'
 # AGENTS
 

@@ -6,7 +6,7 @@ use crate::git::{self, git, try_git};
 use crate::review;
 use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, SIG, UNVERIFIABLE};
 use crate::syntax::{Resolution, Source};
-use crate::util::now_iso;
+use crate::util::{now_iso, slug};
 use crate::worktree as wt;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
@@ -888,6 +888,14 @@ fn done(
             "error: {} has uncommitted changes to {}; commit or stash there first",
             trunk,
             blocked.join(", ")
+        );
+        return Ok(1);
+    }
+
+    let trunk_state = format!("{CONTEXT_DIR}/{}/{}.json", store::STATE, slug(&trunk, 60));
+    if !try_git(&["status", "--porcelain", "--", &trunk_state], Some(&root)).is_empty() {
+        eprintln!(
+            "error: {trunk} has uncommitted changes to {trunk_state}; commit or stash it first"
         );
         return Ok(1);
     }

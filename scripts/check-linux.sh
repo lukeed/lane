@@ -7,20 +7,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMMON="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
-COMMON_MOUNT=()
-case "$COMMON" in
-  "$ROOT"/*) ;;
-  *) COMMON_MOUNT=(-v "$COMMON":"$COMMON":ro) ;;
-esac
 podman machine start >/dev/null 2>&1 || true
 
-podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro "${COMMON_MOUNT[@]}" -w /w docker.io/library/rust:1-slim sh -c '
+podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro -w /w docker.io/library/rust:1-slim sh -c '
   set -e
   apt-get update -qq >/dev/null 2>&1
   apt-get install -y -qq gcc git python3 >/dev/null 2>&1
   rustup component add clippy rustfmt >/dev/null 2>&1
-  cp -r /w /build && cd /build
+  # A linked worktree .git points outside the container; the gates do not need it because test_lane.sh creates its own repos.
+  mkdir -p /build && cp -a /w/. /build/ && rm -rf /build/.git && cd /build
   git config --global user.email ci@lane.test
   git config --global user.name ci
   git config --global init.defaultBranch main

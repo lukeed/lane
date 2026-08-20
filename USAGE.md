@@ -74,6 +74,20 @@ lane note -p src/auth.rs -a "fn verify" \
   "must stay constant-time; early return leaks token length"
 ```
 
+Install the commit hooks once to leave the same kind of note in a commit message:
+
+```bash
+lane hooks install
+
+git commit -m "make verify constant-time
+
+Why: src/auth.rs#fn verify | early return leaks token length"
+```
+
+The target path is required; omit `#<anchor>` to use `@file`. Record why it must
+stay true, not what you did. The hook appends valid `Why:` trailers to the same
+pending queue as `lane note`, and the next audit promotes them.
+
 `-a` is the anchor — what the note is *about*:
 
 | anchor | matches |
@@ -233,6 +247,8 @@ Land them in any order.
 | `lane ls` | lanes, branch, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
 | `lane note -p <file> -a <anchor> "<text>"` | record a finding |
+| `lane hooks install` | install commit decision capture hooks |
+| `lane hooks uninstall` | remove lane's hook blocks |
 | `lane why <file> [-a <anchor>]` | read context, bump read counts |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>] [--review ...]` | run the memory pass alone |

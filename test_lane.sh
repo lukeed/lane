@@ -421,6 +421,35 @@ is "nothing was committed" "$(git -C "$LP" rev-parse HEAD)" "$BEFORE"
 git checkout -- src/auth.rs
 ( cd "$LP" && "$LANE" done > /dev/null 2>&1 )
 
+echo "== 22. decisions are captured from commit trailers =="
+setup
+"$LANE" hooks install > /dev/null
+git commit -q --allow-empty -m "make verify constant-time
+
+Why: src/auth.rs#fn verify | early return leaks token length"
+is "the trailer became a pending note" \
+   "$(grep -c 'early return leaks' .wt/pending.jsonl)" "1"
+"$LANE" audit > /dev/null
+is "and promotes like any other note" \
+   "$("$LANE" why src/auth.rs | grep -c 'early return leaks')" "1"
+
+git commit -q --allow-empty -m "tidy imports"
+is "a commit with no trailer records nothing" \
+   "$([ -f .wt/pending.jsonl ] && echo yes || echo no)" "no"
+
+git commit -q --allow-empty -m "refactor the parser
+
+Why: refactor the parser" 2> /tmp/cap.out
+is "a pasted subject is refused" "$(grep -c 'warning:' /tmp/cap.out)" "1"
+is "and records nothing" "$([ -f .wt/pending.jsonl ] && echo yes || echo no)" "no"
+
+git commit -q --allow-empty -m "note it twice
+
+Why: src/auth.rs#fn verify | early return leaks token length"
+"$LANE" audit > /dev/null
+is "an identical note is not duplicated" \
+   "$(grep -rl 'early return leaks' .context/- --include='*.md' | wc -l | tr -d ' ')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

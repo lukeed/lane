@@ -121,8 +121,8 @@ one is a line in the table in `crates/lane/src/syntax.rs`.
 ## Tests
 
 ```
-cargo test        # 43 tests: clone layer, worktrees, anchors, hashing, state, verdicts
-./test_lane.sh    # 77 assertions against real git repos in a tmpdir
+cargo test        # 52 tests: clone layer, worktrees, anchors, hashing, state, verdicts
+./test_lane.sh    # 86 assertions against real git repos in a tmpdir
 ```
 
 ## What the clone layer is tested against
@@ -145,9 +145,9 @@ See USAGE.md.
 
 ## Still stubbed
 
-- **No session distillation.** `lane note` still needs calling. The version
-  that gets adopted derives notes from the agent session at `done` time and
-  writes them to `pending.jsonl` — a producer swap, not a redesign.
+- **Commit decisions are explicit.** `lane hooks install` captures targeted `Why:`
+  trailers into `pending.jsonl`. Agent sessions are not distilled yet; without a
+  trailer, `lane note` still needs calling.
 - **A file whose language has no grammar resolves `@file` and nothing else.**
   Named-anchor notes there are kept and reported `unverifiable`. Supporting drift
   checks for another language requires a table entry in `crates/lane/src/syntax.rs`.

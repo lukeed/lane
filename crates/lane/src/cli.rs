@@ -1,6 +1,7 @@
 //! Command surface. Every command returns an exit code; failures bubble as errors.
 
 use crate::audit;
+use crate::capture;
 use crate::git::{self, git, try_git};
 use crate::review;
 use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, PENDING, SIG, UNVERIFIABLE};
@@ -10,7 +11,7 @@ use crate::worktree as wt;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use std::io::{IsTerminal, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const MAX_NOTES: usize = 5;
 const MAX_CHARS: usize = 1200;
@@ -74,6 +75,13 @@ enum Command {
         #[arg(short, long, default_value = "@file")]
         anchor: String,
     },
+    /// manage commit-message capture hooks
+    Hooks {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+    #[command(hide = true)]
+    Capture { rev: String },
     /// show context for a path
     Why {
         path: Option<String>,
@@ -120,6 +128,14 @@ enum Command {
     Shellenv,
 }
 
+#[derive(Subcommand, Debug)]
+enum HookAction {
+    /// install commit-message capture hooks
+    Install,
+    /// remove lane's commit-message capture hooks
+    Uninstall,
+}
+
 /// Takes the stream it will be written to; under --cd that is stderr, not stdout.
 fn bold(text: &str, tty: bool) -> String {
     if tty {
@@ -141,6 +157,14 @@ pub fn run() -> Result<i32> {
         Command::Ls => ls(),
         Command::Path { name } => path(&name),
         Command::Note { text, path, anchor } => note(&text, &path, &anchor),
+        Command::Hooks { action } => match action {
+            HookAction::Install => hooks_install(),
+            HookAction::Uninstall => hooks_uninstall(),
+        },
+        Command::Capture { rev } => {
+            capture::capture(&rev);
+            Ok(0)
+        }
         Command::Why { path, anchor } => why(path.as_deref(), anchor.as_deref()),
         Command::Check { json } => check(json),
         Command::Audit {
@@ -182,6 +206,109 @@ const PROTOCOL: &str = "\n## Context memory\n\n\
 - Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
 - Do not edit `.context/` by hand; `lane done` manages it.\n";
 
+const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
+const POST_COMMIT_BLOCK: &str = "# lane: capture Why trailers\n\
+command -v lane >/dev/null 2>&1 && lane capture HEAD || true\n";
+const PREPARE_MARKER: &str = "# lane: offer the Why form when an editor will open";
+const PREPARE_BLOCK: &str = "# lane: offer the Why form when an editor will open\n\
+case \"$2\" in\n\
+  \"\"|template) printf '\\n# Why: <path>#<anchor> | what must stay true (optional, lane note)\\n' >> \"$1\" ;;\n\
+esac\n";
+
+struct HookSpec {
+    path: PathBuf,
+    marker: &'static str,
+    block: &'static str,
+}
+
+fn hook_specs(dir: &Path) -> [HookSpec; 2] {
+    [
+        HookSpec {
+            path: dir.join("post-commit"),
+            marker: POST_COMMIT_MARKER,
+            block: POST_COMMIT_BLOCK,
+        },
+        HookSpec {
+            path: dir.join("prepare-commit-msg"),
+            marker: PREPARE_MARKER,
+            block: PREPARE_BLOCK,
+        },
+    ]
+}
+
+fn hooks_dir() -> Result<PathBuf> {
+    Ok(PathBuf::from(git(
+        &["rev-parse", "--git-path", "hooks"],
+        None,
+    )?))
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = std::fs::metadata(path)?.permissions();
+    permissions.set_mode(permissions.mode() | 0o111);
+    std::fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+fn hooks_install() -> Result<i32> {
+    let dir = hooks_dir()?;
+    let specs = hook_specs(&dir);
+    let mut foreign = false;
+    for spec in &specs {
+        if !spec.path.exists() {
+            continue;
+        }
+        let existing = std::fs::read_to_string(&spec.path)?;
+        if !existing.contains(spec.marker) {
+            foreign = true;
+            eprintln!("{} already exists; add this block:", spec.path.display());
+            eprint!("{}", spec.block);
+        }
+    }
+    if foreign {
+        return Ok(1);
+    }
+
+    std::fs::create_dir_all(&dir)?;
+    for spec in specs {
+        if spec.path.exists() {
+            println!("{} already installed", spec.path.display());
+            continue;
+        }
+        std::fs::write(&spec.path, format!("#!/bin/sh\n{}", spec.block))?;
+        make_executable(&spec.path)?;
+        println!("installed {}", spec.path.display());
+    }
+    Ok(0)
+}
+
+fn hooks_uninstall() -> Result<i32> {
+    for spec in hook_specs(&hooks_dir()?) {
+        if !spec.path.exists() {
+            continue;
+        }
+        let existing = std::fs::read_to_string(&spec.path)?;
+        if !existing.contains(spec.marker) {
+            continue;
+        }
+        let remaining = existing.replace(spec.block, "");
+        if remaining.trim() == "#!/bin/sh" {
+            std::fs::remove_file(&spec.path)?;
+        } else {
+            std::fs::write(&spec.path, remaining)?;
+        }
+        println!("removed lane block from {}", spec.path.display());
+    }
+    Ok(0)
+}
+
 fn init() -> Result<i32> {
     let root = wt::main_root()?;
     let context = root.join(CONTEXT_DIR);
@@ -213,6 +340,9 @@ fn init() -> Result<i32> {
     if !ok {
         println!("  lanes will still work as plain worktrees; ignored files will not be cloned");
     }
+    println!(
+        "capture commit decisions with `lane hooks install` (`lane hooks uninstall` removes them)"
+    );
     Ok(0)
 }
 

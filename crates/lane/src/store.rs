@@ -6,7 +6,7 @@ use crate::syntax::{Resolution, Source, Span};
 use crate::util::{now_iso, slug, ulid};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub const CONTEXT_DIR: &str = ".context";
@@ -223,6 +223,10 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
     }
     let text = std::fs::read_to_string(&pending)?;
     let mut created = Vec::new();
+    let mut seen: HashSet<(String, String, String)> = load_notes(root, None)
+        .into_iter()
+        .map(|note| (note.path(), note.meta.anchor, note.body.trim().to_string()))
+        .collect();
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: PendingNote = match serde_json::from_str(line) {
@@ -232,6 +236,14 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
                 continue;
             }
         };
+        let key = (
+            rec.path.clone(),
+            rec.anchor.clone(),
+            rec.text.trim().to_string(),
+        );
+        if seen.contains(&key) {
+            continue;
+        }
         let mut meta = Meta {
             id: ulid(),
             anchor: rec.anchor.clone(),
@@ -256,6 +268,7 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
         note.write(&file)?;
         note.file = Some(file);
         created.push(note);
+        seen.insert(key);
     }
 
     std::fs::remove_file(&pending)?;
@@ -834,5 +847,25 @@ mod tests {
             rel_to_repo(root.path(), inside.to_str().unwrap()).unwrap(),
             "src/a.rs"
         );
+    }
+
+    #[test]
+    fn promoting_the_same_pending_note_twice_creates_one_note() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/auth.rs"), "pub fn verify() {}\n").unwrap();
+        let pending = PendingNote {
+            text: "early return leaks token length".into(),
+            path: "src/auth.rs".into(),
+            anchor: "fn verify".into(),
+            branch: "main".into(),
+            at: "2026-08-19T00:00:00Z".into(),
+        };
+
+        append_pending(root.path(), &pending).unwrap();
+        assert_eq!(promote_pending(root.path()).unwrap().len(), 1);
+        append_pending(root.path(), &pending).unwrap();
+        assert!(promote_pending(root.path()).unwrap().is_empty());
+        assert_eq!(load_notes(root.path(), Some("src/auth.rs")).len(), 1);
     }
 }

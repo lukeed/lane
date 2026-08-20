@@ -14,7 +14,7 @@ counts before starting, and update your row when done.
 | 014 | Follow a renamed file instead of discarding its memory | P1 | M | — | DONE |
 | 011 | Stop discarding notes whose anchor we cannot resolve | P1 | M | — | DONE |
 | 013 | Make note files immutable, everything that changes per-writer | P1 | M | — | DONE |
-| 015 | Capture decisions from commit trailers, without importing the git log | P2 | M | — | TODO |
+| 015 | Capture decisions from commit trailers, without importing the git log | P2 | M | — | DONE |
 | 006 | Make the shell integration survive failure and survive `done` | P2 | S | — | DONE |
 | 007 | Carry what git ignores, and nothing at all without reflink | P2 | M | — | DONE |
 | 016 | Fail `lane done` before it writes, not after | P2 | S | — | DONE |

@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod capture;
 pub mod cli;
 pub mod cow;
 pub mod git;

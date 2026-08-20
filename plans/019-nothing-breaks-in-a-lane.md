@@ -89,7 +89,9 @@ not hide it from lane. `git status --porcelain --ignored` still reports it:
 and that is exactly what `ignored_entries()` harvests and clones into each new lane. Without
 a guard, lane #2 contains a copy of lane #1. On the `--dirty` path it is worse than waste:
 `clone_tree(&root, &dest, &skip)` would be writing into a subdirectory of the tree it is
-walking, which is unbounded recursion.
+walking. The default path has the same shape, since `.lanes/` is reported as an ignored
+entry and `clone_entry` would clone it with the destination inside the source. Either way
+the walk descends into what it is writing and nests until the path length limit stops it.
 
 **Not a goal**: making a lane work with no access to its repository. A worktree is a
 reference into another directory; copied away from it, git cannot resolve it, and the thing
@@ -297,7 +299,11 @@ repository and are excluded via `.git/info/exclude`, so nothing is committed.
 ## STOP conditions
 
 - A newly created lane contains a `.lanes` directory. Stop immediately — that is the
-  recursion this plan exists to prevent, and continuing can fill the disk.
+  recursion this plan exists to prevent. Measured behaviour: the walk nests
+  `.lanes/<name>/.lanes/<name>/...` until it halts on `ENAMETOOLONG` at roughly 223 levels.
+  With reflink the file data is shared, so this costs inodes and wall time rather than free
+  space — on this repo, on the order of half a million directory entries and several
+  minutes before it errors. Recoverable with `rm -rf`, but do not let it run.
 - `--relative-paths` is rejected by the git on this machine despite the probe.
 - Moving the repository leaves a lane broken even with relative pointers on both sides.
 - Making `check-linux.sh` work from a lane would change its behaviour from the main checkout.

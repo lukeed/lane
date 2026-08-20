@@ -121,8 +121,8 @@ one is a line in the table in `crates/lane/src/syntax.rs`.
 ## Tests
 
 ```
-cargo test        # 52 tests: clone layer, worktrees, anchors, hashing, state, verdicts
-./test_lane.sh    # 86 assertions against real git repos in a tmpdir
+cargo test        # clone layer, worktrees, anchors, hashing, state, verdicts
+./test_lane.sh    # end to end, against real git repos in a tmpdir
 ```
 
 ## What the clone layer is tested against

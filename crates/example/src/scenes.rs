@@ -60,10 +60,10 @@ pub const SCENES: &[Scene] = &[
             Say("A project that uses lane has three additions, and none of them are large."),
             Do("ls -a"),
             Say(
-                "`.context/` is the memory. It is plain markdown at predictable paths, so an\n\
+                "`.lane/` is the memory. It is plain markdown at predictable paths, so an\n\
                  agent finds it without any tool integration. It is empty right now.",
             ),
-            Do("find .context -type f | head"),
+            Do("find .lane -type f | head"),
             Say(
                 "`AGENTS.md` is the part an agent always has in context. Three rules and a\n\
                  pointer, deliberately short.",
@@ -110,7 +110,7 @@ pub const SCENES: &[Scene] = &[
                  be rewritten.",
             ),
             Do("lane audit --review none"),
-            Do("find .context/-/ -type f"),
+            Do("find .lane/memory/ -type f"),
             Look("Open that file. It is markdown with a small header — nothing proprietary."),
             Say(
                 "Now commit it. Memory is versioned like source, which is what makes it\n\
@@ -118,7 +118,7 @@ pub const SCENES: &[Scene] = &[
                  be committed before you open a lane, or the lane starts without it.",
             ),
             Do(
-                "git add -A .context && git commit -q -m 'memory: record what we know' && git log --oneline -1",
+                "git add -A .lane && git commit -q -m 'memory: record what we know' && git log --oneline -1",
             ),
         ],
         records: "recorded a note on src/auth.rs#fn verify",
@@ -147,19 +147,21 @@ pub const SCENES: &[Scene] = &[
             ),
             Do("lane new fix-empty-token"),
             Say(
-                "It lives inside the repository at `.lanes/<name>`, excluded from git so it\n\
+                "It lives inside the repository at `.lane/trees/<name>`, excluded from git so it\n\
                  never shows up in `git status`.",
             ),
             Do("git status --porcelain && echo '(empty: the lane is invisible to git)'"),
             In(
-                ".lanes/fix-empty-token",
+                ".lane/trees/fix-empty-token",
                 "printf 'pub fn verify(token: &str) -> bool {\\n    !token.is_empty() && parse(token).is_valid()\\n}\\n' > src/auth.rs",
             ),
             In(
-                ".lanes/fix-empty-token",
+                ".lane/trees/fix-empty-token",
                 "git add -A && git commit -q -m 'reject empty tokens' && git log --oneline -1",
             ),
-            Look("Look at `.lanes/fix-empty-token/` — a complete checkout, on its own branch."),
+            Look(
+                "Look at `.lane/trees/fix-empty-token/` — a complete checkout, on its own branch.",
+            ),
         ],
         records: "opened lane fix-empty-token and committed work",
     },
@@ -172,13 +174,13 @@ pub const SCENES: &[Scene] = &[
                 "You edited the body of `verify`. The note about it is still there, but the\n\
                  thing it describes has moved underneath it.",
             ),
-            In(".lanes/fix-empty-token", "lane check"),
+            In(".lane/trees/fix-empty-token", "lane check"),
             Say(
                 "`body-drift` means the implementation changed while the signature held. Lane\n\
                  cannot know whether the note is still true — that is a judgment — so it flags\n\
                  it and leaves it flagged.",
             ),
-            In(".lanes/fix-empty-token", "lane why src/auth.rs"),
+            In(".lane/trees/fix-empty-token", "lane why src/auth.rs"),
             Say(
                 "The `~` is the flag. Notes are not deleted for drifting; a human or a model\n\
                  decides, and until then the uncertainty stays visible.",
@@ -197,11 +199,11 @@ pub const SCENES: &[Scene] = &[
                  `Why: <path>#<anchor> | <what must stay true>`.",
             ),
             In(
-                ".lanes/fix-empty-token",
+                ".lane/trees/fix-empty-token",
                 "printf 'pub fn verify(token: &str) -> bool {\\n    !token.is_empty() && parse(token).is_valid()\\n}\\n\\npub fn refresh(token: &str) -> String {\\n    rotate(token)\\n}\\n' > src/auth.rs",
             ),
             In(
-                ".lanes/fix-empty-token",
+                ".lane/trees/fix-empty-token",
                 "git add -A && git commit -q -m 'add refresh\n\nWhy: src/auth.rs#fn refresh | callers depend on the rotated value, not the original'",
             ),
             Say(
@@ -227,22 +229,24 @@ pub const SCENES: &[Scene] = &[
                  case that would deadlock a shared file.",
             ),
             In(
-                ".lanes/agent-a",
+                ".lane/trees/agent-a",
                 "lane note -p src/auth.rs -a 'fn verify' 'agent-a: rejects empty tokens first'",
             ),
             In(
-                ".lanes/agent-b",
+                ".lane/trees/agent-b",
                 "lane note -p src/auth.rs -a 'fn verify' 'agent-b: parse is total, never panics'",
             ),
             In(
-                ".lanes/agent-c",
+                ".lane/trees/agent-c",
                 "lane note -p src/auth.rs -a 'fn verify' 'agent-c: called on every request, keep it allocation-free'",
             ),
             Say(
                 "Nothing conflicts, because a note file is written once and never modified.\n\
                  Two writers can never touch the same bytes, so there is nothing to resolve.",
             ),
-            Look("Look at `.lanes/` — four working directories, four branches, one repository."),
+            Look(
+                "Look at `.lane/trees/` — four working directories, four branches, one repository.",
+            ),
         ],
         records: "ran three lanes in parallel, all annotating the same anchor",
     },
@@ -251,13 +255,13 @@ pub const SCENES: &[Scene] = &[
         title: "Land them, in any order",
         why: "Each landing rebases onto whatever trunk has become.",
         steps: &[
-            In(".lanes/agent-b", "lane done --review none"),
+            In(".lane/trees/agent-b", "lane done --review none"),
             Say(
                 "Rebased, memory folded in, trunk fast-forwarded, lane deleted. Trunk's history\n\
                  stays linear and ends with a marker naming what landed.",
             ),
-            In(".lanes/agent-c", "lane done --review none"),
-            In(".lanes/agent-a", "lane done --review none"),
+            In(".lane/trees/agent-c", "lane done --review none"),
+            In(".lane/trees/agent-a", "lane done --review none"),
             Do("git log --oneline -6"),
             Say(
                 "Landed in a different order than they were opened, with no conflicts and no\n\
@@ -288,7 +292,7 @@ pub const SCENES: &[Scene] = &[
                  it for three seconds while a landing is attempted underneath.",
             ),
             Do(
-                "python3 -c \"import fcntl,time;f=open('.git/lane/main.lock','w');fcntl.flock(f,fcntl.LOCK_EX);time.sleep(3)\" & sleep 1; ( cd .lanes/fix-empty-token && lane done --review none ); wait",
+                "python3 -c \"import fcntl,time;f=open('.git/lane/main.lock','w');fcntl.flock(f,fcntl.LOCK_EX);time.sleep(3)\" & sleep 1; ( cd .lane/trees/fix-empty-token && lane done --review none ); wait",
             ),
             Say(
                 "It refuses at once and says why, rather than blocking or corrupting the\n\
@@ -302,7 +306,7 @@ pub const SCENES: &[Scene] = &[
         title: "Land the last lane and read the result",
         why: "Where the memory ends up, and what it looks like to the next person.",
         steps: &[
-            In(".lanes/fix-empty-token", "lane done --review none"),
+            In(".lane/trees/fix-empty-token", "lane done --review none"),
             Do("lane why src/auth.rs"),
             Say(
                 "Landing the fix changed `verify`, so every note about it is flagged at once —\n\
@@ -311,7 +315,7 @@ pub const SCENES: &[Scene] = &[
             ),
             Do("git log --oneline | head -8"),
             Look(
-                "Open `.context/` in your editor. Everything lane knows is in there, in plain\n\
+                "Open `.lane/` in your editor. Everything lane knows is in there, in plain\n\
                   markdown, at paths that mirror your source tree.",
             ),
         ],

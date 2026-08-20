@@ -12,7 +12,7 @@ lane why src/auth.rs                 read what earlier lanes learned
 lane done                            rebase, audit memory, fast-forward, remove
 ```
 
-Lanes live in `.lanes/` inside the repository and are excluded through `.git/info/exclude`,
+Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`,
 so nothing is committed.
 
 ## Copy-on-write
@@ -53,14 +53,15 @@ git config --add lane.exclude packages/legacy/node_modules
 
 ## Memory
 
-`.context/` holds two kinds of file and nothing else:
+`.lane/` holds lane's memory, per-branch records, and worktrees:
 
 ```
-.context/
-  -/<path>/<ulid>-<slug>.md     the note; written once, never rewritten
-  attic/<path>/<ulid>-<slug>.md the same file, retired, byte-identical
-  state/<branch>.json           per-branch cache: fingerprints
-  log/<branch>.jsonl            per-branch record: verdicts and evictions
+.lane/
+  memory/<path>/<ulid>-<slug>.md the note; written once, never rewritten
+  attic/<path>/<ulid>-<slug>.md  the same file, retired, byte-identical
+  branch/<name>/state.json       per-branch cache: fingerprints
+  branch/<name>/log.jsonl        per-branch record: verdicts and evictions
+  trees/<name>/                  the lane worktree
 ```
 
 A note file is written once and never modified, so two branches can never edit
@@ -69,10 +70,10 @@ more than one branch, but a lock held for the duration of `lane done`
 serializes those writes, so a landing is exclusive. `lane done` folds a lane's
 state and log into the trunk's, so nothing accumulates.
 
-`-` is reserved. Everything under it mirrors your paths, which is why a repo may
+`memory/` is reserved. Everything under it mirrors your paths, which is why a repo may
 have its own `attic/` without colliding with ours.
 
-The only `merge=union` rule is for `log/*.jsonl`, the one genuinely append-only
+The only `merge=union` rule is for `branch/*/log.jsonl`, the one genuinely append-only
 file — which is what union merge is actually for. Notes need no rule because
 they never change; a conflict on one means two people disagreed about `pinned`,
 and that should be loud.
@@ -105,6 +106,27 @@ Each `(path, anchor)` has a hard budget (5 notes / 1200 chars). Audit keeps
 notes in this order: `pinned > touched-by-this-lane > freshness > age`, then
 evicts the remainder to the attic with a timestamped reason. Reading a note is
 not a vote for it: you often read one to find out it is wrong.
+
+## Editor pickers
+
+To keep lane's store out of pickers built on ripgrep or fd, add a repo-root `.ignore`:
+
+```
+.lane/
+```
+
+Ripgrep and fd honour this file, so pickers built on them inherit it. Git ignores
+`.ignore` completely. VS Code does not read `.ignore`; add these entries to
+`.vscode/settings.json` instead:
+
+```json
+{
+  "files.exclude": { ".lane/": true },
+  "search.exclude": { ".lane/": true }
+}
+```
+
+Lane writes neither file; they are yours to add.
 
 ## Why `done` runs the audit after the rebase
 

@@ -105,7 +105,7 @@ mechanism has no input except the sentence you chose to write.
 Because it is a real git trailer, the reason also stays in git history.
 `git log --grep`, `git interpret-trailers`, and GitHub's UI all see it. The
 decision ends up recorded in two places that serve different readers — `git log`
-for someone reading history, `.context/` for someone about to edit the function.
+for someone reading history, `.lane/` for someone about to edit the function.
 
 ## What is automatic and what is not
 

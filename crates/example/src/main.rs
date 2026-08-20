@@ -261,10 +261,7 @@ fn print_output(output: &Output) {
 
 fn print_tree(sandbox: &Path) {
     println!("\n--- Sandbox tree ---");
-    for command in [
-        "find .context .lanes -print 2>/dev/null",
-        "git log --oneline",
-    ] {
+    for command in ["find .lane -print 2>/dev/null", "git log --oneline"] {
         run_scene_command(sandbox, command);
     }
 }

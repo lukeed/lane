@@ -17,7 +17,7 @@ lane done                   # rebase, distill memory, fast-forward trunk, delete
 cargo install --path crates/lane
 eval "$(lane shellenv)"          # add to .zshrc: makes `lane new` cd into the lane
 cd yourproject && lane init
-git add .context .gitattributes AGENTS.md
+git add .lane .gitattributes AGENTS.md
 git commit -m "lane: context memory"
 ```
 
@@ -41,7 +41,7 @@ byte copy would do the expensive work lane exists to avoid.
 lane new fix-login
   reflink: yes (reflink available)
   1284 files cloned (612.4 MiB shared, 0 copied)
-  /Users/you/yourproject/.lanes/fix-login
+  /Users/you/yourproject/.lane/trees/fix-login
 ```
 
 Tracked files come from git. Everything git ignores, at any depth, arrives by
@@ -146,7 +146,7 @@ normalized so comments and whitespace don't count:
 | `fresh` | unchanged | nothing, costs nothing |
 | `body-drift` | implementation moved | sent for review |
 | `signature-changed` | the described thing changed shape | sent for review |
-| `anchor-missing` | symbol gone | evicted to `.context/attic/` |
+| `anchor-missing` | symbol gone | evicted to `.lane/attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
@@ -191,7 +191,7 @@ lane audit --review cmd --review-cmd './my-reviewer'
 
 Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by
 `pinned > touched by this lane > freshness > age` and moves the rest to
-`.context/attic/` with the reason recorded in `.context/log/`.
+`.lane/attic/` with the reason recorded in `.lane/branch/<name>/log.jsonl`.
 Nothing is deleted.
 
 Keep something permanently:
@@ -203,7 +203,7 @@ pinned: true        # add to the note's frontmatter
 Recover something:
 
 ```bash
-git mv .context/attic/src/auth.rs/01M0B4KQTX-*.md .context/-/src/auth.rs/
+git mv .lane/attic/src/auth.rs/01M0B4KQTX-*.md .lane/memory/src/auth.rs/
 ```
 
 ---
@@ -215,9 +215,9 @@ you keep both:
 
 ```
 ## Context memory
-- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.
+- Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.
 - Record non-obvious findings with `lane note -p <path> -a <anchor> "..."`.
-- Do not edit `.context/` by hand; `lane done` manages it.
+- Do not edit `.lane/` by hand; `lane done` manages it.
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.
 ```
 
@@ -277,19 +277,19 @@ Land them in any order.
 
 ```
 yourproject/
-  .context/
-    -/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
+  .lane/
+    memory/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
     attic/                        evicted, recoverable
-    state/<branch>.json           fingerprints, per branch
-    log/<branch>.jsonl            verdicts and evictions, per branch
+    branch/<name>/state.json      fingerprints, per branch
+    branch/<name>/log.jsonl       verdicts and evictions, per branch
+    trees/
+      fix-login/                  the lane worktree
   .gitattributes                  one union rule, for log/*.jsonl
   AGENTS.md
   .git/lane/pending.jsonl         notes not yet promoted, per worktree
-  .lanes/
-    fix-login/                    the lane worktree
 ```
 
-Lanes live in `.lanes/` inside the repository and are excluded through `.git/info/exclude`,
+Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`,
 so nothing is committed.
 
 ### When things go wrong

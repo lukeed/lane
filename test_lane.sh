@@ -210,7 +210,7 @@ setup
 is "gitattributes has one union rule, for the log" \
    "$(grep -c 'log/\*.jsonl merge=union' .gitattributes)" "1"
 is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
-is "pending notes are ignored" "$(grep -c '.wt/pending.jsonl' .gitignore)" "1"
+is "init does not touch .gitignore" "$(grep -c 'pending.jsonl' .gitignore)" "0"
 
 for i in 1 2 3 4 5; do
   "$LANE" note -p src/auth.rs -a "fn verify" "filler note number $i about verify" > /dev/null
@@ -225,6 +225,12 @@ is "eviction reason is recorded" \
    "budget"
 is "evicted notes are recoverable from the attic" \
    "$(find .context/attic -name '*.md' | wc -l | tr -d ' ')" "3"
+
+"$LANE" note -p src/auth.rs -a "fn verify" "a note the parent has not promoted" > /dev/null
+"$LANE" new inherit > /dev/null 2>&1
+is "a fresh lane does not inherit the parent's queue" \
+   "$("$LANE" ls | grep -c 'inherit.*0 pending')" "1"
+"$LANE" rm inherit --force > /dev/null 2>&1
 
 echo "== 13. two branches writing memory merge without conflict =="
 setup
@@ -429,20 +435,20 @@ git commit -q --allow-empty -m "make verify constant-time
 
 Why: src/auth.rs#fn verify | early return leaks token length"
 is "the trailer became a pending note" \
-   "$(grep -c 'early return leaks' .wt/pending.jsonl)" "1"
+   "$(grep -c 'early return leaks' .git/lane/pending.jsonl)" "1"
 "$LANE" audit > /dev/null
 is "and promotes like any other note" \
    "$("$LANE" why src/auth.rs | grep -c 'early return leaks')" "1"
 
 git commit -q --allow-empty -m "tidy imports"
 is "a commit with no trailer records nothing" \
-   "$([ -f .wt/pending.jsonl ] && echo yes || echo no)" "no"
+   "$([ -f .git/lane/pending.jsonl ] && echo yes || echo no)" "no"
 
 git commit -q --allow-empty -m "refactor the parser
 
 Why: refactor the parser" 2> /tmp/cap.out
 is "a pasted subject is refused" "$(grep -c 'warning:' /tmp/cap.out)" "1"
-is "and records nothing" "$([ -f .wt/pending.jsonl ] && echo yes || echo no)" "no"
+is "and records nothing" "$([ -f .git/lane/pending.jsonl ] && echo yes || echo no)" "no"
 
 git commit -q --allow-empty -m "note it twice
 

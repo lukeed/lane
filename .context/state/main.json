@@ -4,7 +4,39 @@
     "body_hash": "1c2d438423040d54",
     "raw_hash": "6dc44df640f1176d",
     "status": "fresh",
-    "checked": "2026-08-20T04:49:45Z",
+    "checked": "2026-08-20T05:18:28Z",
+    "norm": "1"
+  },
+  "01M0ESPFENGV6K4TS7B4SMERA8": {
+    "sig": "ebf04d00814343a4",
+    "body_hash": "5ca30127fe5b6d85",
+    "raw_hash": "8f1a51ad1c21bf66",
+    "status": "fresh",
+    "checked": "2026-08-20T05:18:28Z",
+    "norm": "1"
+  },
+  "01M0ESPFEX4KWAVB5BN4ZJ2ZWX": {
+    "sig": "a4bcd7d4c565b528",
+    "body_hash": "5e4d12040ca40a52",
+    "raw_hash": "4cbe349a7f1c68b0",
+    "status": "fresh",
+    "checked": "2026-08-20T05:18:28Z",
+    "norm": "1"
+  },
+  "01M0ESPFF3M16TMEFZK9V3B7SG": {
+    "sig": "b91957dbbe5addac",
+    "body_hash": "7468bcb03e0028a9",
+    "raw_hash": "17a9f083ffbb5e7d",
+    "status": "fresh",
+    "checked": "2026-08-20T05:18:28Z",
+    "norm": "1"
+  },
+  "01M0ESPFFA6RKDW9EPAF7YGQ3V": {
+    "sig": "b91957dbbe5addac",
+    "body_hash": "7468bcb03e0028a9",
+    "raw_hash": "17a9f083ffbb5e7d",
+    "status": "fresh",
+    "checked": "2026-08-20T05:18:28Z",
     "norm": "1"
   }
 }

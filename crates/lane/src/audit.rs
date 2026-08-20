@@ -35,11 +35,7 @@ fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool 
     let previous = state.get(id).cloned().unwrap_or_default();
     let (sig, body_hash, raw_hash) = if unresolved {
         // Seeing drift is not enough to vouch for the new fingerprint.
-        (
-            previous.sig.clone(),
-            previous.body_hash.clone(),
-            previous.raw_hash.clone(),
-        )
+        res.base.clone()
     } else {
         (res.sig.clone(), res.body_hash.clone(), res.raw_hash.clone())
     };
@@ -394,6 +390,11 @@ mod tests {
             sig: format!("sig-{suffix}"),
             body_hash: format!("body-{suffix}"),
             raw_hash: format!("raw-{suffix}"),
+            base: (
+                format!("sig-{suffix}"),
+                format!("body-{suffix}"),
+                format!("raw-{suffix}"),
+            ),
             span: None,
             rebaselined: false,
         }
@@ -411,16 +412,21 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_drift_keeps_the_vouched_fingerprint() {
-        let old = old_state();
-        let mut state = HashMap::from([("01M0A".into(), old.clone())]);
+    fn unresolved_drift_preserves_the_merged_baseline() {
+        let mut state = store::State::new();
+        let mut current = check(BODY, "new");
+        current.base = (
+            "sig-merged".into(),
+            "body-merged".into(),
+            "raw-merged".into(),
+        );
 
-        assert!(record_state(&mut state, "01M0A", &check(BODY, "new")));
+        assert!(record_state(&mut state, "01M0A", &current));
 
         let saved = state["01M0A"].clone();
-        assert_eq!(saved.sig, old.sig);
-        assert_eq!(saved.body_hash, old.body_hash);
-        assert_eq!(saved.raw_hash, old.raw_hash);
+        assert_eq!(saved.sig, "sig-merged");
+        assert_eq!(saved.body_hash, "body-merged");
+        assert_eq!(saved.raw_hash, "raw-merged");
         assert_eq!(saved.status, BODY);
     }
 
@@ -449,6 +455,26 @@ mod tests {
         assert_eq!(saved.body_hash, current.body_hash);
         assert_eq!(saved.raw_hash, current.raw_hash);
         assert_eq!(saved.status, FRESH);
+    }
+
+    #[test]
+    fn unchanged_state_keeps_its_checked_time() {
+        let current = check(FRESH, "current");
+        let mut state = HashMap::from([(
+            "01M0A".into(),
+            store::NoteState {
+                sig: current.sig.clone(),
+                body_hash: current.body_hash.clone(),
+                raw_hash: current.raw_hash.clone(),
+                status: FRESH.into(),
+                checked: "2026-01-01T00:00:00Z".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+            },
+        )]);
+        let checked = state["01M0A"].checked.clone();
+
+        assert!(!record_state(&mut state, "01M0A", &current));
+        assert_eq!(state["01M0A"].checked, checked);
     }
 
     #[test]

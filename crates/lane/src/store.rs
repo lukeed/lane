@@ -290,6 +290,8 @@ pub struct Check {
     pub sig: String,
     pub body_hash: String,
     pub raw_hash: String,
+    /// The fingerprint this check compared against.
+    pub base: (String, String, String),
     pub span: Option<Span>,
     /// The baseline was taken under a different normalization and could not be compared.
     pub rebaselined: bool,
@@ -339,6 +341,11 @@ impl Checker {
             sig: String::new(),
             body_hash: String::new(),
             raw_hash: String::new(),
+            base: (
+                note.meta.sig.clone(),
+                note.meta.body_hash.clone(),
+                note.meta.raw_hash.clone(),
+            ),
             span: None,
             rebaselined: false,
         };
@@ -374,6 +381,11 @@ impl Checker {
                 sig,
                 body_hash,
                 raw_hash,
+                base: (
+                    base.sig.clone(),
+                    base.body_hash.clone(),
+                    base.raw_hash.clone(),
+                ),
                 span: Some(span),
                 rebaselined: false,
             };
@@ -388,6 +400,11 @@ impl Checker {
                 sig,
                 body_hash,
                 raw_hash,
+                base: (
+                    base.sig.clone(),
+                    base.body_hash.clone(),
+                    base.raw_hash.clone(),
+                ),
                 span: Some(span),
                 rebaselined: !unchanged,
             };
@@ -405,6 +422,7 @@ impl Checker {
             sig,
             body_hash,
             raw_hash,
+            base: (base.sig, base.body_hash, base.raw_hash),
             span: Some(span),
             rebaselined: false,
         }

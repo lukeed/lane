@@ -217,7 +217,11 @@ impl LandingLock {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let file = OpenOptions::new().create(true).write(true).open(path)?;
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)?;
         flock(&file, FlockOperation::NonBlockingLockExclusive)
             .map_err(|err| anyhow::anyhow!("another lane is landing; try again ({err})"))?;
         Ok(Self { _file: file })
@@ -992,6 +996,7 @@ mod tests {
         let path = dir.path().join("landing.lock");
         let first = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(&path)
             .unwrap();

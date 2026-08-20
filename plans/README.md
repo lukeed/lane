@@ -31,7 +31,7 @@ counts before starting, and update your row when done.
 | 026 | Serialize landings with a lock, and mark them in trunk's history | P1 | M | — | DONE |
 | 027 | Preserve the baseline that was actually compared against | P1 | M | — | DONE |
 | 028 | An interactive tour that teaches lane by driving it | P3 | M | — | DONE |
-| 029 | Put everything lane owns under `.lane/` | P2 | L | — | IN PROGRESS |
+| 029 | Put everything lane owns under `.lane/` | P2 | L | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

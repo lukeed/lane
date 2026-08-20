@@ -15,7 +15,21 @@ pub const NOTES: &str = "-";
 pub const ATTIC: &str = "attic";
 pub const STATE: &str = "state";
 pub const LOG: &str = "log";
-pub const PENDING: &str = ".wt/pending.jsonl";
+pub const PENDING: &str = "lane/pending.jsonl";
+
+/// Per-worktree: git resolves an uncommon path inside .git/worktrees/<name> for a lane,
+/// so a lane cannot inherit the queue its parent has not promoted yet.
+pub fn pending_path(worktree: &Path) -> PathBuf {
+    let resolved = git::try_git(
+        &["rev-parse", "--path-format=absolute", "--git-path", PENDING],
+        Some(worktree),
+    );
+    if resolved.is_empty() {
+        worktree.join(".git").join(PENDING)
+    } else {
+        PathBuf::from(resolved)
+    }
+}
 
 pub const FRESH: &str = "fresh";
 pub const BODY: &str = "body-drift";
@@ -217,7 +231,7 @@ pub struct PendingNote {
 /// Pending notes are resolved and fingerprinted here, never at write time, so a rebase
 /// can never leave a note anchored to a commit it rewrote.
 pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
-    let pending = root.join(PENDING);
+    let pending = pending_path(root);
     if !pending.exists() {
         return Ok(Vec::new());
     }
@@ -460,7 +474,7 @@ pub fn rel_to_repo(root: &Path, path: &str) -> Result<String> {
 
 pub fn append_pending(root: &Path, rec: &PendingNote) -> Result<()> {
     use std::io::Write;
-    let path = root.join(PENDING);
+    let path = pending_path(root);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -473,7 +487,7 @@ pub fn append_pending(root: &Path, rec: &PendingNote) -> Result<()> {
 }
 
 pub fn pending_count(worktree: &Path) -> usize {
-    std::fs::read_to_string(worktree.join(PENDING))
+    std::fs::read_to_string(pending_path(worktree))
         .map(|t| t.lines().filter(|l| !l.trim().is_empty()).count())
         .unwrap_or(0)
 }

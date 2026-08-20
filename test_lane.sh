@@ -610,6 +610,18 @@ is "and names it merged" \
   "$(git log -1 --format=%s | grep -c '^lane: merged sq$')" "1"
 is "and removed the branch" "$(git branch --list sq | wc -l | tr -d ' ')" "0"
 
+echo "== 29. reading context does not modify the tree =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A .context && git commit -qm "memory" > /dev/null
+"$LANE" why src/auth.rs > /dev/null
+is "lane why leaves the tree clean" "$(git status --porcelain)" ""
+"$LANE" why src/auth.rs > /dev/null
+is "and is still clean when read twice" "$(git status --porcelain)" ""
+"$LANE" audit --review none > /dev/null
+is "an audit that changes nothing writes nothing" "$(git status --porcelain)" ""
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

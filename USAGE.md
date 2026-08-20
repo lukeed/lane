@@ -115,8 +115,8 @@ src/auth.rs#fn verify
 ```
 
 The leading mark is freshness: blank is fresh, `~` drifted, `!` the signature
-changed, `x` the anchor is gone. Reading bumps a counter that decides what
-survives the budget later.
+changed, `x` the anchor is gone. Reading a note is not a vote for it: you often
+read one to find out it is wrong.
 
 ### Close the lane
 
@@ -190,8 +190,8 @@ lane audit --review cmd --review-cmd './my-reviewer'
 ### Budget
 
 Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by
-`pinned > times read > touched by this lane > freshness > age` and moves the
-rest to `.context/attic/` with the reason recorded in `.context/log/`.
+`pinned > touched by this lane > freshness > age` and moves the rest to
+`.context/attic/` with the reason recorded in `.context/log/`.
 Nothing is deleted.
 
 Keep something permanently:
@@ -280,7 +280,7 @@ yourproject/
   .context/
     -/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
     attic/                        evicted, recoverable
-    state/<branch>.json           fingerprints and read counts, per branch
+    state/<branch>.json           fingerprints, per branch
     log/<branch>.jsonl            verdicts and evictions, per branch
   .gitattributes                  one union rule, for log/*.jsonl
   AGENTS.md

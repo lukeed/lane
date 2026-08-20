@@ -59,7 +59,7 @@ git config --add lane.exclude packages/legacy/node_modules
 .context/
   -/<path>/<ulid>-<slug>.md     the note; written once, never rewritten
   attic/<path>/<ulid>-<slug>.md the same file, retired, byte-identical
-  state/<branch>.json           per-branch cache: fingerprints and read counts
+  state/<branch>.json           per-branch cache: fingerprints
   log/<branch>.jsonl            per-branch record: verdicts and evictions
 ```
 
@@ -101,10 +101,10 @@ anything. Comments come from the parse tree too, so a formatter run does not
 stale the store, a changed URL inside a string does, and editing `#script`
 leaves a note on `#style` alone.
 
-Each `(path, anchor)` has a hard budget (5 notes / 1200 chars). Audit ranks by
-`pinned > reads > touched-by-this-lane > freshness > age` and evicts the
-remainder to the attic with a timestamped reason. An LRU on attention, needing
-no opinion about importance.
+Each `(path, anchor)` has a hard budget (5 notes / 1200 chars). Audit keeps
+notes in this order: `pinned > touched-by-this-lane > freshness > age`, then
+evicts the remainder to the attic with a timestamped reason. Reading a note is
+not a vote for it: you often read one to find out it is wrong.
 
 ## Why `done` runs the audit after the rebase
 

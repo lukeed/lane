@@ -63,7 +63,7 @@ pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
 
 #[cfg(target_os = "linux")]
 pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     let source = fs::File::open(src).map_err(CloneError::Io)?;
     let mode = source

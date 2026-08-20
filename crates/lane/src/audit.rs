@@ -317,6 +317,63 @@ fn apply_review(
     Ok(applied)
 }
 
+pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
+    let n = |tier: &str| out.stats.get(tier).copied().unwrap_or(0);
+    // Counted before the reviewer ran: what the hash check found, not what was done about it.
+    writeln!(
+        w,
+        "memory: +{} new; checked {}: {} fresh, {} body-drift, {} signature-changed, {} missing",
+        out.created.len(),
+        out.stats.values().sum::<usize>(),
+        n(FRESH),
+        n(BODY),
+        n(SIG),
+        n(MISSING)
+    )?;
+
+    if out.rebaselined > 0 {
+        writeln!(
+            w,
+            "  re-baselined {} note(s) after a normalization change",
+            out.rebaselined
+        )?;
+    }
+
+    for (old, new, count) in &out.moved {
+        writeln!(w, "  moved   {old} -> {new}  ({count} note(s))")?;
+    }
+
+    if out.reviewed.is_empty() {
+        for note in &out.review {
+            writeln!(w, "  review  {}#{}", note.path(), note.meta.anchor)?;
+        }
+    } else {
+        writeln!(
+            w,
+            "  reviewed {} drifted note(s) via {}",
+            out.reviewed.len(),
+            out.reviewer
+        )?;
+        for (note, verdict, replacement) in &out.reviewed {
+            let extra = replacement
+                .as_ref()
+                .map(|n| format!(" -> {}", &n.meta.id[..10.min(n.meta.id.len())]))
+                .unwrap_or_default();
+            writeln!(
+                w,
+                "  {verdict:<13} {}#{}{extra}",
+                note.path(),
+                note.meta.anchor
+            )?;
+        }
+    }
+
+    for (note, why) in &out.evicted {
+        writeln!(w, "  evict   {}#{}  ({why})", note.path(), note.meta.anchor)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,61 +498,4 @@ mod tests {
         assert_eq!(saved.raw_hash, note.meta.raw_hash);
         assert_eq!(saved.status, FRESH);
     }
-}
-
-pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
-    let n = |tier: &str| out.stats.get(tier).copied().unwrap_or(0);
-    // Counted before the reviewer ran: what the hash check found, not what was done about it.
-    writeln!(
-        w,
-        "memory: +{} new; checked {}: {} fresh, {} body-drift, {} signature-changed, {} missing",
-        out.created.len(),
-        out.stats.values().sum::<usize>(),
-        n(FRESH),
-        n(BODY),
-        n(SIG),
-        n(MISSING)
-    )?;
-
-    if out.rebaselined > 0 {
-        writeln!(
-            w,
-            "  re-baselined {} note(s) after a normalization change",
-            out.rebaselined
-        )?;
-    }
-
-    for (old, new, count) in &out.moved {
-        writeln!(w, "  moved   {old} -> {new}  ({count} note(s))")?;
-    }
-
-    if out.reviewed.is_empty() {
-        for note in &out.review {
-            writeln!(w, "  review  {}#{}", note.path(), note.meta.anchor)?;
-        }
-    } else {
-        writeln!(
-            w,
-            "  reviewed {} drifted note(s) via {}",
-            out.reviewed.len(),
-            out.reviewer
-        )?;
-        for (note, verdict, replacement) in &out.reviewed {
-            let extra = replacement
-                .as_ref()
-                .map(|n| format!(" -> {}", &n.meta.id[..10.min(n.meta.id.len())]))
-                .unwrap_or_default();
-            writeln!(
-                w,
-                "  {verdict:<13} {}#{}{extra}",
-                note.path(),
-                note.meta.anchor
-            )?;
-        }
-    }
-
-    for (note, why) in &out.evicted {
-        writeln!(w, "  evict   {}#{}  ({why})", note.path(), note.meta.anchor)?;
-    }
-    Ok(())
 }

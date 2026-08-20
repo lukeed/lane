@@ -457,6 +457,23 @@ Why: src/auth.rs#fn verify | early return leaks token length"
 is "an identical note is not duplicated" \
    "$(grep -rl 'early return leaks' .context/- --include='*.md' | wc -l | tr -d ' ')" "1"
 
+echo "== 23. lane install skill =="
+setup
+"$LANE" install skill > /tmp/skill.out 2>&1
+is "the skill lands at the conventional path" \
+   "$([ -f .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
+is "it has frontmatter naming the skill" \
+   "$(grep -c '^name: lane$' .agents/skills/lane/SKILL.md)" "1"
+is "it teaches the Why trailer form" \
+   "$(grep -c '^Why: src/auth.rs#fn verify' .agents/skills/lane/SKILL.md)" "1"
+is "it teaches lane note with a path" \
+   "$(grep -c 'lane note -p ' .agents/skills/lane/SKILL.md)" "1"
+"$LANE" install skill > /tmp/skill2.out 2>&1
+is "installing twice is a no-op" "$?" "0"
+echo "edited by hand" >> .agents/skills/lane/SKILL.md
+"$LANE" install skill > /tmp/skill3.out 2>&1
+is "an edited skill is not clobbered" "$?" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

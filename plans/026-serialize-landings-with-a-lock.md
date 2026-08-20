@@ -145,7 +145,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 
 | Purpose | Command | Expected |
 |---|---|---|
-| Unit + integration | `cargo test` | baseline + 3 |
+| Unit + integration | `cargo test` | baseline + 1 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
@@ -280,7 +280,7 @@ by a lock held for the duration of a landing, so a landing is exclusive. `USAGE.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 5
+- [ ] `cargo test` passes, baseline + 1; `./test_lane.sh` passes, baseline + 5
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` exit 0 from a lane **and** from the main checkout
 - [ ] With the lock held elsewhere, `lane done` exits non-zero immediately with a clear

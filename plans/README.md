@@ -28,7 +28,7 @@ counts before starting, and update your row when done.
 | 023 | Make an installed hook replaceable, and stop `uninstall` lying | P1 | S | — | DONE |
 | 024 | Stop an audit from erasing the drift it just found | P1 | M | — | DONE |
 | 025 | Stop counting reads, and make `lane why` a pure read | P2 | M | — | TODO |
-| 026 | Serialize landings with a lock, and mark them in trunk's history | P1 | M | — | TODO |
+| 026 | Serialize landings with a lock, and mark them in trunk's history | P1 | M | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

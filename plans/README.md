@@ -32,6 +32,7 @@ counts before starting, and update your row when done.
 | 027 | Preserve the baseline that was actually compared against | P1 | M | — | DONE |
 | 028 | An interactive tour that teaches lane by driving it | P3 | M | — | DONE |
 | 029 | Put everything lane owns under `.lane/` | P2 | L | — | DONE |
+| 030 | Make the state file impossible to half-write | P2 | S | — | IN PROGRESS |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |
@@ -120,6 +121,15 @@ Verified against the tree, not assumed. The plan files were deleted; this is the
   went with the file they lived in. Three items remain and are still plan 010.
 
 ## Findings considered and rejected
+
+- **An append-only state file.** Proposed to make `.lane/branch/<name>/state.json`
+  conflict-free under `merge=union`, like the log beside it. Rejected: plan 026's lock
+  already serializes the only place two branches write one state file, so the merge benefit
+  had evaporated by the time it was considered. The remaining argument was torn writes,
+  which an atomic rename fixes for three lines and no migration — see plan 030. Append-only
+  would buy that at the cost of unbounded growth plus periodic compaction, and compaction is
+  itself a rewrite, so the problem returns. Revisit only if state gains concurrent writers
+  or the landing lock is removed.
 
 - **A custom merge driver for `.context/`.** Must be installed in every clone, which is
   the coordination the design refuses. Plan 003 removes the spurious diffs instead.

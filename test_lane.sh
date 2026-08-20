@@ -566,6 +566,30 @@ echo "// scratch" >> src/auth.rs
 is "a dirty lane contains no other lanes" \
    "$([ -e .lanes/dirty-third/.lanes ] && echo yes || echo no)" "no"
 
+echo "== 27. unresolved drift stays flagged =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
+"$LANE" audit --review none > /dev/null
+is "drift survives an audit with no reviewer" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+"$LANE" audit --review none > /dev/null
+is "and is re-reported by the next audit" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+"$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
+is "a holds verdict clears it and keeps the note" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)), end=":")'; grep -rl 'constant-time' .context/- --include='*.md' | wc -l | tr -d ' ')" "0:1"
+
+# A reviewer running is not a resolution when it cannot vouch for the note.
+setup
+"$LANE" note -p src/auth.rs -a "fn refresh" "callers depend on the rotated token" > /dev/null
+"$LANE" audit > /dev/null
+sedi 's/rotate(token)/rotate(token.trim())/' src/auth.rs
+"$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
+is "an unsure verdict leaves it flagged" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

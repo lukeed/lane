@@ -7,9 +7,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+COMMON="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
+COMMON_MOUNT=()
+case "$COMMON" in
+  "$ROOT"/*) ;;
+  *) COMMON_MOUNT=(-v "$COMMON":"$COMMON":ro) ;;
+esac
 podman machine start >/dev/null 2>&1 || true
 
-podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro -w /w docker.io/library/rust:1-slim sh -c '
+podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro "${COMMON_MOUNT[@]}" -w /w docker.io/library/rust:1-slim sh -c '
   set -e
   apt-get update -qq >/dev/null 2>&1
   apt-get install -y -qq gcc git python3 >/dev/null 2>&1

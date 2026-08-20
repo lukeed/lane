@@ -149,7 +149,7 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 
 | Purpose | Command | Expected |
 |---|---|---|
-| Unit + integration | `cargo test` | baseline + 2 |
+| Unit + integration | `cargo test` | baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
@@ -159,12 +159,11 @@ Record both baselines before starting; at `694dd99` they are 55 and 94.
 
 ## Scope
 
-**In scope**: `crates/lane/src/worktree.rs`, `scripts/check-linux.sh`, `test_lane.sh`,
-`README.md`, `USAGE.md`.
+**In scope**: `crates/lane/src/worktree.rs`, `crates/lane/src/cow.rs`,
+`crates/lane/tests/cow.rs`, `scripts/check-linux.sh`, `test_lane.sh`, `README.md`, `USAGE.md`.
 
 **Out of scope**:
 - The memory store: nothing under `store.rs`, `audit.rs`, `note.rs` or `.context/`.
-- `crates/lane/src/cow.rs`. Symlink handling inside a clone is plan 021; do not touch it.
 - `crates/lane/src/cli.rs`, except if a call site simply will not compile without an edit —
   in which case make the smallest possible change and say so in your report.
 - Migrating existing lanes from the old sibling layout.
@@ -183,7 +182,28 @@ and `lane rm x` all agree on the new location.
 
 ### Step 2: Guard against cloning the lanes directory
 
-Add `.lanes` to both filters quoted in Current state, matching the existing `.git` shape.
+Two guards, and they defend different things. Do both.
+
+**2a — never select `.lanes` as an entry to clone.** Add `.lanes` to the `ignored_entries`
+filter at `worktree.rs:60`, matching the existing `.git` shape. Git reports the entry with
+its trailing slash already trimmed, so a plain `p != ".lanes"` matches. Without this, lane
+number two contains a copy of lane number one even if nothing recurses.
+
+**2b — make `clone_tree` refuse to walk into its own destination.** Do not hardcode
+`.lanes` here. If `dst` is lexically inside `src`, derive the relative component and skip it
+in addition to whatever the caller's `skip` closure says:
+
+```rust
+// A destination inside the source would be walked into as it is written. Skip it here so
+// no caller has to remember, and so renaming the lanes directory cannot reintroduce it.
+let contained = dst.strip_prefix(src).ok().map(Path::to_path_buf);
+```
+
+then treat a `rel` equal to that component, or beneath it, as skipped.
+
+This is the guard that matters. A hardcoded directory name is load-bearing and one
+refactor away from being dropped; a self-containment check protects every present and
+future caller, including the `--dirty` arm, without anyone having to remember.
 
 This is the step that can destroy a machine if it is wrong, so verify it directly rather
 than by reading: create a lane, put a large file in it, create a second lane, and confirm
@@ -194,6 +214,9 @@ the second does not contain the first.
 - with an uncommitted change present, `lane new c --dirty` completes and
   `[ -e <repo>/.lanes/c/.lanes ]` is false
 - `lane new` output reports a file count in the same order of magnitude as before this change
+- a unit test in `cow.rs` proves `clone_tree` skips a destination nested inside its source,
+  using a directory name that has nothing to do with lanes — the point is that the guard is
+  structural, not that it knows about `.lanes`
 
 ### Step 3: Ask git for relative pointers
 
@@ -287,7 +310,7 @@ repository and are excluded via `.git/info/exclude`, so nothing is committed.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes from the main checkout **and** from a lane
 - [ ] A second lane does not contain a copy of the first, with and without `--dirty`
@@ -319,5 +342,10 @@ repository and are excluded via `.git/info/exclude`, so nothing is committed.
   reading ignore rules — `find`, `du`, `tar`, Spotlight, Time Machine — will see N checkouts.
   Reflink means the disk is shared and those tools do not know it. That is the accepted cost
   of this layout; do not try to solve it here.
-- The two guards in Step 2 are load-bearing and easy to drop in a future refactor of
-  `ignored_entries`. The test in Step 6 is what will catch that; do not weaken it.
+- Guard 2b is the durable one: it is stated in terms of the source and destination rather
+  than a directory name, so renaming `.lanes` or adding a second nested output directory
+  cannot reintroduce the recursion. Guard 2a is a name and will need updating if the
+  directory is ever renamed — the test in Step 6 is what catches that, so do not weaken it.
+- `.git` has been excluded by these same two filters since the beginning, which is why it
+  has never nested despite existing in every worktree. `.lanes` is the same problem with a
+  different name.

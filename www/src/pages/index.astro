@@ -3,6 +3,14 @@ import Terminal from '../components/Terminal.astro';
 import '../styles/app.css';
 
 let repo = 'https://github.com/lukeed/lane';
+let built = new Date().toISOString().slice(0, 10);
+
+let seealso = [
+	[repo, 'github.com/lukeed/lane', 'the source'],
+	[`${repo}/blob/main/USAGE.md`, 'USAGE.md', 'every command, in full'],
+	[`${repo}/blob/main/explainer.md`, 'explainer.md', 'capturing decisions from commit trailers'],
+	[`${repo}/tree/main/plans`, 'plans/', 'how each piece was decided'],
+];
 
 let anchors = [
 	['fn verify', 'a declaration, by keyword and name'],
@@ -302,12 +310,14 @@ agent-c    agent-c    clean   0 pending note(s)</pre>
 			<section class="sec foot">
 				<h2 class="sec-head">See also</h2>
 				<div class="sec-body">
-					<div class="seealso">
-						<a href={repo}>github</a>
-						<a href={`${repo}/blob/main/USAGE.md`}>usage</a>
-						<a href={`${repo}/blob/main/explainer.md`}>commit-trailers</a>
-						<a href={`${repo}/tree/main/plans`}>plans</a>
-					</div>
+					<ul class="seealso">
+						{seealso.map(([href, name, what]) => (
+							<li class="seealso-row">
+								<a href={href}>{name}</a>
+								<span class="seealso-what">{what}</span>
+							</li>
+						))}
+					</ul>
 				</div>
 			</section>
 		</main>
@@ -315,7 +325,7 @@ agent-c    agent-c    clean   0 pending note(s)</pre>
 		<footer class="shell">
 			<div class="manrule">
 				<span>lane 0.1.0</span>
-				<span class="manrule-mid">2026-08-20</span>
+				<span class="manrule-mid">{built}</span>
 				<span class="manrule-end">lane(1)</span>
 			</div>
 		</footer>

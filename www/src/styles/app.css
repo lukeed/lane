@@ -1092,28 +1092,43 @@ a:hover {
 }
 
 .seealso {
-	display: flex;
-	flex-wrap: wrap;
-	gap: calc(var(--u) * 1) calc(var(--u) * 3);
+	list-style: none;
 	font-size: 13px;
+	display: grid;
+	gap: 1px;
+	background: var(--rule);
+	border-block: 1px solid var(--rule);
 }
 
-.seealso a {
+.seealso-row {
+	background: var(--void);
+	display: grid;
+	grid-template-columns: 28ch minmax(0, 1fr);
+	gap: 0 calc(var(--u) * 2);
+	padding: calc(var(--u) * 1.5) 0;
+}
+
+.seealso-row a {
 	text-decoration: none;
 	color: var(--bone);
-	border-bottom: 1px solid var(--rule-lit);
-	padding-bottom: 2px;
 }
 
-.seealso a:hover {
+.seealso-row a:hover {
 	color: var(--ref);
-	border-color: var(--ref);
+	text-decoration: underline;
+	text-decoration-color: var(--ref);
+	text-underline-offset: 4px;
 }
 
-.seealso a::after {
-	content: '(1)';
-	color: var(--dimmer);
-	font-size: 11px;
+.seealso-what {
+	color: var(--dim);
+}
+
+@media (max-width: 640px) {
+	.seealso-row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 4px;
+	}
 }
 
 /* ---- motion --------------------------------------------------------- */

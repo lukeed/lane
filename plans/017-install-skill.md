@@ -4,16 +4,17 @@
 > command and confirm the expected result before moving on. If a STOP condition occurs,
 > stop and report. Update this plan's row in `plans/README.md` when done.
 >
-> **Drift check (run first)**: `git diff --stat bcb9a8b..HEAD -- crates/lane/src/cli.rs test_lane.sh`
+> **Drift check (run first)**:
+> `git diff --stat 828ba60..HEAD -- crates/lane/src/cli.rs test_lane.sh explainer.md USAGE.md`
 
 ## Status
 
 - **Priority**: P2
 - **Effort**: M
 - **Risk**: LOW
-- **Depends on**: none
+- **Depends on**: plans/018-pending-out-of-the-worktree.md
 - **Category**: dx
-- **Planned at**: commit `bcb9a8b`, 2026-08-20
+- **Planned at**: commit `bcb9a8b`, 2026-08-20; amended at `828ba60`, 2026-08-19
 
 ## Why this matters
 
@@ -83,34 +84,21 @@ They are different surfaces and both stay. `lane init` keeps writing its three l
 gains one more pointing at the skill, because an agent only invokes a skill it knows about.
 The skill carries everything else.
 
-## What the skill must contain
+## The skill's prose is supplied, not specified
 
-The executor writes the prose. It must cover, in this order:
+`crates/lane/assets/skill.md` is **already written and already committed on the lane
+branch you are working in**. It is the deliverable of this plan and a spec cannot stand in
+for it, so it was authored rather than described.
 
-1. **The daily loop** — `lane new <name>`, work and commit as usual, `lane done`. That
-   `done` rebases, audits memory, fast-forwards trunk and removes the lane.
-2. **Read before editing** — `lane why <path>` before touching a file, and that reading
-   bumps a counter which decides what survives the budget.
-3. **Recording a decision** — the `Why:` trailer as the default, because you are already
-   writing a commit message:
+**Do not rewrite, reword, trim or extend it.** Read it, so you know what the rest of the
+plan is wiring up, and leave the bytes alone. If you believe it is wrong, that is a STOP
+condition — report what you think is wrong and stop.
 
-   ```
-   Why: src/auth.rs#fn verify | early return leaks token length
-   ```
-
-   and `lane note -p <path> -a <anchor> "..."` for when the insight does not arrive at a
-   commit boundary.
-4. **The one rule that matters** — record what must stay true, not what you did. A commit
-   subject describes a change; a note describes an invariant that outlives it. Show the
-   contrast concretely.
-5. **The anchor grammar** — `fn verify`, `#script`, `## Heading`, `@file`, and that the
-   anchor is what the note is *about*, not where it lives.
-6. **What not to do** — do not edit `.context/` by hand, do not pass `--dirty` unless you
-   want the parent tree's uncommitted work, do not write a trailer that restates the
-   subject (it will be refused).
-
-Keep it under roughly 80 lines. It is instructions, not documentation; `USAGE.md` is the
-documentation and the skill should link to it rather than restate it.
+For reference, it covers: the daily loop; `lane why` before editing; the `Why:` trailer
+and `lane note` as the two ways to record; the rule that a note states what must stay true
+rather than what changed; the anchor grammar; and what not to do. It points at
+`lane --help` for the reference material — deliberately not at `USAGE.md`, which does not
+exist in the repositories this skill installs into.
 
 ## Current state
 
@@ -121,6 +109,9 @@ documentation and the skill should link to it rather than restate it.
 - `crates/lane/Cargo.toml` — no `assets/` directory exists yet.
 - `test_lane.sh` — section 22 exercises capture; it calls `lane hooks install` and will
   need the new spelling.
+- Four other places name the old spelling and all are in scope: `cli.rs:344` (the closing
+  line `init()` prints), `README.md:148`, `USAGE.md:80` and its Reference rows at 250-251,
+  and `explainer.md:37`.
 
 The existing hook installer is the pattern to follow for the skill: create when absent,
 say so and do nothing when already present and unchanged, refuse and explain when present
@@ -138,12 +129,13 @@ Commit subject: Conventional Commits, one short clause, no scope.
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
 | Linux gates | `./scripts/check-linux.sh` | all pass |
 
-At `bcb9a8b` the baselines are 53 and 86.
+Record both counts before you start and express your result as a delta. At `828ba60` they
+are 53 and 86, but plan 018 lands ahead of this one and adds an assertion.
 
 ## Scope
 
 **In scope**: `crates/lane/src/cli.rs`, `crates/lane/assets/skill.md` (new), `test_lane.sh`,
-`README.md`, `USAGE.md`.
+`README.md`, `USAGE.md`, `explainer.md`.
 
 **Out of scope**:
 - The capture logic in `capture.rs`. This plan moves a command and adds a file.
@@ -181,22 +173,15 @@ Update `test_lane.sh` section 22's `lane hooks install` call in the same commit.
 - `lane hooks install` now exits non-zero with an unrecognised-subcommand error
 - `./test_lane.sh` → `failed: 0` at the baseline count
 
-### Step 2: Write the skill
+### Step 2: Confirm the skill asset is present
 
-Create `crates/lane/assets/skill.md` covering the six points above, with frontmatter:
+`crates/lane/assets/skill.md` already exists on this branch. You are not creating it.
 
-```markdown
----
-name: lane
-description: Use lane in this repository — open a lane, read what earlier lanes learned about a file, and record decisions as Why trailers or notes.
----
-```
-
-The description is what an agent matches on to decide whether to load it, so it must name
-the situations: opening a worktree, reading context before editing, recording a decision.
-
-**Verify**: `head -4 crates/lane/assets/skill.md` shows valid frontmatter, and the file is
-under 80 lines.
+**Verify**:
+- `head -4 crates/lane/assets/skill.md` shows YAML frontmatter with `name: lane` and a
+  `description:` line
+- `git log --oneline -- crates/lane/assets/skill.md` shows a commit you did not make
+- `git diff --stat -- crates/lane/assets/skill.md` is empty at every step from here on
 
 ### Step 3: `lane install skill`
 
@@ -218,22 +203,46 @@ empty. It must not remove `.agents/` or `.agents/skills/`, which may hold other 
 **Verify**: install twice in a scratch repo — the second run reports "already installed"
 and exits 0; edit one line and the third run refuses with exit 1.
 
-### Step 4: Point `AGENTS.md` at it
+### Step 4: Fix `PROTOCOL`, then point it at the skill
 
-Add one line to `PROTOCOL`:
+`PROTOCOL` at `cli.rs:204` is the three lines `lane init` appends to every user's
+`AGENTS.md`. Its second line is a command that does not run:
 
 ```
+- Record non-obvious findings with `lane note -a <anchor> "..."`.
+```
+
+`--path` is required, so an agent following that instruction gets:
+
+```
+error: the following required arguments were not provided:
+  --path <PATH>
+```
+
+Verified against a scratch repo at `828ba60`; exit code 2. Fix the line to carry `-p`, and
+add a fourth line naming the skill — an agent will not invoke a skill it has not heard of,
+and `AGENTS.md` is what it always sees:
+
+```
+- Record non-obvious findings with `lane note -p <path> -a <anchor> "..."`.
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.
 ```
 
-An agent will not invoke a skill it has not heard of, and `AGENTS.md` is what it always
-sees.
+`USAGE.md`'s "Working with agents" section quotes those same three lines verbatim. Update
+that block to match `PROTOCOL` exactly — it is the same text in two places and it is
+already the reason this defect went unnoticed.
 
-**Verify**: `lane init` in a fresh repo → `grep -c 'lane skill' AGENTS.md` → `1`.
+**Verify**, in a fresh scratch repo:
+- `lane init` → `grep -c 'lane skill' AGENTS.md` → `1`
+- `lane note -p src/x.rs -a "@file" "x"` → exit 0
+- the command on the `lane note` line of `AGENTS.md`, run literally with real arguments,
+  exits 0
+- `diff <(grep '^- ' AGENTS.md) <(grep '^- Before editing\|^- Record non-obvious\|^- Do not edit\|^- Detailed workflow' USAGE.md)` → empty
 
 ### Step 5: Cover it
 
-Add to `test_lane.sh` before the summary. Five assertions:
+Add a new section to `test_lane.sh` immediately before the summary, numbered one past the
+last existing section. Six assertions:
 
 ```bash
 echo "== N. lane install skill =="
@@ -243,8 +252,10 @@ is "the skill lands at the conventional path" \
    "$([ -f .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
 is "it has frontmatter naming the skill" \
    "$(grep -c '^name: lane$' .agents/skills/lane/SKILL.md)" "1"
-is "it teaches the Why trailer" \
-   "$(grep -c 'Why:' .agents/skills/lane/SKILL.md)" "1"
+is "it teaches the Why trailer form" \
+   "$(grep -c '^Why: src/auth.rs#fn verify' .agents/skills/lane/SKILL.md)" "1"
+is "it teaches lane note with a path" \
+   "$(grep -c 'lane note -p ' .agents/skills/lane/SKILL.md)" "1"
 "$LANE" install skill > /tmp/skill2.out 2>&1
 is "installing twice is a no-op" "$?" "0"
 echo "edited by hand" >> .agents/skills/lane/SKILL.md
@@ -252,9 +263,13 @@ echo "edited by hand" >> .agents/skills/lane/SKILL.md
 is "an edited skill is not clobbered" "$?" "1"
 ```
 
-Confirm they fail against the current code before implementing.
+Those greps are pinned to the asset's actual content as committed — do not adjust the
+asset to satisfy an assertion. If a grep returns something other than `1`, the assertion is
+what is wrong; fix the assertion and say so in your report.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 5.
+Confirm the whole section fails against the pre-Step-3 binary before you rely on it.
+
+**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 6.
 
 ### Step 6: Document it
 
@@ -263,23 +278,29 @@ Confirm they fail against the current code before implementing.
 agents" section should mention the skill as the fuller version of the `AGENTS.md` stub.
 `README.md`'s command list gains a line if it lists commands.
 
-**Verify**: `grep -c 'lane hooks install' README.md USAGE.md` → `0` for both.
+`explainer.md:37` says "Setup is `lane hooks install`, once." — same rename.
+
+**Verify**: `grep -rn 'lane hooks' README.md USAGE.md explainer.md` → no matches.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 5
+- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 6
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes
 - [ ] `lane install skill` writes `.agents/skills/lane/SKILL.md`; a second run is a no-op;
       an edited file is refused
 - [ ] `lane hooks install` no longer exists
-- [ ] `grep -rc 'hooks install' crates/lane/src/ README.md USAGE.md test_lane.sh` → `0`
+- [ ] `grep -rn 'hooks install' crates/lane/src/ README.md USAGE.md explainer.md test_lane.sh`
+      → no matches
+- [ ] `git diff --stat main -- crates/lane/assets/skill.md` → empty; the asset is untouched
+- [ ] the `lane note` line in a freshly-initialised `AGENTS.md` runs and exits 0
 - [ ] `plans/README.md` row updated
 
 ## STOP conditions
 
-- The skill grows past roughly 80 lines. It is instructions, not documentation — link to
-  `USAGE.md` rather than restating it, and report if the six points genuinely cannot fit.
+- You conclude that `crates/lane/assets/skill.md` needs an edit for any reason, including
+  a factual error or a command that does not match the surface you built in Step 1. Report
+  it; do not fix it. Its prose is not yours to change.
 - You find another consumer of `lane hooks install` outside the files named in Scope.
 - `include_str!` on `assets/skill.md` does not resolve from `cli.rs`. The path is relative
   to the source file; report rather than moving the asset somewhere less obvious.

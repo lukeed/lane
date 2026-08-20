@@ -452,6 +452,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn lanes_live_inside_the_repository() {
+        let root = Path::new("/repo");
+
+        assert_eq!(lanes_dir(root), root.join(".lanes"));
+    }
+
+    #[test]
+    fn ignored_entries_excludes_the_lanes_directory() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path();
+        let run = |args: &[&str]| {
+            git(args, Some(r)).ok();
+        };
+        run(&["init", "-qb", "main"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(r.join(".gitignore"), ".lanes/\ncache/\n")?;
+        run(&["add", ".gitignore"]);
+        run(&["commit", "-qm", "base"]);
+        std::fs::create_dir_all(r.join(".lanes/other"))?;
+        std::fs::create_dir_all(r.join("cache"))?;
+        std::fs::write(r.join("cache/blob"), "cache")?;
+
+        let entries = ignored_entries(r);
+
+        assert!(entries.contains(&"cache".to_string()));
+        assert!(!entries.contains(&LANES_DIRNAME.to_string()));
+        Ok(())
+    }
+
+    #[test]
     fn no_reflink_skips_the_caches_but_still_honours_dirty() {
         assert_eq!(materialization(false, false), Materialization::Plain);
         assert_eq!(materialization(true, false), Materialization::DirtyPlain);

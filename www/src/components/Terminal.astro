@@ -5,14 +5,13 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 ---
 
 <figure class="tty" id="tty">
-	<div class="tty-rail" role="tablist" aria-label="lane workflow">
+	<div class="tty-rail" role="group" aria-label="Pick a step of the workflow">
 		{acts.list.map((act, i) => (
 			<button
 				class="rail-step"
-				role="tab"
 				type="button"
 				id={`rail-${i}`}
-				aria-controls={`stage-${i}`}
+				aria-pressed={i === 0 ? 'true' : 'false'}
 				aria-current={i === 0 ? 'true' : 'false'}
 				data-act={i}
 				style={`--dwell:${act.dwell}ms`}
@@ -46,7 +45,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 			</div>
 			<div class="tty-screen">
 				<!-- 1. disk -->
-				<div class="stage" id="stage-0" role="tabpanel" aria-labelledby="rail-0" data-on="true">
+				<div class="stage" id="stage-0" data-on="true">
 					<div class="stage-title">disk</div>
 					<div class="paths">
 						<div class="paths-list">
@@ -74,7 +73,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 				</div>
 
 				<!-- 2. memory -->
-				<div class="stage" id="stage-1" role="tabpanel" aria-labelledby="rail-1">
+				<div class="stage" id="stage-1">
 					<div class="stage-title">memory</div>
 					<div class="src">
 						<span class="src-file">src/auth.rs</span>
@@ -105,7 +104,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 				</div>
 
 				<!-- 3. drift -->
-				<div class="stage" id="stage-2" role="tabpanel" aria-labelledby="rail-2">
+				<div class="stage" id="stage-2">
 					<div class="stage-title">drift</div>
 					<div class="src">
 						<span class="src-file">src/auth.rs</span>
@@ -136,7 +135,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 				</div>
 
 				<!-- 4. trunk -->
-				<div class="stage" id="stage-3" role="tabpanel" aria-labelledby="rail-3">
+				<div class="stage" id="stage-3">
 					<div class="stage-title">trunk</div>
 					<pre class="graph"><span class="node">*</span> 6b2f01c  <span class="hl-bone">main</span>  lane: sync fix-login memory
 <span class="node">*</span> 4f1a92c        make verify constant-time
@@ -201,7 +200,10 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 
 		function mark(i: number) {
 			at = i;
-			rail.forEach((b, n) => b.setAttribute('aria-current', String(n === i)));
+			rail.forEach((b, n) => {
+				b.setAttribute('aria-current', String(n === i));
+				b.setAttribute('aria-pressed', String(n === i));
+			});
 			stages.forEach((s, n) => s.dataset.on = String(n === i));
 		}
 

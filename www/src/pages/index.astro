@@ -54,11 +54,11 @@ let tiers = [
 		</header>
 
 		<main class="shell">
-			<section class="sec sec-first">
-				<h2 class="sec-head">Name</h2>
+			<section class="sec sec-first" aria-label="Name">
+				<p class="sec-head">Name</p>
 				<div class="sec-body">
 					<h1 class="name">
-						<span class="wordmark">lane</span>
+						<span class="wordmark">lane</span>{' '}
 						<span class="tagline">
 							<span class="name-dash" aria-hidden="true">&mdash; </span>Copy-on-write worktrees with
 							memory that survives them.
@@ -101,7 +101,7 @@ let tiers = [
 						so the second tree occupies no new space and the build cache is already warm.
 					</p>
 
-					<table class="tbl">
+					<table class="tbl tbl-cmp">
 						<thead>
 							<tr>
 								<th scope="col">In the new tree</th>
@@ -112,38 +112,38 @@ let tiers = [
 						<tbody>
 							<tr>
 								<th scope="row">tracked files</th>
-								<td>checked out</td>
-								<td>checked out</td>
+								<td data-label="git worktree add">checked out</td>
+								<td data-label="lane new">checked out</td>
 							</tr>
 							<tr>
 								<th scope="row">node_modules, at any depth</th>
-								<td class="cell-cost">absent</td>
-								<td class="cell-free">by reference</td>
+								<td class="cell-cost" data-label="git worktree add">absent</td>
+								<td class="cell-free" data-label="lane new">by reference</td>
 							</tr>
 							<tr>
 								<th scope="row">target/, dist/, .venv/</th>
-								<td class="cell-cost">absent</td>
-								<td class="cell-free">by reference</td>
+								<td class="cell-cost" data-label="git worktree add">absent</td>
+								<td class="cell-free" data-label="lane new">by reference</td>
 							</tr>
 							<tr>
 								<th scope="row">.env and the rest of .gitignore</th>
-								<td class="cell-cost">absent</td>
-								<td class="cell-free">by reference</td>
+								<td class="cell-cost" data-label="git worktree add">absent</td>
+								<td class="cell-free" data-label="lane new">by reference</td>
 							</tr>
 							<tr>
 								<th scope="row">uncommitted work</th>
-								<td class="cell-cost">absent</td>
-								<td class="cell-free">with --dirty</td>
+								<td class="cell-cost" data-label="git worktree add">absent</td>
+								<td class="cell-free" data-label="lane new">with --dirty</td>
 							</tr>
 							<tr>
 								<th scope="row">what earlier branches learned</th>
-								<td class="cell-cost">absent</td>
-								<td class="cell-free">lane why &lt;file&gt;</td>
+								<td class="cell-cost" data-label="git worktree add">absent</td>
+								<td class="cell-free" data-label="lane new">lane why &lt;file&gt;</td>
 							</tr>
 							<tr class="tbl-total">
 								<th scope="row">this repo, 12,283 ignored files</th>
-								<td class="cell-cost">1358.1 MiB, then npm i and a cold build</td>
-								<td class="cell-free">0 B, 4.0s</td>
+								<td class="cell-cost" data-label="git worktree add">1358.1 MiB, then npm i and a cold build</td>
+								<td class="cell-free" data-label="lane new">0 B, 4.0s</td>
 							</tr>
 						</tbody>
 					</table>
@@ -208,7 +208,7 @@ src/auth.rs#fn verify
 					</p>
 
 					<h3 class="eyebrow">Freshness — what happens as the code moves</h3>
-					<table class="tbl">
+					<table class="tbl tbl-tier">
 						<thead>
 							<tr>
 								<th class="tbl-mark" scope="col"><span class="sr-only">mark</span></th>

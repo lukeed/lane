@@ -24,11 +24,14 @@ impl fmt::Display for CloneError {
     }
 }
 
-/// EOPNOTSUPP ENOTTY EXDEV EINVAL EPERM ENOSYS: "this filesystem cannot", not "this failed".
+/// ENOTSUP EOPNOTSUPP ENOTTY EXDEV EINVAL EPERM ENOSYS: "this filesystem cannot".
+///
+/// Darwin splits ENOTSUP (45) from EOPNOTSUPP (102) where Linux makes them equal, and
+/// clonefile returns the former — so omitting it turned "no reflink here" into a hard error.
 #[cfg(target_os = "linux")]
-const UNSUPPORTED: &[i32] = &[95, 25, 18, 22, 1, 38];
+const UNSUPPORTED: &[i32] = &[95, 95, 25, 18, 22, 1, 38];
 #[cfg(target_os = "macos")]
-const UNSUPPORTED: &[i32] = &[102, 25, 18, 22, 1, 78];
+const UNSUPPORTED: &[i32] = &[45, 102, 25, 18, 22, 1, 78];
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 const UNSUPPORTED: &[i32] = &[];
 
@@ -208,4 +211,27 @@ pub fn clone_tree(
         }
     }
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_filesystem_that_cannot_clone_falls_back_rather_than_failing() {
+        // Darwin's clonefile returns ENOTSUP (45), not EOPNOTSUPP (102); treating it as a
+        // real error made lane fail hard on HFS+, exFAT and network mounts.
+        for code in UNSUPPORTED {
+            let err = std::io::Error::from_raw_os_error(*code);
+            assert!(
+                matches!(classify(err), CloneError::Unsupported(_)),
+                "errno {code} must mean fall back, not fail"
+            );
+        }
+        // ENOSPC is a real failure and must not be swallowed.
+        assert!(matches!(
+            classify(std::io::Error::from_raw_os_error(28)),
+            CloneError::Io(_)
+        ));
+    }
 }

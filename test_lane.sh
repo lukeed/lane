@@ -622,6 +622,24 @@ is "and is still clean when read twice" "$(git status --porcelain)" ""
 "$LANE" audit --review none > /dev/null
 is "an audit that changes nothing writes nothing" "$(git status --porcelain)" ""
 
+echo "== 30. drift survives a landing =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "callers rely on the parsed shape" > /dev/null
+"$LANE" audit > /dev/null
+git add -A .context && git commit -qm memory > /dev/null
+"$LANE" new carry > /dev/null 2>&1
+( cd "$TMP/repo/.lanes/carry" \
+  && sed 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs > t \
+  && mv t src/auth.rs && git add -A && git commit -qm "change the span" > /dev/null \
+  && "$LANE" audit --review none > /dev/null )
+is "a lane preserves the baseline it compared against" \
+   "$(python3 -c "import json;print(int(any(v.get('body_hash') for v in json.load(open('$TMP/repo/.lanes/carry/.context/state/carry.json')).values())))")" "1"
+( cd "$TMP/repo/.lanes/carry" && "$LANE" done --review none > /dev/null 2>&1 )
+is "and the drift survives the landing" \
+   "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+is "and is still reported by a later audit" \
+   "$("$LANE" audit --review none > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

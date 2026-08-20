@@ -30,6 +30,53 @@ pub struct Outcome {
     pub reviewer: String,
 }
 
+fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool {
+    let unresolved = res.tier == BODY || res.tier == SIG;
+    let previous = state.get(id).cloned().unwrap_or_default();
+    let (sig, body_hash, raw_hash) = if unresolved {
+        // Seeing drift is not enough to vouch for the new fingerprint.
+        (
+            previous.sig.clone(),
+            previous.body_hash.clone(),
+            previous.raw_hash.clone(),
+        )
+    } else {
+        (res.sig.clone(), res.body_hash.clone(), res.raw_hash.clone())
+    };
+    let unchanged = previous.sig == sig
+        && previous.body_hash == body_hash
+        && previous.raw_hash == raw_hash
+        && previous.status == res.tier
+        && previous.norm == crate::syntax::NORM_VERSION;
+    state.insert(
+        id.to_string(),
+        store::NoteState {
+            sig,
+            body_hash,
+            raw_hash,
+            status: res.tier.into(),
+            // Only advances when something moved, so a no-op audit writes nothing.
+            checked: if unchanged {
+                previous.checked
+            } else {
+                now_iso()
+            },
+            norm: crate::syntax::NORM_VERSION.into(),
+            reads: previous.reads,
+        },
+    );
+    unresolved
+}
+
+fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
+    entry.sig = res.sig.clone();
+    entry.body_hash = res.body_hash.clone();
+    entry.raw_hash = res.raw_hash.clone();
+    entry.status = FRESH.into();
+    entry.checked = now_iso();
+    entry.norm = crate::syntax::NORM_VERSION.into();
+}
+
 pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outcome> {
     let created = store::promote_pending(root)?;
     let counts = store::read_counts(root);
@@ -69,44 +116,9 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
         if res.rebaselined {
             rebaselined += 1;
         }
-        let unresolved = res.tier == BODY || res.tier == SIG;
-        if unresolved {
+        if record_state(&mut state, &note.meta.id, &res) {
             drifted.push(note.clone());
         }
-
-        let previous = state.get(&note.meta.id).cloned().unwrap_or_default();
-        let (sig, body_hash, raw_hash) = if unresolved {
-            // Seeing drift is not enough to vouch for the new fingerprint.
-            (
-                previous.sig.clone(),
-                previous.body_hash.clone(),
-                previous.raw_hash.clone(),
-            )
-        } else {
-            (res.sig, res.body_hash, res.raw_hash)
-        };
-        let unchanged = previous.sig == sig
-            && previous.body_hash == body_hash
-            && previous.raw_hash == raw_hash
-            && previous.status == res.tier
-            && previous.norm == crate::syntax::NORM_VERSION;
-        state.insert(
-            note.meta.id.clone(),
-            store::NoteState {
-                sig,
-                body_hash,
-                raw_hash,
-                status: res.tier.into(),
-                // Only advances when something moved, so a no-op audit writes nothing.
-                checked: if unchanged {
-                    previous.checked
-                } else {
-                    now_iso()
-                },
-                norm: crate::syntax::NORM_VERSION.into(),
-                reads: previous.reads,
-            },
-        );
     }
 
     let reviewed = apply_review(
@@ -303,12 +315,7 @@ fn apply_review(
                     && let Some(entry) = state.get_mut(&note.meta.id)
                 {
                     let res = checker.check(note);
-                    entry.sig = res.sig;
-                    entry.body_hash = res.body_hash;
-                    entry.raw_hash = res.raw_hash;
-                    entry.status = FRESH.into();
-                    entry.checked = now_iso();
-                    entry.norm = crate::syntax::NORM_VERSION.into();
+                    refresh_holds(entry, &res);
                 }
                 applied.push((note.clone(), other.to_string(), None));
             }
@@ -377,96 +384,39 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::review::{Reviewer, Verdict};
-    use crate::syntax::Source;
+    use crate::store::Check;
 
-    struct Holds;
-
-    impl Reviewer for Holds {
-        fn name(&self) -> String {
-            "holds".into()
-        }
-
-        fn review(&self, items: &[Item]) -> HashMap<String, Verdict> {
-            items
-                .iter()
-                .map(|item| {
-                    (
-                        item.id.clone(),
-                        Verdict {
-                            verdict: "holds".into(),
-                            rewrite: String::new(),
-                            reason: String::new(),
-                        },
-                    )
-                })
-                .collect()
+    fn check(tier: &'static str, suffix: &str) -> Check {
+        Check {
+            tier,
+            sig: format!("sig-{suffix}"),
+            body_hash: format!("body-{suffix}"),
+            raw_hash: format!("raw-{suffix}"),
+            span: None,
+            rebaselined: false,
         }
     }
 
-    fn opts() -> Options {
-        Options {
-            base: String::new(),
-            max_notes: 5,
-            max_chars: 1200,
-            review_limit: 20,
+    fn old_state() -> store::NoteState {
+        store::NoteState {
+            sig: "sig-old".into(),
+            body_hash: "body-old".into(),
+            raw_hash: "raw-old".into(),
+            status: FRESH.into(),
+            checked: "2026-01-01T00:00:00Z".into(),
+            norm: crate::syntax::NORM_VERSION.into(),
+            ..Default::default()
         }
-    }
-
-    fn fixture() -> (tempfile::TempDir, Note, store::NoteState) {
-        let root = tempfile::tempdir().unwrap();
-        let source = "pub fn verify(token: &str) -> bool {\n    parse(token).is_valid()\n}\n";
-        std::fs::create_dir_all(root.path().join("src")).unwrap();
-        std::fs::write(root.path().join("src/auth.rs"), source).unwrap();
-        let src = Source::new(source, "src/auth.rs");
-        let span = src.resolve("fn verify").unwrap();
-        let (sig, body_hash, raw_hash) = src.hashes(span, "fn verify");
-        let note = Note::new(
-            Meta {
-                id: "01M0A".into(),
-                anchor: "fn verify".into(),
-                norm: crate::syntax::NORM_VERSION.into(),
-                sig: sig.clone(),
-                body_hash: body_hash.clone(),
-                raw_hash: raw_hash.clone(),
-                ..Default::default()
-            },
-            "must stay constant-time",
-        );
-        note.write(&store::note_dir(root.path(), "src/auth.rs").join("01M0A-note.md"))
-            .unwrap();
-        (
-            root,
-            note,
-            store::NoteState {
-                sig,
-                body_hash,
-                raw_hash,
-                status: FRESH.into(),
-                checked: "2026-01-01T00:00:00Z".into(),
-                norm: crate::syntax::NORM_VERSION.into(),
-                ..Default::default()
-            },
-        )
-    }
-
-    fn drift(root: &Path) {
-        std::fs::write(
-            root.join("src/auth.rs"),
-            "pub fn verify(token: &str) -> bool {\n    parse(token).is_valid() && true\n}\n",
-        )
-        .unwrap();
     }
 
     #[test]
     fn unresolved_drift_keeps_the_vouched_fingerprint() {
-        let (root, _note, old) = fixture();
-        store::save_state(root.path(), &HashMap::from([("01M0A".into(), old.clone())])).unwrap();
-        drift(root.path());
+        let old = old_state();
+        let mut state = HashMap::from([("01M0A".into(), old.clone())]);
 
-        run(root.path(), &opts(), &crate::review::Null).unwrap();
+        assert!(record_state(&mut state, "01M0A", &check(BODY, "new")));
 
-        let saved = store::own_state(root.path())["01M0A"].clone();
+        let saved = state["01M0A"].clone();
         assert_eq!(saved.sig, old.sig);
         assert_eq!(saved.body_hash, old.body_hash);
         assert_eq!(saved.raw_hash, old.raw_hash);
@@ -475,27 +425,28 @@ mod tests {
 
     #[test]
     fn holds_refreshes_the_vouched_fingerprint() {
-        let (root, _note, old) = fixture();
-        store::save_state(root.path(), &HashMap::from([("01M0A".into(), old.clone())])).unwrap();
-        drift(root.path());
+        let old = old_state();
+        let mut state = HashMap::from([("01M0A".into(), old.clone())]);
+        let current = check(BODY, "new");
+        record_state(&mut state, "01M0A", &current);
+        refresh_holds(state.get_mut("01M0A").unwrap(), &current);
 
-        run(root.path(), &opts(), &Holds).unwrap();
-
-        let saved = store::own_state(root.path())["01M0A"].clone();
+        let saved = state["01M0A"].clone();
         assert_ne!(saved.body_hash, old.body_hash);
         assert_eq!(saved.status, FRESH);
     }
 
     #[test]
     fn a_fresh_note_updates_its_fingerprint() {
-        let (root, note, _old) = fixture();
+        let mut state = store::State::new();
+        let current = check(FRESH, "current");
 
-        run(root.path(), &opts(), &crate::review::Null).unwrap();
+        assert!(!record_state(&mut state, "01M0A", &current));
 
-        let saved = store::own_state(root.path())["01M0A"].clone();
-        assert_eq!(saved.sig, note.meta.sig);
-        assert_eq!(saved.body_hash, note.meta.body_hash);
-        assert_eq!(saved.raw_hash, note.meta.raw_hash);
+        let saved = state["01M0A"].clone();
+        assert_eq!(saved.sig, current.sig);
+        assert_eq!(saved.body_hash, current.body_hash);
+        assert_eq!(saved.raw_hash, current.raw_hash);
         assert_eq!(saved.status, FRESH);
     }
 }

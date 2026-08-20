@@ -5,7 +5,7 @@ description: Use lane in this repository — open a worktree with `lane new`, re
 
 # lane
 
-This repository keeps memory about its own code in `.context/`. Notes are plain markdown,
+This repository keeps memory about its own code in `.lane/`. Notes are plain markdown,
 written once and never rewritten. Read them before you edit, and leave one behind when you
 learn something the next agent would otherwise rediscover.
 
@@ -79,7 +79,7 @@ One note, one thought. Do not classify it — a note costs one command, on purpo
 
 ## Do not
 
-- Edit anything under `.context/` by hand. `lane done` owns it.
+- Edit anything under `.lane/` by hand. `lane done` owns it.
 - Pass `--dirty` unless you want the parent tree's uncommitted work in your lane.
 - Write notes about what a commit changed, or notes you have not read the file to confirm.
 

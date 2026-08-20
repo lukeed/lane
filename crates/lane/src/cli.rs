@@ -323,7 +323,7 @@ fn hooks_uninstall() -> Result<i32> {
 }
 
 fn skill_install() -> Result<i32> {
-    let path = wt::main_root()?.join(SKILL_PATH);
+    let path = git::repo_root()?.join(SKILL_PATH);
     if path.exists() {
         if std::fs::read_to_string(&path)? == SKILL {
             println!("{} already installed", path.display());
@@ -344,7 +344,7 @@ fn skill_install() -> Result<i32> {
 }
 
 fn skill_uninstall() -> Result<i32> {
-    let path = wt::main_root()?.join(SKILL_PATH);
+    let path = git::repo_root()?.join(SKILL_PATH);
     if !path.exists() {
         return Ok(0);
     }

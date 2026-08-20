@@ -474,6 +474,12 @@ echo "edited by hand" >> .agents/skills/lane/SKILL.md
 "$LANE" install skill > /tmp/skill3.out 2>&1
 is "an edited skill is not clobbered" "$?" "1"
 
+"$LANE" new skillhome > /dev/null 2>&1
+( cd "$TMP/.lanes-repo/skillhome" && "$LANE" install skill > /dev/null 2>&1 )
+is "the skill installs into the worktree you ran it from" \
+   "$([ -f "$TMP/.lanes-repo/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
+"$LANE" rm skillhome --force > /dev/null 2>&1
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

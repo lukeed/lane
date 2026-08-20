@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat 694dd99..HEAD -- crates/lane/src/worktree.rs scripts/check-linux.sh test_lane.sh`
+> `git diff --stat cb1ef6c..HEAD -- crates/lane/src/worktree.rs crates/lane/src/cow.rs scripts/check-linux.sh test_lane.sh`
 
 ## Status
 
@@ -15,7 +15,7 @@
 - **Risk**: HIGH
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `694dd99`, 2026-08-19
+- **Planned at**: commit `694dd99`, 2026-08-19; re-verified at `cb1ef6c`
 
 ## Why this matters
 
@@ -158,7 +158,7 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
 | Linux gates | `./scripts/check-linux.sh` | see Step 5 |
 
-Record both baselines before starting; at `694dd99` they are 55 and 94.
+Record both baselines before starting; at `cb1ef6c` they are 69 and 108.
 
 ## Scope
 

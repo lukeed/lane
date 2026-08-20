@@ -98,6 +98,10 @@ pub const SCENES: &[Scene] = &[
             Do("lane audit --review none"),
             Do("find .context/-/ -type f"),
             Look("Open that file. It is markdown with a small header — nothing proprietary."),
+            Say("Now commit it. Memory is versioned like source, which is what makes it\n\
+                 travel: clone the repository and the notes arrive with it. It also has to\n\
+                 be committed before you open a lane, or the lane starts without it."),
+            Do("git add -A .context && git commit -q -m 'memory: record what we know' && git log --oneline -1"),
         ],
         records: "recorded a note on src/auth.rs#fn verify",
     },
@@ -195,8 +199,9 @@ pub const SCENES: &[Scene] = &[
             Say("Landed in a different order than they were opened, with no conflicts and no\n\
                  coordination between them."),
             Do("lane why src/auth.rs"),
-            Say("All three notes are on trunk, each attributed to the lane that wrote it — and\n\
-                 the original note is still flagged, because nobody has resolved it yet."),
+            Say("All three are on trunk, each attributed to the lane that wrote it, and none of\n\
+                 them conflicted. Nothing is flagged yet — trunk's `verify` is still the code\n\
+                 those notes were written against. That changes in a moment."),
         ],
         records: "landed three lanes out of order",
     },
@@ -222,8 +227,9 @@ pub const SCENES: &[Scene] = &[
         steps: &[
             In(".lanes/fix-empty-token", "lane done --review none"),
             Do("lane why src/auth.rs"),
-            Say("Four notes from four branches, on one file, with the drifted one still marked.\n\
-                 Nothing here required anyone to agree on a format or run a server."),
+            Say("Landing the fix changed `verify`, so every note about it is flagged at once —\n\
+                 five notes from five branches, four of them now asking to be re-read. None\n\
+                 was deleted and none was quietly accepted; the uncertainty is just visible."),
             Do("git log --oneline | head -8"),
             Look("Open `.context/` in your editor. Everything lane knows is in there, in plain\n\
                   markdown, at paths that mirror your source tree."),

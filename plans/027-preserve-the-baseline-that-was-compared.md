@@ -158,7 +158,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 
 | Purpose | Command | Expected |
 |---|---|---|
-| Unit + integration | `cargo test` | baseline + 2 |
+| Unit + integration | `cargo test` | baseline + 1 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
 | End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
@@ -258,7 +258,7 @@ still updates it; a no-op audit still writes nothing.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` passes, baseline + 1; `./test_lane.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` exit 0 from this lane
 - [ ] A lane's state entry for a drifted note carries a non-empty fingerprint

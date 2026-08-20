@@ -210,11 +210,20 @@ fn append_line(path: &Path, line: &str) -> Result<()> {
     Ok(())
 }
 
-const PROTOCOL: &str = "\n## Context memory\n\n\
+const PROTOCOL: &str = "\n<!-- lane:protocol -->\n\
+## Context memory\n\n\
 - Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note -p <path> -a <anchor> \"...\"`.\n\
 - Do not edit `.context/` by hand; `lane done` manages it.\n\
-- Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n";
+- Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n\
+<!-- /lane:protocol -->\n";
+
+/// The protocol as shipped before markers, recognised so an upgrade can replace it.
+/// Never edit this; it is a fingerprint of what is already in users' files, not content.
+const PROTOCOL_V1: &str = "## Context memory\n\n\
+- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
+- Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
+- Do not edit `.context/` by hand; `lane done` manages it.\n";
 
 const SKILL: &str = include_str!("../assets/skill.md");
 const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";

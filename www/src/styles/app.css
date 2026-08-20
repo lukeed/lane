@@ -49,20 +49,6 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
-body::before {
-	content: '';
-	position: fixed;
-	inset: 0;
-	z-index: 100;
-	pointer-events: none;
-	opacity: 0.028;
-	background-image: repeating-linear-gradient(
-		0deg,
-		#fff 0 1px,
-		transparent 1px 3px
-	);
-}
-
 a {
 	color: inherit;
 	text-decoration-color: var(--rule-lit);
@@ -392,8 +378,16 @@ a:hover {
 	background: var(--ref);
 }
 
+/* steps already played stay filled, so the rail reads as one pass through the
+   workflow rather than four unrelated tabs */
+.rail-step[data-done='true']::after {
+	width: 100%;
+	background: color-mix(in oklab, var(--ref) 45%, var(--rule));
+}
+
 .rail-step[aria-current='true']::after {
 	width: 100%;
+	background: var(--ref);
 	transition: width linear;
 	transition-duration: var(--dwell, 0ms);
 }
@@ -705,6 +699,24 @@ a:hover {
 	color: var(--ref);
 }
 
+/* the hashed span, marked as one block rather than four box-drawing glyphs that
+   line-height would pull apart */
+.span-group {
+	position: relative;
+	background: color-mix(in oklab, var(--ref) 7%, transparent);
+	padding-right: 9ch;
+}
+
+.span-group::after {
+	content: attr(data-label);
+	position: absolute;
+	right: 1ch;
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--dim);
+	font-size: 11px;
+}
+
 .src-row[data-changed='true'] .src-code {
 	color: var(--drift);
 }
@@ -872,9 +884,9 @@ a:hover {
 .tbl-mark {
 	color: var(--dimmer);
 	width: 1ch;
-	padding-right: 0 !important;
+	padding-right: 1.5ch !important;
 	user-select: none;
-	text-align: center;
+	text-align: left;
 }
 
 /* the tier's own colour, keyed off the row so table rules cannot out-specify it */
@@ -1154,19 +1166,20 @@ a:hover {
 	}
 }
 
-.reveal {
+/* gated on `js` so a page without it is not left with four invisible sections */
+.js .reveal {
 	opacity: 0;
 	transform: translateY(10px);
 }
 
-.reveal[data-seen='true'] {
+.js .reveal[data-seen='true'] {
 	opacity: 1;
 	transform: none;
 	transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.reveal {
+	.js .reveal {
 		opacity: 1;
 		transform: none;
 	}

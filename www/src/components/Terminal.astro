@@ -78,10 +78,12 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 					<div class="src">
 						<span class="src-file">src/auth.rs</span>
 						<div class="src-row"><span class="src-no">35</span><span class="src-bar">│</span><span class="src-code">// checked at every request</span></div>
-						<div class="src-row" data-span="true"><span class="src-no">36</span><span class="src-bar">│</span><span class="src-code">fn verify(tok: &amp;str) -&gt; bool &#123;   <span class="hl-dim">┐</span></span></div>
-						<div class="src-row" data-span="true"><span class="src-no">37</span><span class="src-bar">│</span><span class="src-code">    let want = expected();     <span class="hl-dim">│</span> span</span></div>
-						<div class="src-row" data-span="true"><span class="src-no">38</span><span class="src-bar">│</span><span class="src-code">    constant_eq(tok, &amp;want)   <span class="hl-dim">│</span></span></div>
-						<div class="src-row" data-span="true"><span class="src-no">39</span><span class="src-bar">│</span><span class="src-code">&#125;                             <span class="hl-dim">┘</span></span></div>
+						<div class="span-group" data-label="span">
+							<div class="src-row" data-span="true"><span class="src-no">36</span><span class="src-bar">│</span><span class="src-code">fn verify(tok: &amp;str) -&gt; bool &#123;</span></div>
+							<div class="src-row" data-span="true"><span class="src-no">37</span><span class="src-bar">│</span><span class="src-code">    let want = expected();</span></div>
+							<div class="src-row" data-span="true"><span class="src-no">38</span><span class="src-bar">│</span><span class="src-code">    constant_eq(tok, &amp;want)</span></div>
+							<div class="src-row" data-span="true"><span class="src-no">39</span><span class="src-bar">│</span><span class="src-code">&#125;</span></div>
+						</div>
 						<div class="src-row"><span class="src-no">40</span><span class="src-bar">│</span><span class="src-code"></span></div>
 					</div>
 					<div class="hashes">
@@ -109,10 +111,12 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 					<div class="src">
 						<span class="src-file">src/auth.rs</span>
 						<div class="src-row"><span class="src-no">35</span><span class="src-bar">│</span><span class="src-code">// checked at every request</span></div>
-						<div class="src-row" data-span="true"><span class="src-no">36</span><span class="src-bar">│</span><span class="src-code">fn verify(tok: &amp;str) -&gt; bool &#123;   <span class="hl-dim">┐</span></span></div>
-						<div class="src-row" data-span="true" data-changed="true"><span class="src-no">37</span><span class="src-bar">│</span><span class="src-code">    let want = cached_key();  <span class="hl-dim">│</span> span</span></div>
-						<div class="src-row" data-span="true" data-changed="true"><span class="src-no">38</span><span class="src-bar">│</span><span class="src-code">    subtle::eq(tok, &amp;want)    <span class="hl-dim">│</span></span></div>
-						<div class="src-row" data-span="true"><span class="src-no">39</span><span class="src-bar">│</span><span class="src-code">&#125;                             <span class="hl-dim">┘</span></span></div>
+						<div class="span-group" data-label="span">
+							<div class="src-row" data-span="true"><span class="src-no">36</span><span class="src-bar">│</span><span class="src-code">fn verify(tok: &amp;str) -&gt; bool &#123;</span></div>
+							<div class="src-row" data-span="true" data-changed="true"><span class="src-no">37</span><span class="src-bar">│</span><span class="src-code">    let want = cached_key();</span></div>
+							<div class="src-row" data-span="true" data-changed="true"><span class="src-no">38</span><span class="src-bar">│</span><span class="src-code">    subtle::eq(tok, &amp;want)</span></div>
+							<div class="src-row" data-span="true"><span class="src-no">39</span><span class="src-bar">│</span><span class="src-code">&#125;</span></div>
+						</div>
 						<div class="src-row"><span class="src-no">40</span><span class="src-bar">│</span><span class="src-code"></span></div>
 					</div>
 					<div class="hashes">
@@ -203,6 +207,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 			rail.forEach((b, n) => {
 				b.setAttribute('aria-current', String(n === i));
 				b.setAttribute('aria-pressed', String(n === i));
+				b.dataset.done = String(n < i);
 			});
 			stages.forEach((s, n) => s.dataset.on = String(n === i));
 		}

@@ -1,1 +1,2 @@
 {"anchor":"podman run","at":"2026-08-20T06:37:15Z","id":"01M0EY6QRVZSWS021QT5B8N5E9","kind":"evict","path":"scripts/check-linux.sh","reason":"anchor missing"}
+{"anchor":"28. landings are serialized and marked","at":"2026-08-20T16:47:38Z","id":"01M0G14CMAP84D2TJ2NJT6B87M","kind":"evict","path":"test_lane.sh","reason":"anchor missing"}

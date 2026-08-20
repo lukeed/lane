@@ -11,6 +11,7 @@ use crate::worktree as wt;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use std::io::{IsTerminal, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 const MAX_NOTES: usize = 5;
@@ -225,6 +226,91 @@ const PROTOCOL_V1: &str = "## Context memory\n\n\
 - Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
 - Do not edit `.context/` by hand; `lane done` manages it.\n";
 
+const PROTOCOL_START: &str = "<!-- lane:protocol -->";
+const PROTOCOL_END: &str = "<!-- /lane:protocol -->";
+
+enum ProtocolAction {
+    Write,
+    Current,
+    Replace(Range<usize>),
+    Upgrade(Range<usize>),
+    Refuse,
+}
+
+fn context_memory_section(existing: &str) -> Option<Range<usize>> {
+    let start = existing
+        .match_indices("## Context memory")
+        .find_map(|(start, _)| {
+            (start == 0 || existing.as_bytes()[start - 1] == b'\n').then_some(start)
+        })?;
+    let end = existing[start..]
+        .find("\n## ")
+        .map_or(existing.len(), |offset| start + offset + 1);
+    Some(start..end)
+}
+
+fn protocol_action(existing: Option<&str>) -> ProtocolAction {
+    let Some(existing) = existing else {
+        return ProtocolAction::Write;
+    };
+
+    if let Some(start) = existing.find(PROTOCOL_START) {
+        let Some(end) = existing[start..].find(PROTOCOL_END) else {
+            return ProtocolAction::Refuse;
+        };
+        let end = start + end + PROTOCOL_END.len();
+        return if &existing[start..end] == PROTOCOL.trim() {
+            ProtocolAction::Current
+        } else {
+            ProtocolAction::Replace(start..end)
+        };
+    }
+
+    let Some(section) = context_memory_section(existing) else {
+        return ProtocolAction::Refuse;
+    };
+    if existing[section.clone()].trim() == PROTOCOL_V1.trim() {
+        ProtocolAction::Upgrade(section)
+    } else {
+        ProtocolAction::Refuse
+    }
+}
+
+fn write_protocol(agents: &Path) -> Result<i32> {
+    let existing = agents
+        .exists()
+        .then(|| std::fs::read_to_string(agents))
+        .transpose()?;
+    match protocol_action(existing.as_deref()) {
+        ProtocolAction::Write => {
+            std::fs::write(agents, format!("# AGENTS\n{PROTOCOL}"))?;
+            println!("wrote {} protocol", agents.display());
+        }
+        ProtocolAction::Current => println!("{} protocol is current", agents.display()),
+        ProtocolAction::Replace(range) => {
+            let mut existing = existing.expect("existing protocol file");
+            existing.replace_range(range, PROTOCOL.trim());
+            std::fs::write(agents, existing)?;
+            println!("repaired {} protocol", agents.display());
+        }
+        ProtocolAction::Upgrade(range) => {
+            let mut existing = existing.expect("existing protocol file");
+            existing.replace_range(range, PROTOCOL.trim());
+            std::fs::write(agents, existing)?;
+            println!("upgraded {} protocol", agents.display());
+        }
+        ProtocolAction::Refuse => {
+            eprintln!(
+                "{} has a protocol lane did not write; replace it with:",
+                agents.display()
+            );
+            eprintln!("{}", PROTOCOL.trim());
+            return Ok(1);
+        }
+    }
+    Ok(0)
+}
+
 const SKILL: &str = include_str!("../assets/skill.md");
 const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
 
@@ -380,11 +466,8 @@ fn init() -> Result<i32> {
     append_line(&attrs, &format!("{CONTEXT_DIR}/log/*.jsonl merge=union"))?;
 
     let agents = root.join("AGENTS.md");
-    if !agents.exists() {
-        std::fs::write(&agents, format!("# AGENTS\n{PROTOCOL}"))?;
-    } else if !std::fs::read_to_string(&agents)?.contains("## Context memory") {
-        let mut file = std::fs::OpenOptions::new().append(true).open(&agents)?;
-        write!(file, "{PROTOCOL}")?;
+    if write_protocol(&agents)? != 0 {
+        return Ok(1);
     }
 
     let (ok, detail) = crate::cow::probe(&root);

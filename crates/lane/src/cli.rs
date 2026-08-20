@@ -212,8 +212,9 @@ fn append_line(path: &Path, line: &str) -> Result<()> {
 
 const PROTOCOL: &str = "\n## Context memory\n\n\
 - Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
-- Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
-- Do not edit `.context/` by hand; `lane done` manages it.\n";
+- Record non-obvious findings with `lane note -p <path> -a <anchor> \"...\"`.\n\
+- Do not edit `.context/` by hand; `lane done` manages it.\n\
+- Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n";
 
 const SKILL: &str = include_str!("../assets/skill.md");
 const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
@@ -387,7 +388,7 @@ fn init() -> Result<i32> {
         println!("  lanes will still work as plain worktrees; ignored files will not be cloned");
     }
     println!(
-        "capture commit decisions with `lane hooks install` (`lane hooks uninstall` removes them)"
+        "capture commit decisions with `lane install hooks` (`lane uninstall hooks` removes them)"
     );
     Ok(0)
 }

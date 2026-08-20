@@ -430,7 +430,7 @@ git checkout -- src/auth.rs
 
 echo "== 22. decisions are captured from commit trailers =="
 setup
-"$LANE" hooks install > /dev/null
+"$LANE" install hooks > /dev/null
 git commit -q --allow-empty -m "make verify constant-time
 
 Why: src/auth.rs#fn verify | early return leaks token length"

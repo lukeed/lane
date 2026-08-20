@@ -75,10 +75,15 @@ enum Command {
         #[arg(short, long, default_value = "@file")]
         anchor: String,
     },
-    /// manage commit-message capture hooks
-    Hooks {
+    /// install lane's agent integrations
+    Install {
         #[command(subcommand)]
-        action: HookAction,
+        what: Installable,
+    },
+    /// remove lane's agent integrations
+    Uninstall {
+        #[command(subcommand)]
+        what: Installable,
     },
     #[command(hide = true)]
     Capture { rev: String },
@@ -129,11 +134,11 @@ enum Command {
 }
 
 #[derive(Subcommand, Debug)]
-enum HookAction {
-    /// install commit-message capture hooks
-    Install,
-    /// remove lane's commit-message capture hooks
-    Uninstall,
+enum Installable {
+    /// commit-message capture hooks
+    Hooks,
+    /// the lane skill, teaching an agent the daily loop
+    Skill,
 }
 
 /// Takes the stream it will be written to; under --cd that is stderr, not stdout.
@@ -157,9 +162,13 @@ pub fn run() -> Result<i32> {
         Command::Ls => ls(),
         Command::Path { name } => path(&name),
         Command::Note { text, path, anchor } => note(&text, &path, &anchor),
-        Command::Hooks { action } => match action {
-            HookAction::Install => hooks_install(),
-            HookAction::Uninstall => hooks_uninstall(),
+        Command::Install { what } => match what {
+            Installable::Hooks => hooks_install(),
+            Installable::Skill => skill_install(),
+        },
+        Command::Uninstall { what } => match what {
+            Installable::Hooks => hooks_uninstall(),
+            Installable::Skill => skill_uninstall(),
         },
         Command::Capture { rev } => {
             capture::capture(&rev);
@@ -205,6 +214,9 @@ const PROTOCOL: &str = "\n## Context memory\n\n\
 - Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
 - Do not edit `.context/` by hand; `lane done` manages it.\n";
+
+const SKILL: &str = include_str!("../assets/skill.md");
+const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
 
 const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
 const POST_COMMIT_BLOCK: &str = "# lane: capture Why trailers\n\
@@ -305,6 +317,43 @@ fn hooks_uninstall() -> Result<i32> {
             std::fs::write(&spec.path, remaining)?;
         }
         println!("removed lane block from {}", spec.path.display());
+    }
+    Ok(0)
+}
+
+fn skill_install() -> Result<i32> {
+    let path = wt::main_root()?.join(SKILL_PATH);
+    if path.exists() {
+        if std::fs::read_to_string(&path)? == SKILL {
+            println!("{} already installed", path.display());
+            return Ok(0);
+        }
+        eprintln!(
+            "{} was edited; remove it, then re-run to install the current skill",
+            path.display()
+        );
+        return Ok(1);
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, SKILL)?;
+    println!("installed {}", path.display());
+    Ok(0)
+}
+
+fn skill_uninstall() -> Result<i32> {
+    let path = wt::main_root()?.join(SKILL_PATH);
+    if !path.exists() {
+        return Ok(0);
+    }
+    std::fs::remove_file(&path)?;
+    println!("removed {}", path.display());
+    // Only the lane/ dir we just emptied; never .agents/ or .agents/skills/, which may hold others.
+    if let Some(dir) = path.parent() {
+        if std::fs::read_dir(dir)?.next().is_none() {
+            std::fs::remove_dir(dir)?;
+        }
     }
     Ok(0)
 }

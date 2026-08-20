@@ -210,20 +210,24 @@ Say plainly that lane does not write either one — they are yours to add.
 **Verify**: `grep -rn '\.context\|\.lanes\b\|CONTEXT_DIR\|LANES_DIRNAME' --exclude-dir=.git
 --exclude-dir=target --exclude-dir=plans .` → no matches outside `plans/`.
 
-### Step 6: Move this repository's own data
+### Step 6: Confirm the moved data still reads
 
-There are 27 active notes, 3 in the attic, and the trunk's branch files. Move them with
-`git mv` so history follows, in the same commit as the code:
+**This repository's store has already been moved** — it is committed on your branch as
+`chore: move store to .lane`, recorded by git as 31 pure renames with every one of the 28
+note files verified byte-identical. You do not need to move anything.
+
+Until your code change lands, `lane` in this worktree looks for `.context/` and will not
+find the store. That is expected, not a bug you introduced.
+
+Once Steps 1-5 are done, confirm the moved data reads correctly:
 
 ```
-.context/-/       → .lane/memory/
-.context/attic/   → .lane/attic/
-.context/state/main.json  → .lane/branch/main/state.json
-.context/log/main.jsonl   → .lane/branch/main/log.jsonl
+lane check
+lane why crates/lane/src/cli.rs
 ```
 
-**Verify**: `lane why <some noted path>` returns the same notes as before the move, and
-`lane check` reports the same tiers. Record both before you start so you can compare.
+Expected: `25 fresh`, everything else zero, and 11 notes listed for `cli.rs`. Those are the
+counts recorded before the move. A different number means a path builder is wrong.
 
 Then reinstall the skill, whose asset now differs from the installed copy:
 `lane uninstall skill && lane install skill`.
@@ -236,7 +240,7 @@ Then reinstall the skill, whose asset now differs from the installed copy:
 - [ ] A fresh `lane init` produces `.lane/` and nothing named `.context` or `.lanes`
 - [ ] A second lane contains no copy of the first, with and without `--dirty`
 - [ ] Main worktree `git status` is empty with lanes present, and after `git clean -xfd`
-- [ ] `lane why` and `lane check` on this repository return what they did before Step 6
+- [ ] On this repository, `lane check` reports 25 fresh and `lane why crates/lane/src/cli.rs` lists 11 notes
 - [ ] `grep -rn '\.context\|\.lanes\b'` finds nothing outside `plans/`
 - [ ] The diff on `skill.md` and `scenes.rs` is path substitutions only
 
@@ -245,7 +249,9 @@ Then reinstall the skill, whose asset now differs from the installed copy:
 - A newly created lane contains a `.lane/trees` directory. Stop at once — that is the
   recursion the guards exist to prevent.
 - `cargo test` or `./test_lane.sh` changes count in either direction.
-- Any note file is lost, duplicated, or has different content after Step 6.
+- `lane check` on this repository reports anything other than 25 fresh once the code is
+  renamed. The data is already in place; a wrong count means a path builder is wrong, and
+  guessing at it risks writing a second store beside the real one.
 - You are about to reword anything in `skill.md` or `scenes.rs` beyond a path.
 - You conclude `lane init` should write `.ignore` or `.vscode/settings.json`. It should not;
   the README documents them.

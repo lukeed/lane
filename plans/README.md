@@ -20,7 +20,7 @@ counts before starting, and update your row when done.
 | 016 | Fail `lane done` before it writes, not after | P2 | S | — | DONE |
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
 | 018 | Keep the pending queue out of the worktree | P1 | S | — | DONE |
-| 017 | Teach agents to use lane, via `lane install skill` | P2 | M | 018 | IN PROGRESS |
+| 017 | Teach agents to use lane, via `lane install skill` | P2 | M | 018 | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

@@ -77,26 +77,26 @@ impl Note {
 }
 
 /// A note we cannot parse still has to be visible, so fall back to the whole file as body.
-/// `.context/<path>/<ulid>-<slug>.md`, so the directory names the file the note is about.
+/// `.lane/memory/<path>/<ulid>-<slug>.md`, so the directory names the file the note is about.
 fn path_from_location(file: &Path) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    let mut seen_context = false;
-    let mut seen_namespace = false;
-    for part in file.parent().unwrap_or(Path::new("")).components() {
-        let name = part.as_os_str().to_string_lossy().to_string();
-        if !seen_context {
-            seen_context = name == crate::store::CONTEXT_DIR;
-            continue;
-        }
-        // Exactly one component after .context is ours; the rest is the user's path, which
-        // may itself be named attic.
-        if !seen_namespace {
-            seen_namespace = true;
-            continue;
-        }
-        parts.push(name);
-    }
-    parts.join("/")
+    let parts: Vec<String> = file
+        .parent()
+        .unwrap_or(Path::new(""))
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy().to_string())
+        .collect();
+    let Some(store) = parts
+        .iter()
+        .rposition(|name| name == crate::store::LANE_DIR)
+    else {
+        return String::new();
+    };
+    // Exactly one component after the deepest .lane is ours; the rest is the user's path.
+    parts
+        .into_iter()
+        .skip(store + 2)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 pub fn parse(path: &Path) -> Result<Note> {
@@ -202,12 +202,19 @@ mod tests {
     #[test]
     fn a_notes_path_comes_from_its_directory_attic_or_not() {
         let root = Path::new("/repo");
-        let live = root.join(".context/-/src/auth.rs/01M0-x.md");
-        let attic = root.join(".context/attic/src/auth.rs/01M0-x.md");
+        let live = root.join(".lane/memory/src/auth.rs/01M0-x.md");
+        let attic = root.join(".lane/attic/src/auth.rs/01M0-x.md");
         assert_eq!(path_from_location(&live), "src/auth.rs");
         assert_eq!(path_from_location(&attic), "src/auth.rs");
         // A repo may have its own attic/, and only our own leading component is dropped.
-        let user_attic = root.join(".context/-/attic/f.txt/01M0-x.md");
+        let user_attic = root.join(".lane/memory/attic/f.txt/01M0-x.md");
         assert_eq!(path_from_location(&user_attic), "attic/f.txt");
+    }
+
+    #[test]
+    fn a_lane_side_note_uses_the_deepest_store_root() {
+        let file = Path::new("/repo/.lane/trees/work/.lane/memory/src/auth.rs/01M0-x.md");
+
+        assert_eq!(path_from_location(file), "src/auth.rs");
     }
 }

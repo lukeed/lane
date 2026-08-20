@@ -1,4 +1,4 @@
-//! The `.context/` store: load, promote, check, and evict.
+//! The `.lane/` store: load, promote, check, and evict.
 
 use crate::git;
 use crate::note::{self, Meta, Note};
@@ -9,12 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-pub const CONTEXT_DIR: &str = ".context";
+pub const LANE_DIR: &str = ".lane";
 /// Reserved: everything under it mirrors user paths, so a repo may have its own attic/.
-pub const NOTES: &str = "-";
+pub const NOTES: &str = "memory";
 pub const ATTIC: &str = "attic";
-pub const STATE: &str = "state";
-pub const LOG: &str = "log";
+pub const BRANCH: &str = "branch";
 pub const PENDING: &str = "lane/pending.jsonl";
 
 /// Per-worktree: git resolves an uncommon path inside .git/worktrees/<name> for a lane,
@@ -52,16 +51,16 @@ pub fn tier_rank(tier: &str) -> u8 {
 }
 
 pub fn note_dir(root: &Path, path: &str) -> PathBuf {
-    root.join(CONTEXT_DIR).join(NOTES).join(path)
+    root.join(LANE_DIR).join(NOTES).join(path)
 }
 
 pub fn attic_dir(root: &Path, path: &str) -> PathBuf {
-    root.join(CONTEXT_DIR).join(ATTIC).join(path)
+    root.join(LANE_DIR).join(ATTIC).join(path)
 }
 
 /// Live notes only; the attic is a sibling of the reserved tree, never inside it.
 pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
-    let base = root.join(CONTEXT_DIR).join(NOTES);
+    let base = root.join(LANE_DIR).join(NOTES);
     if !base.exists() {
         return Vec::new();
     }
@@ -100,18 +99,16 @@ pub struct NoteState {
 
 pub type State = HashMap<String, NoteState>;
 
+fn branch_dir(root: &Path, branch: &str) -> PathBuf {
+    root.join(LANE_DIR).join(BRANCH).join(slug(branch, 60))
+}
+
 fn state_file_for(root: &Path, branch: &str) -> PathBuf {
-    let name = slug(branch, 60);
-    root.join(CONTEXT_DIR)
-        .join(STATE)
-        .join(format!("{name}.json"))
+    branch_dir(root, branch).join("state.json")
 }
 
 fn log_file_for(root: &Path, branch: &str) -> PathBuf {
-    let name = slug(branch, 60);
-    root.join(CONTEXT_DIR)
-        .join(LOG)
-        .join(format!("{name}.jsonl"))
+    branch_dir(root, branch).join("log.jsonl")
 }
 
 fn state_file(root: &Path) -> PathBuf {
@@ -126,14 +123,14 @@ fn read_state_file(path: &Path) -> State {
 }
 
 fn all_state(root: &Path) -> Vec<State> {
-    let dir = root.join(CONTEXT_DIR).join(STATE);
+    let dir = root.join(LANE_DIR).join(BRANCH);
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };
     let mut files: Vec<PathBuf> = entries
         .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .map(|e| e.path().join("state.json"))
+        .filter(|p| p.is_file())
         .collect();
     files.sort();
     files.iter().map(|p| read_state_file(p)).collect()
@@ -266,9 +263,9 @@ pub fn evict(root: &Path, note: &mut Note, reason: &str) -> Result<()> {
     let Some(file) = note.file.clone() else {
         return Ok(());
     };
-    let live = root.join(CONTEXT_DIR).join(NOTES);
+    let live = root.join(LANE_DIR).join(NOTES);
     let rel = file.strip_prefix(&live).unwrap_or(&file);
-    let dest = root.join(CONTEXT_DIR).join(ATTIC).join(rel);
+    let dest = root.join(LANE_DIR).join(ATTIC).join(rel);
     // A pure move: the note is retired, not rewritten. The reason goes to the log.
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
@@ -521,7 +518,7 @@ pub fn own_state(root: &Path) -> State {
     read_state_file(&state_file(root))
 }
 
-/// Fold a lane's per-branch files into its target and delete its own.
+/// Fold a lane's per-branch directory into its target and delete its own.
 ///
 /// Safe because `done` rebases before it audits, so lanes serialise; without this the
 /// store accumulates a file per lane forever.
@@ -537,38 +534,38 @@ pub fn roll_up(root: &Path, from: &str, into: &str) -> Result<()> {
             .append(true)
             .open(&into_log)?;
         write!(file, "{lines}")?;
-        std::fs::remove_file(&from_log)?;
     }
 
     let from_state = state_file_for(root, from);
-    if !from_state.exists() {
-        return Ok(());
-    }
-    let mine = read_state_file(&from_state);
-    let into_path = state_file_for(root, into);
-    let mut theirs = read_state_file(&into_path);
-    for (id, entry) in mine {
-        let merged = match theirs.remove(&id) {
-            Some(have) => {
-                if have.checked >= entry.checked {
-                    have
-                } else {
-                    entry
+    if from_state.exists() {
+        let mine = read_state_file(&from_state);
+        let into_path = state_file_for(root, into);
+        let mut theirs = read_state_file(&into_path);
+        for (id, entry) in mine {
+            let merged = match theirs.remove(&id) {
+                Some(have) => {
+                    if have.checked >= entry.checked {
+                        have
+                    } else {
+                        entry
+                    }
                 }
-            }
-            None => entry,
-        };
-        theirs.insert(id, merged);
+                None => entry,
+            };
+            theirs.insert(id, merged);
+        }
+        write_state_file(&into_path, &theirs)?;
     }
-    write_state_file(&into_path, &theirs)?;
-    std::fs::remove_file(&from_state)?;
+    let from_dir = branch_dir(root, from);
+    if from_dir.exists() {
+        std::fs::remove_dir_all(from_dir)?;
+    }
     Ok(())
 }
 
 /// Drop a branch's files outright; used when its work is discarded rather than landed.
 pub fn discard_branch_files(root: &Path, branch: &str) {
-    let _ = std::fs::remove_file(state_file_for(root, branch));
-    let _ = std::fs::remove_file(log_file_for(root, branch));
+    let _ = std::fs::remove_dir_all(branch_dir(root, branch));
 }
 
 /// Remove caches for branches that no longer exist. Only ever state, never the log.
@@ -580,18 +577,18 @@ pub fn gc_state(root: &Path) {
     .lines()
     .map(|b| slug(b, 60))
     .collect();
-    let dir = root.join(CONTEXT_DIR).join(STATE);
+    let dir = root.join(LANE_DIR).join(BRANCH);
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.extension().is_none_or(|x| x != "json") {
+        if !path.is_dir() {
             continue;
         }
-        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string());
-        if stem.is_some_and(|s| !live.contains(&s)) {
-            let _ = std::fs::remove_file(&path);
+        let name = path.file_name().map(|s| s.to_string_lossy().to_string());
+        if name.is_some_and(|s| !live.contains(&s)) {
+            let _ = std::fs::remove_file(path.join("state.json"));
         }
     }
 }

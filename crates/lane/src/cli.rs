@@ -4,7 +4,7 @@ use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
 use crate::review;
-use crate::store::{self, BODY, CONTEXT_DIR, FRESH, MISSING, SIG, UNVERIFIABLE};
+use crate::store::{self, BODY, FRESH, LANE_DIR, MISSING, SIG, UNVERIFIABLE};
 use crate::syntax::{Resolution, Source};
 use crate::util::{now_iso, slug};
 use crate::worktree as wt;
@@ -246,18 +246,18 @@ fn append_line(path: &Path, line: &str) -> Result<()> {
 
 const PROTOCOL: &str = "\n<!-- lane:protocol -->\n\
 ## Context memory\n\n\
-- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
+- Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note -p <path> -a <anchor> \"...\"`.\n\
-- Do not edit `.context/` by hand; `lane done` manages it.\n\
+- Do not edit `.lane/` by hand; `lane done` manages it.\n\
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n\
 <!-- /lane:protocol -->\n";
 
 /// The protocol as shipped before markers, recognised so an upgrade can replace it.
 /// Never edit this; it is a fingerprint of what is already in users' files, not content.
 const PROTOCOL_V1: &str = "## Context memory\n\n\
-- Before editing a file, read `.context/-/<path>/` if it exists, or run `lane why <path>`.\n\
+- Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note -a <anchor> \"...\"`.\n\
-- Do not edit `.context/` by hand; `lane done` manages it.\n";
+- Do not edit `.lane/` by hand; `lane done` manages it.\n";
 
 const PROTOCOL_START: &str = "<!-- lane:protocol -->";
 const PROTOCOL_END: &str = "<!-- /lane:protocol -->";
@@ -599,14 +599,17 @@ fn skill_uninstall() -> Result<i32> {
 
 fn init() -> Result<i32> {
     let root = wt::main_root()?;
-    let context = root.join(CONTEXT_DIR);
-    std::fs::create_dir_all(&context)?;
-    std::fs::write(context.join(".gitkeep"), "")?;
+    let lane = root.join(LANE_DIR);
+    std::fs::create_dir_all(&lane)?;
+    std::fs::write(lane.join(".gitkeep"), "")?;
 
     let attrs = root.join(".gitattributes");
     // The log is the one genuinely append-only file, which is what union merge is for.
     // Notes never conflict because they are never modified.
-    append_line(&attrs, &format!("{CONTEXT_DIR}/log/*.jsonl merge=union"))?;
+    append_line(
+        &attrs,
+        &format!("{LANE_DIR}/branch/*/log.jsonl merge=union"),
+    )?;
 
     let agents = root.join("AGENTS.md");
     if write_protocol(&agents)? != 0 {
@@ -614,7 +617,7 @@ fn init() -> Result<i32> {
     }
 
     let (ok, detail) = crate::cow::probe(&root);
-    println!("initialized .context/, union merge rules, AGENTS.md protocol");
+    println!("initialized .lane/, union merge rules, AGENTS.md protocol");
     println!(
         "reflink on this filesystem: {} ({detail})",
         if ok { "yes" } else { "no" }
@@ -892,7 +895,11 @@ fn done(
         return Ok(1);
     }
 
-    let trunk_state = format!("{CONTEXT_DIR}/{}/{}.json", store::STATE, slug(&trunk, 60));
+    let trunk_state = format!(
+        "{LANE_DIR}/{}/{}/state.json",
+        store::BRANCH,
+        slug(&trunk, 60)
+    );
     if !try_git(&["status", "--porcelain", "--", &trunk_state], Some(&root)).is_empty() {
         eprintln!(
             "error: {trunk} has uncommitted changes to {trunk_state}; commit or stash it first"
@@ -922,11 +929,11 @@ fn done(
     store::roll_up(&lane_path, &branch, &trunk)?;
 
     let changed = try_git(
-        &["status", "--porcelain", "--", CONTEXT_DIR, "AGENTS.md"],
+        &["status", "--porcelain", "--", LANE_DIR, "AGENTS.md"],
         Some(&lane_path),
     );
     if !changed.trim().is_empty() {
-        try_git(&["add", CONTEXT_DIR, "AGENTS.md"], Some(&lane_path));
+        try_git(&["add", LANE_DIR, "AGENTS.md"], Some(&lane_path));
         git(
             &["commit", "-q", "-m", &format!("lane: sync {branch} memory")],
             Some(&lane_path),

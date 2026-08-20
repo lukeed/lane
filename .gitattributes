@@ -1,1 +1,1 @@
-.context/log/*.jsonl merge=union
+.lane/branch/*/log.jsonl merge=union

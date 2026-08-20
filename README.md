@@ -82,13 +82,16 @@ that anchor's span only:
 | tier | meaning | action |
 |---|---|---|
 | `fresh` | span unchanged | none |
-| `body-drift` | implementation moved, contract held | flag once |
+| `body-drift` | implementation moved, contract held | stays flagged until resolved |
 | `signature-changed` | the described thing changed shape | review |
 | `anchor-missing` | symbol gone | evict to `attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
 genuinely gone.
+
+A drifted note stays flagged until a reviewer resolves it or a human rewrites it, so
+`lane check` keeps reporting it.
 
 Anchors are `fn verify`, `#script`, `## Heading`, `@file`, resolved by
 tree-sitter rather than by regex: a span ends where the declaration ends, a `#`

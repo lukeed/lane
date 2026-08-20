@@ -152,6 +152,9 @@ A renamed or moved file is followed, not evicted: `lane audit` reads git's own r
 detection and moves the notes with it. Eviction means the file or the symbol is
 genuinely gone.
 
+A drifted note stays flagged until a reviewer resolves it or a human rewrites it, so
+`lane check` keeps reporting it.
+
 Editing `#script` never stales a note on `#style`. Running a formatter stales
 nothing at all.
 
@@ -304,4 +307,4 @@ tracked changes either way. Untracked files are fine and need no stashing.
 **`main has uncommitted changes`** — clean the named tracked files in the main
 worktree; commit or stash there first. Nothing in the lane was touched.
 
-**A note is wrong** — delete the file and commit. Nothing else references it.
+**A note is simply wrong** — delete the file and commit. Nothing else references it.

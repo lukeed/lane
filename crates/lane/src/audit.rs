@@ -407,7 +407,6 @@ mod tests {
             status: FRESH.into(),
             checked: "2026-01-01T00:00:00Z".into(),
             norm: crate::syntax::NORM_VERSION.into(),
-            ..Default::default()
         }
     }
 

@@ -1,0 +1,283 @@
+---
+import * as acts from '../scripts/acts';
+
+let cells = Array.from({ length: 168 }, (_, i) => i);
+---
+
+<figure class="tty" id="tty">
+	<div class="tty-rail" role="tablist" aria-label="lane workflow">
+		{acts.list.map((act, i) => (
+			<button
+				class="rail-step"
+				role="tab"
+				type="button"
+				id={`rail-${i}`}
+				aria-controls={`stage-${i}`}
+				aria-current={i === 0 ? 'true' : 'false'}
+				data-act={i}
+				style={`--dwell:${act.dwell}ms`}
+			>
+				<span class="rail-idx">{i + 1}</span>{act.label}
+			</button>
+		))}
+	</div>
+
+	<div class="tty-panes">
+		<div class="tty-pane">
+			<div class="tty-bar">
+				<span>zsh &mdash; ~/repo</span>
+				<span>you type this</span>
+			</div>
+			<div class="tty-screen" id="session" aria-live="off">
+				{acts.list[0].session.map((line) => (
+					<div class="tty-line" data-kind={line.kind}>
+						{line.kind === 'cmd' ? <span class="tty-prompt">$ </span> : null}
+						{line.kind === 'con' ? <span class="tty-prompt">&gt; </span> : null}
+						{line.text}
+					</div>
+				))}
+			</div>
+		</div>
+
+		<div class="tty-pane">
+			<div class="tty-bar">
+				<span>lane &mdash; internals</span>
+				<span>this happens for you</span>
+			</div>
+			<div class="tty-screen">
+				<!-- 1. disk -->
+				<div class="stage" id="stage-0" role="tabpanel" aria-labelledby="rail-0" data-on="true">
+					<div class="stage-title">disk</div>
+					<div class="paths">
+						<div class="paths-list">
+							<span>main/node_modules/</span>
+							<span>main/target/</span>
+							<span>fix-login/node_modules/</span>
+							<span>fix-login/target/</span>
+						</div>
+						<div class="paths-brace"><span>one set of extents</span></div>
+					</div>
+					<div class="extent">
+						{cells.map((i) => <span class="cell" style={`--i:${i}`}></span>)}
+					</div>
+					<div class="tally">
+						<span><b>1358.1 MiB</b> shared</span>
+						<span><b>0 B</b> copied</span>
+						<span><s>a byte copy: 1358.1 MiB</s></span>
+					</div>
+					<p class="stage-note">
+						Two paths, one set of blocks. <span class="hl-bone">FICLONE</span> on Linux, <span
+							class="hl-bone">clonefile(2)</span
+						> on macOS &mdash; the kernel call, not <span class="hl-bone">cp --reflink</span>, because
+						lane needs to know, per file, whether it got real sharing or a silent full copy.
+					</p>
+				</div>
+
+				<!-- 2. memory -->
+				<div class="stage" id="stage-1" role="tabpanel" aria-labelledby="rail-1">
+					<div class="stage-title">memory</div>
+					<div class="src">
+						<span class="src-file">src/auth.rs</span>
+						<div class="src-row"><span class="src-no">35</span><span class="src-bar">│</span><span class="src-code">// checked at every request</span></div>
+						<div class="src-row" data-span="true"><span class="src-no">36</span><span class="src-bar">│</span><span class="src-code">fn verify(tok: &amp;str) -&gt; bool &#123;   <span class="hl-dim">┐</span></span></div>
+						<div class="src-row" data-span="true"><span class="src-no">37</span><span class="src-bar">│</span><span class="src-code">    let want = expected();     <span class="hl-dim">│</span> span</span></div>
+						<div class="src-row" data-span="true"><span class="src-no">38</span><span class="src-bar">│</span><span class="src-code">    constant_eq(tok, &amp;want)   <span class="hl-dim">│</span></span></div>
+						<div class="src-row" data-span="true"><span class="src-no">39</span><span class="src-bar">│</span><span class="src-code">&#125;                             <span class="hl-dim">┘</span></span></div>
+						<div class="src-row"><span class="src-no">40</span><span class="src-bar">│</span><span class="src-code"></span></div>
+					</div>
+					<div class="hashes">
+						<div class="hash-row"><span>sig</span><span class="hash-val" data-state="held">cb3f91d54eee30e5</span></div>
+						<div class="hash-row"><span>body</span><span class="hash-val" data-state="held">97e8ae56617d51ef</span></div>
+					</div>
+					<div class="card" data-tier="fresh" style="margin-top:16px">
+						<span class="card-mark">&nbsp;</span>
+						<span>
+							<span class="card-path">.lane/memory/src/auth.rs/01M0B9MBYB-….md</span>
+							<span class="card-text">must stay constant-time; early return leaks token length</span>
+							<span class="card-meta">01M0B9MBYB · fix-login · 2026-08-14 · fresh</span>
+						</span>
+					</div>
+					<p class="stage-note">
+						The note is anchored to <span class="hl-bone">fn verify</span>, not to line 36 and not to
+						the file. Tree-sitter resolves where that declaration starts and ends, and lane hashes
+						only that span.
+					</p>
+				</div>
+
+				<!-- 3. drift -->
+				<div class="stage" id="stage-2" role="tabpanel" aria-labelledby="rail-2">
+					<div class="stage-title">drift</div>
+					<div class="src">
+						<span class="src-file">src/auth.rs</span>
+						<div class="src-row"><span class="src-no">35</span><span class="src-bar">│</span><span class="src-code">// checked at every request</span></div>
+						<div class="src-row" data-span="true"><span class="src-no">36</span><span class="src-bar">│</span><span class="src-code">fn verify(tok: &amp;str) -&gt; bool &#123;   <span class="hl-dim">┐</span></span></div>
+						<div class="src-row" data-span="true" data-changed="true"><span class="src-no">37</span><span class="src-bar">│</span><span class="src-code">    let want = cached_key();  <span class="hl-dim">│</span> span</span></div>
+						<div class="src-row" data-span="true" data-changed="true"><span class="src-no">38</span><span class="src-bar">│</span><span class="src-code">    subtle::eq(tok, &amp;want)    <span class="hl-dim">│</span></span></div>
+						<div class="src-row" data-span="true"><span class="src-no">39</span><span class="src-bar">│</span><span class="src-code">&#125;                             <span class="hl-dim">┘</span></span></div>
+						<div class="src-row"><span class="src-no">40</span><span class="src-bar">│</span><span class="src-code"></span></div>
+					</div>
+					<div class="hashes">
+						<div class="hash-row"><span>sig</span><span class="hash-val" data-state="held">cb3f91d54eee30e5  <span class="hl-dim">held</span></span></div>
+						<div class="hash-row"><span>body</span><span class="hash-val" data-state="moved"><span class="was">97e8ae56617d51ef</span> 4d2c118ab0f7e61c</span></div>
+					</div>
+					<div class="card" data-tier="drift" style="margin-top:16px">
+						<span class="card-mark">~</span>
+						<span>
+							<span class="card-path">.lane/memory/src/auth.rs/01M0B9MBYB-….md</span>
+							<span class="card-text">must stay constant-time; early return leaks token length</span>
+							<span class="card-meta">01M0B9MBYB · fix-login · 2026-08-14 · body-drift</span>
+						</span>
+					</div>
+					<p class="stage-note">
+						The signature held, the body moved. A hash knows that much and no more &mdash; whether the
+						note is still <em>true</em> is the one call a hash cannot make, so it stays flagged until
+						something judges it.
+					</p>
+				</div>
+
+				<!-- 4. trunk -->
+				<div class="stage" id="stage-3" role="tabpanel" aria-labelledby="rail-3">
+					<div class="stage-title">trunk</div>
+					<pre class="graph"><span class="node">*</span> 6b2f01c  <span class="hl-bone">main</span>  lane: sync fix-login memory
+<span class="node">*</span> 4f1a92c        make verify constant-time
+<span class="hl-dim">│</span>
+<span class="gone">×</span> fix-login  <span class="gone">worktree removed, 0 B reclaimed</span></pre>
+					<div class="card" data-tier="fresh" style="margin-top:20px">
+						<span class="card-mark">&nbsp;</span>
+						<span>
+							<span class="card-path">.lane/memory/src/auth.rs/01M0B9MFVB-….md</span>
+							<span class="card-text">timing must not vary with token length; the new compare is constant-time and must stay so</span>
+							<span class="card-meta">01M0B9MFVB · main · 2026-08-20 · fresh · rewritten</span>
+						</span>
+					</div>
+					<div class="card" data-tier="gone">
+						<span class="card-mark">x</span>
+						<span>
+							<span class="card-path">.lane/attic/src/auth.rs/01M0B9MBYB-….md</span>
+							<span class="card-text">must stay constant-time; early return leaks token length</span>
+							<span class="card-meta">superseded by 01M0B9MFVB · recoverable</span>
+						</span>
+					</div>
+					<p class="stage-note">
+						The lane cost nothing to open and left something behind when it closed. A superseded note
+						is never edited &mdash; a new file is written and the old one moves to the attic, which is
+						why two lanes can annotate the same function at the same time and never conflict.
+					</p>
+				</div>
+			</div>
+		</div>
+	</div>
+</figure>
+
+<script>
+	import * as acts from '../scripts/acts';
+
+	let root = document.getElementById('tty');
+	let session = document.getElementById('session');
+	if (root && session) {
+		let rail = [...root.querySelectorAll<HTMLButtonElement>('.rail-step')];
+		let stages = [...root.querySelectorAll<HTMLElement>('.stage')];
+		let calm = matchMedia('(prefers-reduced-motion: reduce)');
+		let gen = 0;
+		let live = false;
+		let at = 0;
+
+		let sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+		function draw(line: acts.Line, upto?: number) {
+			let el = document.createElement('div');
+			el.className = 'tty-line';
+			el.dataset.kind = line.kind;
+			if (line.kind === 'cmd' || line.kind === 'con') {
+				let p = document.createElement('span');
+				p.className = 'tty-prompt';
+				p.textContent = line.kind === 'cmd' ? '$ ' : '> ';
+				el.append(p);
+			}
+			el.append(document.createTextNode(line.text.slice(0, upto ?? line.text.length)));
+			session!.append(el);
+			return el;
+		}
+
+		function mark(i: number) {
+			at = i;
+			rail.forEach((b, n) => b.setAttribute('aria-current', String(n === i)));
+			stages.forEach((s, n) => s.dataset.on = String(n === i));
+		}
+
+		async function play(i: number) {
+			let mine = ++gen;
+			mark(i);
+			session!.replaceChildren();
+
+			let act = acts.list[i];
+
+			if (calm.matches) {
+				for (let line of act.session) draw(line);
+				return;
+			}
+
+			// the rail's own fill bar restarts with the act
+			let bar = rail[i];
+			bar.style.setProperty('--dwell', '0ms');
+			void bar.offsetWidth;
+
+			let caret = document.createElement('span');
+			caret.className = 'tty-caret';
+
+			for (let line of act.session) {
+				if (mine !== gen) return;
+				if (line.kind === 'gap') {
+					draw(line);
+					await sleep(180);
+					continue;
+				}
+				if (line.kind !== 'cmd' && line.kind !== 'con') {
+					draw(line);
+					await sleep(90);
+					continue;
+				}
+				let el = draw(line, 0);
+				el.append(caret);
+				for (let n = 1; n <= line.text.length; n++) {
+					if (mine !== gen) return;
+					caret.before(document.createTextNode(line.text[n - 1]));
+					await sleep(line.text[n - 1] === ' ' ? 12 : 17 + Math.random() * 22);
+				}
+				caret.remove();
+				await sleep(340);
+			}
+
+			if (mine !== gen) return;
+			session!.append(caret);
+			bar.style.setProperty('--dwell', `${act.dwell}ms`);
+			await sleep(act.dwell);
+			if (mine !== gen || !live) return;
+			play((i + 1) % acts.list.length);
+		}
+
+		rail.forEach((btn, i) => {
+			btn.addEventListener('click', () => play(i));
+			btn.addEventListener('keydown', (ev) => {
+				let step = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+				if (!step) return;
+				ev.preventDefault();
+				let next = (i + step + rail.length) % rail.length;
+				rail[next].focus();
+				play(next);
+			});
+		});
+
+		new IntersectionObserver(
+			(entries) => {
+				for (let entry of entries) {
+					if (entry.isIntersecting === live) continue;
+					live = entry.isIntersecting;
+					if (live) play(at);
+					else gen++;
+				}
+			},
+			{ threshold: 0.25 },
+		).observe(root);
+	}
+</script>

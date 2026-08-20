@@ -1,0 +1,353 @@
+---
+import Terminal from '../components/Terminal.astro';
+import '../styles/app.css';
+
+let repo = 'https://github.com/lukeed/lane';
+
+let anchors = [
+	['fn verify', 'a declaration, by keyword and name'],
+	['verify', 'any declaration of that name'],
+	['#script, #style', 'a top-level block in .svelte, .vue, html'],
+	['## Rate limiting', 'a markdown section'],
+	['@file', 'the whole file — the default'],
+];
+
+let tiers = [
+	[' ', 'fresh', 'The span is unchanged.', 'Nothing happens, and it cost nothing to know.', 'ok'],
+	['~', 'body-drift', 'The implementation moved, the contract held.', 'Flagged, and sent for review at lane done.', 'drift'],
+	['!', 'signature-changed', 'The thing being described changed shape.', 'Flagged, and sent for review at lane done.', 'drift'],
+	['x', 'anchor-missing', 'The symbol is gone.', 'Moved to .lane/attic/, recoverable with git mv.', 'gone'],
+];
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<title>lane — copy-on-write worktrees with memory that survives them</title>
+		<meta
+			name="description"
+			content="lane opens a git worktree that shares its bytes with the one you came from, and carries forward what earlier branches learned about the code."
+		/>
+		<meta name="theme-color" content="#0a0f0e" />
+		<meta property="og:title" content="lane(1)" />
+		<meta
+			property="og:description"
+			content="Copy-on-write worktrees with memory that survives them. One tool."
+		/>
+		<meta property="og:type" content="website" />
+	</head>
+
+	<body>
+		<header class="top">
+			<div class="shell">
+				<div class="manrule">
+					<span>lane(1)</span>
+					<span class="manrule-mid">General Commands Manual</span>
+					<nav class="top-links">
+						<a href="#installation">install</a>
+						<a href={repo}>source</a>
+					</nav>
+				</div>
+			</div>
+		</header>
+
+		<main class="shell">
+			<section class="sec sec-first">
+				<h2 class="sec-head">Name</h2>
+				<div class="sec-body">
+					<h1 class="name">
+						<span class="wordmark">lane</span>
+						<span class="tagline">
+							<span class="name-dash" aria-hidden="true">&mdash; </span>Copy-on-write worktrees with
+							memory that survives them.
+						</span>
+					</h1>
+					<p class="lede">
+						<b>git worktree add</b> hands you a clean tree and nothing git ignores. So you reinstall,
+						you rebuild cold, and everything the last branch taught you about <b>src/auth.rs</b> stays
+						in the last branch. <b>lane new</b> hands you the same tree in seconds by sharing the bytes
+						on disk, and brings the notes with it.
+					</p>
+					<div class="prompt">
+						<code class="prompt-cmd"><span class="p">$ </span>cargo install --git https://github.com/lukeed/lane</code>
+						<button class="copy" type="button" data-copy="cargo install --git https://github.com/lukeed/lane">copy</button>
+					</div>
+				</div>
+			</section>
+
+			<section class="sec">
+				<h2 class="sec-head">Synopsis</h2>
+				<div class="sec-body">
+					<p class="lede">
+						One lane, opened and closed. The left pane is what you type. The right pane is what lane
+						does about it.
+					</p>
+					<div class="breakout">
+						<Terminal />
+					</div>
+				</div>
+			</section>
+
+			<section class="sec">
+				<h2 class="sec-head">Description</h2>
+				<div class="sec-body reveal">
+					<p class="tagline tagline-solo">A second worktree that costs no disk and no cold build.</p>
+					<p class="lede">
+						Lane asks git for every path it ignores — including nested ones like{' '}
+						<b>packages/a/node_modules</b> and single files like <b>.env</b> — and clones each one by
+						reference. On a filesystem with reflink support the two copies point at the same extents,
+						so the second tree occupies no new space and the build cache is already warm.
+					</p>
+
+					<table class="tbl">
+						<thead>
+							<tr>
+								<th scope="col">In the new tree</th>
+								<th scope="col">git worktree add</th>
+								<th scope="col">lane new</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<th scope="row">tracked files</th>
+								<td>checked out</td>
+								<td>checked out</td>
+							</tr>
+							<tr>
+								<th scope="row">node_modules, at any depth</th>
+								<td class="cell-cost">absent</td>
+								<td class="cell-free">by reference</td>
+							</tr>
+							<tr>
+								<th scope="row">target/, dist/, .venv/</th>
+								<td class="cell-cost">absent</td>
+								<td class="cell-free">by reference</td>
+							</tr>
+							<tr>
+								<th scope="row">.env and the rest of .gitignore</th>
+								<td class="cell-cost">absent</td>
+								<td class="cell-free">by reference</td>
+							</tr>
+							<tr>
+								<th scope="row">uncommitted work</th>
+								<td class="cell-cost">absent</td>
+								<td class="cell-free">with --dirty</td>
+							</tr>
+							<tr>
+								<th scope="row">what earlier branches learned</th>
+								<td class="cell-cost">absent</td>
+								<td class="cell-free">lane why &lt;file&gt;</td>
+							</tr>
+							<tr class="tbl-total">
+								<th scope="row">this repo, 12,283 ignored files</th>
+								<td class="cell-cost">1358.1 MiB, then npm i and a cold build</td>
+								<td class="cell-free">0 B, 4.0s</td>
+							</tr>
+						</tbody>
+					</table>
+
+					<p class="note">
+						Reflink works on APFS, btrfs, XFS with <b>reflink=1</b>, bcachefs and recent ZFS.
+						Everywhere else <b>lane init</b> says so up front and <b>lane new</b> leaves you a plain
+						worktree — byte-copying a build cache is the expensive thing lane exists to avoid.
+						Opt a path out with <b>git config --add lane.exclude target</b>.
+					</p>
+				</div>
+			</section>
+
+			<section class="sec">
+				<h2 class="sec-head">Memory</h2>
+				<div class="sec-body reveal">
+					<p class="tagline tagline-solo">The reason you did it that way, kept next to the code it constrains.</p>
+					<p class="lede">
+						A note costs one command and takes no taxonomy decision. Write down what must stay true,
+						not what you changed.
+					</p>
+
+					<pre class="block"><span class="p">$ </span><b>lane note -p src/auth.rs -a "fn verify" \</b>
+<b>    "must stay constant-time; early return leaks token length"</b>
+noted -&gt; src/auth.rs#fn verify
+
+<span class="p">$ </span><b>lane why src/auth.rs</b>
+
+src/auth.rs#fn verify
+    must stay constant-time; early return leaks token length
+      01M0B9MBYB · fix-login · 2026-08-14</pre>
+
+					<p class="lede">
+						Or leave it in the commit you were already writing. <b>lane install hooks</b> reads one
+						trailer and nothing else — no diff, no commit body, no history import:
+					</p>
+
+					<pre class="block"><span class="p">$ </span><b>git commit -am "make verify constant-time"</b>
+<i>  ...</i>
+<b>  Why: src/auth.rs#fn verify | early return leaks token length</b></pre>
+
+					<p class="note">
+						The subject says what you did. The trailer says what must stay true. Six months later the
+						first is history and the second is still load-bearing.
+					</p>
+
+					<h3 class="eyebrow">Anchors — what the note is about</h3>
+					<table class="tbl tbl-pair">
+						<tbody>
+							{anchors.map(([a, m]) => (
+								<tr>
+									<th scope="row">{a}</th>
+									<td>{m}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+					<p class="note">
+						Tree-sitter resolves these, not a regular expression. A span ends where the declaration
+						ends, a <b>#</b> inside a code fence is not a heading, and a brace inside a string
+						truncates nothing.
+					</p>
+
+					<h3 class="eyebrow">Freshness — what happens as the code moves</h3>
+					<table class="tbl">
+						<thead>
+							<tr>
+								<th class="tbl-mark" scope="col"><span class="sr-only">mark</span></th>
+								<th scope="col">tier</th>
+								<th scope="col">meaning</th>
+								<th scope="col">what lane does</th>
+							</tr>
+						</thead>
+						<tbody>
+							{tiers.map(([mark, tier, meaning, action, tone]) => (
+								<tr data-tone={tone}>
+									<td class="tbl-mark">{mark === ' ' ? '·' : mark}</td>
+									<th scope="row">{tier}</th>
+									<td>{meaning}</td>
+									<td>{action}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+					<p class="note">
+						Each anchor is hashed on its own span, normalized, so running a formatter stales nothing
+						and editing <b>#script</b> leaves a note on <b>#style</b> alone. A moved or renamed file is
+						followed, not evicted — <b>lane audit</b> reads git's own rename detection. A drifted note
+						keeps getting reported until a reviewer resolves it or you rewrite it.
+					</p>
+				</div>
+			</section>
+
+			<section class="sec">
+				<h2 class="sec-head">Agents</h2>
+				<div class="sec-body reveal">
+					<p class="tagline tagline-solo">Three agents, three warm trees, no extra disk.</p>
+					<pre class="block"><span class="p">$ </span><b>lane new agent-a &amp;&amp; lane new agent-b &amp;&amp; lane new agent-c</b>
+<span class="p">$ </span><b>lane ls</b>
+agent-a    agent-a    clean   3 pending note(s)
+agent-b    agent-b    dirty   1 pending note(s)
+agent-c    agent-c    clean   0 pending note(s)</pre>
+					<p class="lede">
+						Each one gets its own tree and its own warm build cache. They can annotate the same file
+						and the same anchor at the same moment: a note file is written once and never modified, so
+						there is nothing to lock and nothing to resolve. Land them in any order.
+					</p>
+					<p class="note">
+						<b>lane init</b> writes a four-line protocol into <b>AGENTS.md</b> so the notes are already
+						in context. Notes are plain markdown at predictable paths — an agent finds them with no
+						tool integration at all, which is the reason they are files and not a sidecar database.
+					</p>
+				</div>
+			</section>
+
+			<section class="sec" id="installation">
+				<h2 class="sec-head">Installation</h2>
+				<div class="sec-body reveal">
+					<div class="steps">
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>cargo install --git https://github.com/lukeed/lane</code>
+							<button class="copy" type="button" data-copy="cargo install --git https://github.com/lukeed/lane">copy</button>
+							<span class="step-why">Rust 1.85 or newer, edition 2024. One binary.</span>
+						</div>
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>eval "$(lane shellenv)"</code>
+							<button class="copy" type="button" data-copy={'eval "$(lane shellenv)"'}>copy</button>
+							<span class="step-why">Add it to .zshrc so <b>lane new</b> drops you inside the new lane.</span>
+						</div>
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>cd yourproject &amp;&amp; lane init</code>
+							<button class="copy" type="button" data-copy="lane init">copy</button>
+							<span class="step-why">
+								Scaffolds <b>.lane/</b>, adds the merge rule and the agent protocol, and tells you
+								whether this filesystem does reflink.
+							</span>
+						</div>
+					</div>
+
+					<p class="lede">
+						Review is off until you turn it on. Set <b>ANTHROPIC_API_KEY</b>, or point{' '}
+						<b>LANE_REVIEW_CMD</b> at any command that reads stdin and writes stdout. With neither,{' '}
+						<b>lane done</b> still works on a plane, and only drifted notes are ever sent.
+					</p>
+
+					<pre class="block"><span class="p">$ </span><b>cargo run -p lane-tour -- start</b>
+<i>builds a throwaway repo next to this checkout and prints its path</i></pre>
+					<p class="note">
+						The tour drives the real workflows — a note drifting, three lanes landing out of order, two
+						landings colliding — and prints every command before it runs, so you finish having seen the
+						ones you would actually type.
+					</p>
+				</div>
+			</section>
+
+			<section class="sec foot">
+				<h2 class="sec-head">See also</h2>
+				<div class="sec-body">
+					<div class="seealso">
+						<a href={repo}>github</a>
+						<a href={`${repo}/blob/main/USAGE.md`}>usage</a>
+						<a href={`${repo}/blob/main/explainer.md`}>commit-trailers</a>
+						<a href={`${repo}/tree/main/plans`}>plans</a>
+					</div>
+				</div>
+			</section>
+		</main>
+
+		<footer class="shell">
+			<div class="manrule">
+				<span>lane 0.1.0</span>
+				<span class="manrule-mid">2026-08-20</span>
+				<span class="manrule-end">lane(1)</span>
+			</div>
+		</footer>
+
+		<script>
+			for (let btn of document.querySelectorAll<HTMLButtonElement>('.copy')) {
+				btn.addEventListener('click', async () => {
+					try {
+						await navigator.clipboard.writeText(btn.dataset.copy ?? '');
+					} catch {
+						return;
+					}
+					btn.dataset.done = 'true';
+					btn.textContent = 'copied';
+					setTimeout(() => {
+						btn.dataset.done = 'false';
+						btn.textContent = 'copy';
+					}, 1600);
+				});
+			}
+
+			let io = new IntersectionObserver(
+				(entries) => {
+					for (let entry of entries) {
+						if (!entry.isIntersecting) continue;
+						(entry.target as HTMLElement).dataset.seen = 'true';
+						io.unobserve(entry.target);
+					}
+				},
+				{ rootMargin: '-8% 0px -8% 0px' },
+			);
+			for (let el of document.querySelectorAll('.reveal')) io.observe(el);
+		</script>
+	</body>
+</html>

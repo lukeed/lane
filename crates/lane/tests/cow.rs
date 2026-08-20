@@ -163,6 +163,18 @@ fn skip_prunes_directories_and_files() {
     assert!(!out.join("drop").exists());
 }
 
+#[test]
+fn clone_tree_skips_a_destination_nested_inside_its_source() {
+    let src = tempfile::tempdir().unwrap();
+    let out = src.path().join("generated-output");
+    fs::write(src.path().join("keep"), b"yes").unwrap();
+
+    cow::clone_tree(src.path(), &out, &|_, _| false).unwrap();
+
+    assert_eq!(fs::read(out.join("keep")).unwrap(), b"yes");
+    assert!(!out.join("generated-output").exists());
+}
+
 /// A successful clone_file only proves the syscall was accepted; this proves the
 /// filesystem did not spend the bytes. Skipped where reflink is unavailable.
 #[test]

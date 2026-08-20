@@ -21,7 +21,7 @@ is()  { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (want '$3', got '$2')"; f
 sedi() { local expr="$1"; shift; for f in "$@"; do sed "$expr" "$f" > "$f.sedi" && mv "$f.sedi" "$f"; done; }
 
 setup() {
-  cd "$TMP" && rm -rf repo .lanes-repo && mkdir repo && cd repo
+  cd "$TMP" && rm -rf repo && mkdir repo && cd repo
   git init -qb main . && git config user.email t@t.t && git config user.name t
   mkdir -p src node_modules/pkg
   cat > src/auth.rs <<'EOF'
@@ -43,7 +43,7 @@ EOF
 echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
 "$LANE" new fix-login > /tmp/new.out 2>&1
-LP="$TMP/.lanes-repo/fix-login"
+LP="$TMP/repo/.lanes/fix-login"
 REFLINK=$(grep -c 'reflink: yes' /tmp/new.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "lane exists" "$([ -d "$LP" ] && echo yes)" "yes"
@@ -59,7 +59,7 @@ echo "== 3. dirty mode carries dirty state without rewriting files =="
 setup
 echo "// scratch work" >> src/auth.rs
 "$LANE" new spike --dirty > /tmp/dirty.out 2>&1
-LP="$TMP/.lanes-repo/spike"
+LP="$TMP/repo/.lanes/spike"
 REFLINK=$(grep -c 'reflink: yes' /tmp/dirty.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 # --dirty honours the flag on any filesystem: reflinked whole-tree with it, copied without.
@@ -75,7 +75,7 @@ is "warm dir also carried iff reflink" \
 echo "== 4. note inside lane, done lands memory on trunk =="
 setup
 "$LANE" new fix-login > /dev/null 2>&1
-LP="$TMP/.lanes-repo/fix-login"
+LP="$TMP/repo/.lanes/fix-login"
 cd "$LP"
 sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn verify" \
@@ -88,7 +88,7 @@ is "memory committed to trunk" \
    "$(git show main --name-only --format= | grep -c '^\.context/-/src/auth\.rs/')" "1"
 is "note readable from trunk" \
    "$("$LANE" why src/auth.rs | grep -c 'constant-time')" "1"
-is "lane removed" "$([ -d "$TMP/.lanes-repo/fix-login" ] && echo yes || echo no)" "no"
+is "lane removed" "$([ -d "$TMP/repo/.lanes/fix-login" ] && echo yes || echo no)" "no"
 is "branch deleted" "$(git branch --list fix-login | wc -l | tr -d ' ')" "0"
 
 echo "== 5. staleness granularity survives the unified flow =="
@@ -117,10 +117,10 @@ git add -A && git commit -qm sfc2
 echo "== 6. PARALLEL: two lanes, same anchor, both land clean =="
 "$LANE" new thread-a > /dev/null 2>&1
 "$LANE" new thread-b > /dev/null 2>&1
-( cd "$TMP/.lanes-repo/thread-a" && "$LANE" note -p src/auth.rs -a "fn verify" \
+( cd "$TMP/repo/.lanes/thread-a" && "$LANE" note -p src/auth.rs -a "fn verify" \
     "a: callers rely on false-on-expiry, not an error" > /dev/null && "$LANE" done > /tmp/a.out 2>&1 )
 is "lane a landed" "$?" "0"
-( cd "$TMP/.lanes-repo/thread-b" && "$LANE" note -p src/auth.rs -a "fn verify" \
+( cd "$TMP/repo/.lanes/thread-b" && "$LANE" note -p src/auth.rs -a "fn verify" \
     "b: token parse allocates; hot path, do not add regex" > /dev/null && "$LANE" done > /tmp/b.out 2>&1 )
 is "lane b landed after a, no conflict" "$?" "0"
 cd "$TMP/repo"
@@ -188,7 +188,7 @@ is "garbage response yields no verdicts" \
 echo "== 11. rm will not discard commits trunk does not have =="
 setup
 "$LANE" new scrap > /dev/null 2>&1
-( cd "$TMP/.lanes-repo/scrap" && echo "fn work() {}" > src/work.rs \
+( cd "$TMP/repo/.lanes/scrap" && echo "fn work() {}" > src/work.rs \
   && git add -A && git commit -qm "unlanded work" > /dev/null )
 SHA=$(git rev-parse scrap)
 "$LANE" rm scrap > /tmp/rm.out 2>&1
@@ -197,10 +197,10 @@ is "rm says the branch was kept" "$(grep -c 'kept branch scrap' /tmp/rm.out)" "1
 is "unlanded branch survives" "$(git branch --list scrap | wc -l | tr -d ' ')" "1"
 is "unlanded commit still reachable" "$(git rev-parse scrap)" "$SHA"
 is "worktree is gone either way" \
-   "$([ -d "$TMP/.lanes-repo/scrap" ] && echo yes || echo no)" "no"
+   "$([ -d "$TMP/repo/.lanes/scrap" ] && echo yes || echo no)" "no"
 
 "$LANE" new scrap2 > /dev/null 2>&1
-( cd "$TMP/.lanes-repo/scrap2" && echo "fn work() {}" > src/work2.rs \
+( cd "$TMP/repo/.lanes/scrap2" && echo "fn work() {}" > src/work2.rs \
   && git add -A && git commit -qm "throwaway" > /dev/null )
 "$LANE" rm scrap2 --force > /dev/null 2>&1
 is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' ')" "0"
@@ -299,7 +299,7 @@ setup
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 "$LANE" new refactor > /dev/null 2>&1
-( cd "$TMP/.lanes-repo/refactor" \
+( cd "$TMP/repo/.lanes/refactor" \
   && git mv src/auth.rs src/token.rs && git commit -qm rename > /dev/null \
   && "$LANE" done > /tmp/lanemv.out 2>&1 )
 cd "$TMP/repo"
@@ -333,7 +333,7 @@ is "a user path named attic does not collide" \
 git add -A && git commit -qm memory
 
 "$LANE" new land > /dev/null 2>&1
-( cd "$TMP/.lanes-repo/land" \
+( cd "$TMP/repo/.lanes/land" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
   && "$LANE" done > /dev/null 2>&1 )
 cd "$TMP/repo"
@@ -371,7 +371,7 @@ cd "$TMP/repo"
 lane new dup > /dev/null 2>&1
 lane new dup > /dev/null 2>&1
 is "a failed new leaves the shell where it was" \
-   "$PWD" "$(cd "$TMP/.lanes-repo/dup" && pwd -P)"
+   "$PWD" "$(cd "$TMP/repo/.lanes/dup" && pwd -P)"
 cd "$TMP/repo"
 
 lane new land > /dev/null 2>&1
@@ -391,7 +391,7 @@ printf 'node_modules/\n.env\n' > .gitignore
 git add -A && git commit -qm monorepo
 
 "$LANE" new carry > /tmp/carry.out 2>&1
-LP="$TMP/.lanes-repo/carry"
+LP="$TMP/repo/.lanes/carry"
 REFLINK=$(grep -c 'reflink: yes' /tmp/carry.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "a nested node_modules is carried iff reflink" \
@@ -411,12 +411,12 @@ is "a dirty tree without --dirty warns and names the recovery" \
 REFLINK=$(grep -c 'reflink: yes' /tmp/carried.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "--dirty carries the change" \
-   "$(grep -c 'scratch' "$TMP/.lanes-repo/carried/src/auth.rs")" "1"
+   "$(grep -c 'scratch' "$TMP/repo/.lanes/carried/src/auth.rs")" "1"
 
 echo "== 21. done refuses before it writes =="
 setup
 "$LANE" new spike > /dev/null 2>&1
-LP="$TMP/.lanes-repo/spike"
+LP="$TMP/repo/.lanes/spike"
 ( cd "$LP" && printf 'pub fn verify() {\n    lane version\n}\n' > src/auth.rs \
   && git commit -qam "lane work" > /dev/null )
 printf 'pub fn verify() {\n    my version\n}\n' > src/auth.rs   # dirty in main, same file
@@ -505,9 +505,9 @@ echo "edited by hand" >> .agents/skills/lane/SKILL.md
 is "an edited skill is not clobbered" "$?" "1"
 
 "$LANE" new skillhome > /dev/null 2>&1
-( cd "$TMP/.lanes-repo/skillhome" && "$LANE" install skill > /dev/null 2>&1 )
+( cd "$TMP/repo/.lanes/skillhome" && "$LANE" install skill > /dev/null 2>&1 )
 is "the skill installs into the worktree you ran it from" \
-   "$([ -f "$TMP/.lanes-repo/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
+   "$([ -f "$TMP/repo/.lanes/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
 "$LANE" rm skillhome --force > /dev/null 2>&1
 
 echo "== 24. init repairs a protocol it wrote earlier =="
@@ -540,6 +540,31 @@ BEFORE=$(cat AGENTS.md)
 is "an edited protocol is refused, not overwritten" "$(cat AGENTS.md)" "$BEFORE"
 is "and the bullet the user wrote is still there" \
    "$(grep -c 'my own notes' AGENTS.md)" "1"
+
+echo "== 25. a lane lives inside the repo and survives a move =="
+setup
+RELATIVE_PATHS=$(git worktree add -h 2>&1 | grep -c 'relative-paths')
+"$LANE" new moved > /dev/null 2>&1
+is "the lane is inside the repo" \
+   "$([ -d .lanes/moved ] && echo yes || echo no)" "yes"
+is "its gitdir pointer is relative when git supports it" \
+   "$(grep -c '^gitdir: \.\.' .lanes/moved/.git)" "$RELATIVE_PATHS"
+is "the main worktree stays clean" "$(git status --porcelain)" ""
+( cd "$TMP" && mv repo moved-repo )
+MOVED_BRANCH=$(cd "$TMP/moved-repo/.lanes/moved" \
+  && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+is "git still works after a move when relative paths are supported" \
+   "$MOVED_BRANCH" "$([ "$RELATIVE_PATHS" = "1" ] && echo moved || true)"
+( cd "$TMP" && mv moved-repo repo )
+
+echo "== 26. dirty lanes do not carry sibling lanes =="
+setup
+"$LANE" new first > /dev/null 2>&1
+"$LANE" new second > /dev/null 2>&1
+echo "// scratch" >> src/auth.rs
+"$LANE" new dirty-third --dirty > /dev/null 2>&1
+is "a dirty lane contains no other lanes" \
+   "$([ -e .lanes/dirty-third/.lanes ] && echo yes || echo no)" "no"
 
 echo
 echo "passed: $pass   failed: $fail"

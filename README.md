@@ -12,6 +12,9 @@ lane why src/auth.rs                 read what earlier lanes learned
 lane done                            rebase, audit memory, fast-forward, remove
 ```
 
+Lanes live in `.lanes/` inside the repository and are excluded through `.git/info/exclude`,
+so nothing is committed.
+
 ## Copy-on-write
 
 `crates/lane/src/cow.rs` calls the kernel primitives directly — `FICLONE` (0x40049409)

@@ -4,7 +4,9 @@ use crate::cow;
 use crate::git::{git, git_ok, try_git};
 use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const LANES_DIRNAME: &str = ".lanes";
 
@@ -30,14 +32,7 @@ pub fn trunk_name(root: &Path) -> String {
 }
 
 pub fn lanes_dir(root: &Path) -> PathBuf {
-    let name = root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    root.parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default()
-        .join(format!("{LANES_DIRNAME}-{name}"))
+    root.join(LANES_DIRNAME)
 }
 
 /// Tracked changes only: untracked files do not block a rebase.
@@ -57,8 +52,48 @@ fn ignored_entries(root: &Path) -> Vec<String> {
         .split('\0')
         .filter_map(|e| e.strip_prefix("!! "))
         .map(|p| p.trim_end_matches('/').to_string())
-        .filter(|p| !p.is_empty() && p != ".git")
+        .filter(|p| !p.is_empty() && p != ".git" && p != LANES_DIRNAME)
         .collect()
+}
+
+/// git 2.48+; older versions get absolute paths, which work in place but not after a move.
+fn relative_paths_supported(root: &Path) -> bool {
+    let Ok(output) = Command::new("git")
+        .args(["worktree", "add", "-h"])
+        .current_dir(root)
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&output.stdout).contains("relative-paths")
+        || String::from_utf8_lossy(&output.stderr).contains("relative-paths")
+}
+
+fn append_line(path: &Path, line: &str) -> Result<()> {
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    if existing.contains(line) {
+        return Ok(());
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    if !existing.is_empty() && !existing.ends_with('\n') {
+        writeln!(file)?;
+    }
+    writeln!(file, "{line}")?;
+    Ok(())
+}
+
+fn prepare_lanes_dir(root: &Path) -> Result<()> {
+    let dir = lanes_dir(root);
+    std::fs::create_dir_all(&dir)?;
+    let ignore = dir.join(".gitignore");
+    if !ignore.exists() {
+        std::fs::write(ignore, "*\n")?;
+    }
+    let exclude = git(&["rev-parse", "--git-path", "info/exclude"], Some(root))?;
+    append_line(Path::new(&exclude), &format!("{LANES_DIRNAME}/"))
 }
 
 fn excluded(root: &Path) -> HashSet<String> {
@@ -198,9 +233,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     if dest.exists() {
         bail!("lane {name} already exists at {}", dest.display());
     }
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    prepare_lanes_dir(&root)?;
 
     let (supported, detail) = cow::probe(&root);
     let mut notes = vec![format!(
@@ -225,22 +258,22 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
         }
     }
     let dest_str = dest.to_string_lossy().to_string();
+    let relative_paths = relative_paths_supported(&root);
 
     let stats = match materialization(dirty, supported) {
         Materialization::Dirty => {
-            git(
-                &[
-                    "worktree",
-                    "add",
-                    "--no-checkout",
-                    "-b",
-                    name,
-                    &dest_str,
-                    &base,
-                ],
-                Some(&root),
-            )?;
-            let skip = |rel: &str, _is_dir: bool| rel == ".git" || rel.starts_with(".git/");
+            let mut args = vec!["worktree", "add", "--no-checkout"];
+            if relative_paths {
+                args.push("--relative-paths");
+            }
+            args.extend(["-b", name, &dest_str, &base]);
+            git(&args, Some(&root))?;
+            let skip = |rel: &str, _is_dir: bool| {
+                rel == ".git"
+                    || rel.starts_with(".git/")
+                    || rel == LANES_DIRNAME
+                    || rel.starts_with(".lanes/")
+            };
             let stats = cow::clone_tree(&root, &dest, &skip)?;
             // Repopulate the index from the base tree without rewriting a single file.
             git(&["reset", "--mixed", "--quiet", &base], Some(&dest))?;
@@ -268,10 +301,12 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
                 Vec::new()
             };
             let excluded = excluded(&root);
-            git(
-                &["worktree", "add", "-b", name, &dest_str, &base],
-                Some(&root),
-            )?;
+            let mut args = vec!["worktree", "add"];
+            if relative_paths {
+                args.push("--relative-paths");
+            }
+            args.extend(["-b", name, &dest_str, &base]);
+            git(&args, Some(&root))?;
             let mut stats = cow::CloneStats::default();
             for entry in ignored {
                 if excluded.contains(&entry) {

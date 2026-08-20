@@ -193,13 +193,20 @@ pub fn clone_tree_rooted(
 ) -> std::io::Result<CloneStats> {
     let mut stats = CloneStats::default();
     let src_roots = root_spellings(src_root)?;
+    // A destination inside the source would be walked into as it is written. Skip it here so
+    // no caller has to remember, and so renaming the lanes directory cannot reintroduce it.
+    let contained = dst.strip_prefix(src).ok().map(Path::to_path_buf);
     let walker = walkdir::WalkDir::new(src).into_iter().filter_entry(|e| {
         let rel = match e.path().strip_prefix(src) {
             Ok(r) => r,
             Err(_) => return true,
         };
         // The walk root itself is never a candidate for skipping.
-        rel.as_os_str().is_empty() || !skip(&rel.to_string_lossy(), e.file_type().is_dir())
+        rel.as_os_str().is_empty()
+            || (!contained
+                .as_ref()
+                .is_some_and(|path| rel == path || rel.starts_with(path))
+                && !skip(&rel.to_string_lossy(), e.file_type().is_dir()))
     });
 
     for entry in walker {

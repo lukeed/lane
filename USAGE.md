@@ -41,7 +41,7 @@ byte copy would do the expensive work lane exists to avoid.
 lane new fix-login
   reflink: yes (reflink available)
   1284 files cloned (612.4 MiB shared, 0 copied)
-  /Users/you/.lanes-yourproject/fix-login
+  /Users/you/yourproject/.lanes/fix-login
 ```
 
 Tracked files come from git. Everything git ignores, at any depth, arrives by
@@ -282,9 +282,12 @@ yourproject/
   .gitattributes                  one union rule, for log/*.jsonl
   AGENTS.md
   .git/lane/pending.jsonl         notes not yet promoted, per worktree
-../.lanes-yourproject/
-  fix-login/                      the lane worktree
+  .lanes/
+    fix-login/                    the lane worktree
 ```
+
+Lanes live in `.lanes/` inside the repository and are excluded through `.git/info/exclude`,
+so nothing is committed.
 
 ### When things go wrong
 

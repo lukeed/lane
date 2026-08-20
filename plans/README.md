@@ -21,7 +21,7 @@ counts before starting, and update your row when done.
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
 | 018 | Keep the pending queue out of the worktree | P1 | S | — | DONE |
 | 017 | Teach agents to use lane, via `lane install skill` | P2 | M | 018 | DONE |
-| 019 | Put lanes inside the repository, and make their paths survive a move | P1 | M | — | IN PROGRESS |
+| 019 | Put lanes inside the repository, and make their paths survive a move | P1 | M | — | DONE |
 | 020 | Let `lane init` repair a protocol it wrote earlier | P1 | S | — | DONE |
 | 021 | Stop a cloned symlink from pointing back at the parent worktree | P1 | S | — | DONE |
 | 022 | Say something when a `Why:` trailer cannot be captured | P2 | S | — | DONE |

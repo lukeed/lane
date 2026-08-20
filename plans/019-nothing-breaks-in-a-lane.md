@@ -205,9 +205,10 @@ This is the guard that matters. A hardcoded directory name is load-bearing and o
 refactor away from being dropped; a self-containment check protects every present and
 future caller, including the `--dirty` arm, without anyone having to remember.
 
-This is the step that can destroy a machine if it is wrong, so verify it directly rather
-than by reading: create a lane, put a large file in it, create a second lane, and confirm
-the second does not contain the first.
+Verify this directly rather than by reading: create a lane, put a large file in it, create
+a second lane, and confirm the second does not contain the first. Getting it wrong is
+recoverable but expensive — the walk nests until the path length limit stops it, which on
+this repo means roughly half a million directory entries and several minutes of wall time.
 
 **Verify**:
 - `lane new a`, then `lane new b`, then `[ -e <repo>/.lanes/b/.lanes ]` is false

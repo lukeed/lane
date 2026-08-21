@@ -103,6 +103,16 @@ a:hover {
 	text-align: right;
 }
 
+.manrule-home {
+	color: inherit;
+	text-decoration: none;
+	transition: color 0.15s;
+}
+
+.manrule-home:hover {
+	color: var(--ref);
+}
+
 .top {
 	position: sticky;
 	top: 0;
@@ -130,6 +140,14 @@ a:hover {
 
 .top-links a:hover {
 	color: var(--ref);
+}
+
+.top-links a[aria-current='page'] {
+	color: var(--bone);
+	text-decoration: underline;
+	text-decoration-color: var(--ref);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 6px;
 }
 
 /* ---- man sections --------------------------------------------------- */
@@ -1123,6 +1141,11 @@ a:hover {
 	user-select: none;
 }
 
+.block .c {
+	color: var(--dim);
+	user-select: none;
+}
+
 /* ---- install -------------------------------------------------------- */
 
 .sec-body > .eyebrow + .steps {
@@ -1384,23 +1407,12 @@ body > footer {
 	white-space: nowrap;
 }
 
-.prose pre {
-	border: 1px solid var(--rule);
-	background: var(--panel);
-	padding: calc(var(--u) * 2) calc(var(--u) * 2.5);
-	font-size: 12.5px;
-	line-height: 1.8;
-	overflow-x: auto;
-	scrollbar-width: thin;
-	color: var(--dim);
-}
-
 .prose pre code {
 	color: inherit;
 	background: none;
-	border: 0;
 	padding: 0;
 	font-size: inherit;
+	white-space: inherit;
 }
 
 .prose ul,
@@ -1509,13 +1521,6 @@ body > footer {
 	padding: 0;
 	color: var(--bone);
 	font-size: 1em;
-}
-
-.cmd-usage {
-	font-size: 12.5px;
-	color: var(--ref);
-	white-space: pre-wrap;
-	margin-top: calc(var(--u) * 1) !important;
 }
 
 /* the rule has to run the whole width, so the columns touch and the dt pads

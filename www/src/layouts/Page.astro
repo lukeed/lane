@@ -44,7 +44,7 @@ let built = new Date().toISOString().slice(0, 10);
 		<header class="top">
 			<div class="shell">
 				<div class="manrule">
-					<span>{section}</span>
+					<a class="manrule-home" href="/">{section}</a>
 					<nav class="top-links">
 						{nav.map(([href, label]) => (
 							<a href={href} aria-current={label === here ? 'page' : undefined}>{label}</a>

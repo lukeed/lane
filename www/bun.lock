@@ -5,9 +5,11 @@
     "": {
       "name": "www",
       "dependencies": {
+        "@astrojs/markdown-satteri": "0.3.7",
         "@fontsource-variable/martian-mono": "5.3.0",
         "@fontsource-variable/spline-sans-mono": "5.3.0",
         "astro": "7.2.4",
+        "satteri": "0.10.5",
       },
       "devDependencies": {
         "@astrojs/check": "0.9.10",

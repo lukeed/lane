@@ -1,5 +1,6 @@
 ---
 import Page from '../layouts/Page.astro';
+import Term from '../components/Term.astro';
 import Toc from '../components/Toc.astro';
 import { commands, globals } from '../data/commands';
 
@@ -18,8 +19,8 @@ let slug = (name: string) => name.replace(/ /g, '-');
 			<div class="sec-body prose">
 				<h1>Commands</h1>
 				<p>
-					Every subcommand the parser accepts, in the order it defines them. Anything not marked
-					here is not a flag. For the order you would meet them in a day&rsquo;s work, read{' '}
+					Every subcommand the parser accepts, in the order it defines them, with the flags that
+					belong to each. For the order you would meet them in a day&rsquo;s work, read{' '}
 					<a href="/usage">usage</a>.
 				</p>
 
@@ -36,7 +37,6 @@ let slug = (name: string) => name.replace(/ /g, '-');
 				{commands.map((cmd) => (
 					<section class="cmd">
 						<h2 id={slug(cmd.name)}><code>lane {cmd.name}</code></h2>
-						<p class="cmd-usage">{cmd.usage}</p>
 						<p>{cmd.summary}</p>
 
 						{cmd.options.length > 0 ? (
@@ -55,7 +55,7 @@ let slug = (name: string) => name.replace(/ /g, '-');
 							<p class="note">Takes no flags of its own.</p>
 						)}
 
-						<pre class="cmd-example">{cmd.example}</pre>
+						<Term text={cmd.example} class="cmd-example" />
 					</section>
 				))}
 			</div>

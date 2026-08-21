@@ -4,6 +4,9 @@ title: Using lane
 description: Every lane command in the order you meet them — opening a lane, leaving notes, reading what earlier lanes learned, and closing it again.
 section: lane(1)
 here: usage
+rail:
+  what-happens-to-notes-over-time: History
+  working-with-agents: Agents
 ---
 
 # Using lane
@@ -12,9 +15,9 @@ A lane is a throwaway worktree that costs almost nothing to open, and leaves
 something behind when it closes.
 
 ```bash
-lane new fix-login          # branch + worktree, build cache arrives by reference
+$ lane new fix-login        # branch + worktree, the build cache by reference
 # work, commit as usual
-lane done                   # rebase, distill memory, fast-forward trunk, delete lane
+$ lane done                 # rebase, distill memory, fast-forward, delete
 ```
 
 ---
@@ -22,11 +25,11 @@ lane done                   # rebase, distill memory, fast-forward trunk, delete
 ## Setup
 
 ```bash
-cargo install --path crates/lane
-eval "$(lane shellenv)"          # add to .zshrc: makes `lane new` cd into the lane
-cd yourproject && lane init
-git add .lane .gitattributes AGENTS.md
-git commit -m "lane: context memory"
+$ cargo install --path crates/lane
+$ eval "$(lane shellenv)"   # add to .zshrc: makes `lane new` cd into the lane
+$ cd yourproject && lane init
+$ git add .lane .gitattributes AGENTS.md
+$ git commit -m "lane: context memory"
 ```
 
 `lane init` prints whether your filesystem supports reflink:
@@ -46,7 +49,7 @@ byte copy would do the expensive work lane exists to avoid.
 ### Open a lane
 
 ```bash
-lane new fix-login
+$ lane new fix-login
   reflink: yes (reflink available)
   1284 files cloned (612.4 MiB shared, 0 copied)
   /Users/you/yourproject/.lane/trees/fix-login
@@ -60,7 +63,7 @@ reinstall, and no cold rebuild.
 Carry uncommitted work across too:
 
 ```bash
-lane new spike --dirty
+$ lane new spike --dirty
   carried 3 uncommitted change(s) from the parent tree
 ```
 
@@ -71,30 +74,40 @@ yourself. Without reflink support, either mode leaves a plain worktree.
 Opt a gitignored entry out with multi-valued configuration:
 
 ```bash
-git config --add lane.exclude target
-git config --add lane.exclude packages/legacy/node_modules
+$ git config --add lane.exclude target
+$ git config --add lane.exclude packages/legacy/node_modules
 ```
 
 ### Leave notes while you work
 
+There are two ways in. They write to the same queue and the next audit promotes
+both, so a note made either way is the same note afterwards. Use whichever
+suits the moment, or both.
+
+**Option one — a command, whenever you notice something.**
+
 ```bash
-lane note -p src/auth.rs -a "fn verify" \
-  "must stay constant-time; early return leaks token length"
+$ lane note -p src/auth.rs -a "fn verify" \
+>   "must stay constant-time; early return leaks token length"
 ```
 
-Install the commit hooks once to leave the same kind of note in a commit message:
+**Option two — a trailer, in the commit you were already writing.** Install the
+hooks once per repository, then never think about it again.
 
 ```bash
-lane install hooks
+$ lane install hooks
 
-git commit -m "make verify constant-time
-
-Why: src/auth.rs#fn verify | early return leaks token length"
+$ git commit -m "make verify constant-time
+>
+> Why: src/auth.rs#fn verify | early return leaks token length"
 ```
+
+Option one costs a separate decision at the moment you are thinking about the
+commit, which is the one you forget. Option two costs a line. Neither is more
+correct than the other.
 
 The target path is required; omit `#<anchor>` to use `@file`. Record why it must
-stay true, not what you did. The hook appends valid `Why:` trailers to the same
-pending queue as `lane note`, and the next audit promotes them.
+stay true, not what you did.
 
 `-a` is the anchor — what the note is *about*:
 
@@ -113,7 +126,7 @@ command with no taxonomy decision.
 ### Read what earlier lanes learned
 
 ```bash
-lane why src/auth.rs
+$ lane why src/auth.rs
 
 src/auth.rs#fn verify
     must stay constant-time; early return leaks token length
@@ -129,7 +142,7 @@ read one to find out it is wrong.
 ### Close the lane
 
 ```bash
-lane done
+$ lane done
   rebased onto main
   memory: +2 new; checked 8: 7 fresh, 1 body-drift, 0 signature-changed, 0 missing
   reviewed 1 drifted note(s) via anthropic(claude-haiku-4-5-20251001)
@@ -173,8 +186,8 @@ When a span drifts, a hash can tell you it changed but not whether the note is
 still true. That judgment goes to a model, once, during `done`:
 
 ```bash
-export ANTHROPIC_API_KEY=...            # or
-export LANE_REVIEW_CMD='claude -p'      # any CLI that reads stdin, writes stdout
+$ export ANTHROPIC_API_KEY=...        # or
+$ export LANE_REVIEW_CMD='claude -p'  # any CLI reading stdin, writing stdout
 ```
 
 | verdict | action |
@@ -192,8 +205,8 @@ Review is **off unless you configure it**. No key, no command, no spending, and
 `--review-max` (default 20).
 
 ```bash
-lane audit --review none        # force off for one run
-lane audit --review cmd --review-cmd './my-reviewer'
+$ lane audit --review none      # force off for one run
+$ lane audit --review cmd --review-cmd './my-reviewer'
 ```
 
 ### Budget
@@ -212,7 +225,7 @@ pinned: true        # add to the note's frontmatter
 Recover something:
 
 ```bash
-git mv .lane/attic/src/auth.rs/01M0B4KQTX-*.md .lane/memory/src/auth.rs/
+$ git mv .lane/attic/src/auth.rs/01M0B4KQTX-*.md .lane/memory/src/auth.rs/
 ```
 
 ---
@@ -241,8 +254,8 @@ sidecar object store.
 Run several agents at once:
 
 ```bash
-lane new agent-a && lane new agent-b && lane new agent-c
-lane ls
+$ lane new agent-a && lane new agent-b && lane new agent-c
+$ lane ls
   agent-a    agent-a    clean   3 pending note(s)
   agent-b    agent-b    dirty   1 pending note(s)
 ```
@@ -257,8 +270,7 @@ Land them in any order.
 
 ## Reference
 
-The short version. Every flag of every command, one entry each, is on
-[commands](/commands).
+The short version. See [commands](/commands) for full information.
 
 | command | |
 |---|---|

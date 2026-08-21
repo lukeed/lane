@@ -4,6 +4,15 @@ title: Capturing decisions from commits
 description: "How a Why: trailer in a commit message becomes a lane note, what it refuses to do, and what it costs."
 section: lane(7)
 here: memory
+rail:
+  what-changes-for-you: What changes
+  the-two-sentences-are-different: Two sentences
+  what-it-refuses: Refuses
+  both-not-either: Both
+  what-it-will-not-do: Limits
+  one-side-benefit: Side benefit
+  what-is-automatic-and-what-is-not: Automatic
+  the-honest-cost: The cost
 ---
 
 # Capturing decisions from commits
@@ -26,8 +35,8 @@ After:
 
 ```
 $ git commit -am "make verify constant-time
-
-Why: src/auth.rs#fn verify | early return leaks token length"
+>
+> Why: src/auth.rs#fn verify | early return leaks token length"
 ```
 
 One place. A `post-commit` hook reads the trailer, appends it to

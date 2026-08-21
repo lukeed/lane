@@ -1,0 +1,42 @@
+---
+import Page from './Page.astro';
+import Toc from '../components/Toc.astro';
+
+type Heading = { depth: number; slug: string; text: string };
+
+type Props = {
+	frontmatter: {
+		title: string;
+		description: string;
+		/** the man rule's section name, e.g. lane(7) */
+		section?: string;
+		/** the nav entry to mark as current */
+		here?: string;
+		/** shorter labels for the rail, by slug; the heading itself is untouched */
+		rail?: Record<string, string>;
+	};
+	headings: Heading[];
+};
+
+let { title, description, section, here, rail } = Astro.props.frontmatter;
+
+// only the top level; a two-deep rail in a 152px gutter is a wall, not a map
+let toc = Astro.props.headings
+	.filter((h) => h.depth === 2)
+	.map((h) => ({ slug: h.slug, text: rail?.[h.slug] ?? h.text }));
+---
+
+<Page title={`${title} — lane`} description={description} section={section} here={here}>
+	<main class="shell">
+		<article class="sec sec-first doc">
+			{toc.length > 0 ? (
+				<Toc items={toc} />
+			) : (
+				<p class="sec-head sec-head-mute">{title}</p>
+			)}
+			<div class="sec-body prose">
+				<slot />
+			</div>
+		</article>
+	</main>
+</Page>

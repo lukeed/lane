@@ -1,6 +1,24 @@
-# Capturing decisions from commits
+---
+layout: ../layouts/Doc.astro
+title: Capturing Decisions
+description: "How a Why: trailer in a commit message becomes a lane note, what it refuses to do, and what it costs."
+section: lane(7)
+here: memory
+rail:
+  what-changes-for-you: What changes
+  the-two-sentences-are-different: Two sentences
+  what-it-refuses: Refuses
+  both-not-either: Both
+  what-it-will-not-do: Limits
+  one-side-benefit: Side benefit
+  what-is-automatic-and-what-is-not: Automatic
+  the-honest-cost: The cost
+---
 
-What plan 015 means in practice.
+# Capturing Decisions
+
+The reason a change had to be made, written in the commit you were already
+writing.
 
 ## What changes for you
 
@@ -11,20 +29,37 @@ $ lane note -p src/auth.rs -a "fn verify" "early return leaks token length"
 $ git commit -am "make verify constant-time"
 ```
 
-The first line is the one you forget — it needs a separate decision to run a
-separate command, right when you are thinking about the commit.
+Both lines are true and both are worth keeping. The first is the one you
+forget: it takes a separate decision to run a separate command, at the moment
+you are already thinking about the commit.
 
-After:
+### Install the hooks
+
+Once per repository, and it is the only setup step:
+
+```
+$ lane install hooks
+installed .git/hooks/post-commit
+installed .git/hooks/prepare-commit-msg
+```
+
+That covers every lane, because worktrees share the hooks directory. Nothing
+before it reads a `Why:` trailer — without the hooks, git carries the line in
+the commit message forever and lane never sees it.
+
+### What the hooks give you
+
+One command where there were two:
 
 ```
 $ git commit -am "make verify constant-time
-
-Why: src/auth.rs#fn verify | early return leaks token length"
+>
+> Why: src/auth.rs#fn verify | early return leaks token length"
 ```
 
-One place. A `post-commit` hook reads the trailer, appends it to
-`.git/lane/pending.jsonl`, and the next audit promotes it. From that point it is
-indistinguishable from a note made by hand:
+`post-commit` reads the trailer, appends it to `.git/lane/pending.jsonl`, and
+the next audit promotes it. From that point it is indistinguishable from a note
+made by hand:
 
 ```
 $ lane why src/auth.rs
@@ -34,8 +69,20 @@ src/auth.rs#fn verify
       01M0B9MBYB · main · 2026-08-19
 ```
 
-Setup is `lane install hooks`, once. It covers every lane, because worktrees
-share the hooks directory.
+### Hand the line to an agent
+
+Writing the `Why:` line is still yours to remember. `lane install skill` gives
+that part away:
+
+```
+$ lane install skill
+installed /w/proj/.agents/skills/lane/SKILL.md
+```
+
+The skill carries the trailer format and is loaded only when an agent is doing
+lane work, so an agent that has just changed a function writes the line into
+the commit it was already making. The same hooks capture it, and the note that
+comes out is the same note.
 
 ## The two sentences are different
 
@@ -109,13 +156,15 @@ for someone reading history, `.lane/` for someone about to edit the function.
 
 ## What is automatic and what is not
 
-Automatic: the hook firing, parsing, validation, the append to
-`.git/lane/pending.jsonl`, promotion at the next audit, and deduplication. You never
-run any of it.
+Automatic, once `lane install hooks` has run: the hook firing, parsing,
+validation, the append to `.git/lane/pending.jsonl`, promotion at the next
+audit, and deduplication. You never run any of it.
 
-Not automatic: writing the `Why:` line at all. That is deliberate. A note
-generated from the commit without you asking would be the git log again, which
-is the thing this design refuses.
+Not automatic: deciding there is a `Why:` line to write. That is deliberate. A
+note generated from a commit that nobody chose to annotate would be the git log
+again, which is the thing this design refuses. An agent with the lane skill
+writes the line because it judged the constraint worth recording — the same
+judgment, made by someone else.
 
 So the only thing you supply is one line, in this shape:
 

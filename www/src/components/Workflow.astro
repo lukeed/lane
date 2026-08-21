@@ -1,0 +1,319 @@
+---
+import * as acts from '../scripts/acts';
+
+// 144 blocks stand for the 1358.1 MiB that arrive shared. Every tree below
+// main/ sees all 144; the handful it writes are the only ones it owns. One
+// source file, then the rebuild it triggered: 106.5 MiB, measured.
+let blocks = Array.from({ length: 144 }, (_, i) => i);
+let run = (at: number, n: number) => Array.from({ length: n }, (_, i) => at + i);
+
+let trees = [
+	{ name: 'fix-login/', edit: 62, build: run(84, 12) },
+	{ name: 'agent-b/', edit: 41, build: run(110, 8) },
+	{ name: 'agent-c/', edit: 7, build: run(30, 6) },
+];
+
+let landed = new Set(trees.map((t) => t.edit));
+
+function group(tree: (typeof trees)[number], at: number, first: boolean) {
+	if (at === tree.edit) return first ? 'w1' : 'wa';
+	if (tree.build.includes(at)) return first ? 'w2' : 'wa';
+	return 'pass';
+}
+
+// Without JavaScript the panel rests on the frame with every lane open; the
+// inline script below rewinds it to the first frame before the page paints.
+let asleep = Object.fromEntries(
+	acts.steps.slice(1, acts.steps.indexOf(acts.rest) + 1).map((s) => [`data-${s}`, 'true']),
+);
+---
+
+<div class="flow" id="flow" data-step={acts.rest} {...asleep}>
+	<div class="flow-panel">
+		<figure class="panel">
+			<figcaption class="panel-head">
+				<span>disk</span>
+				<span class="panel-state">
+					<span data-for="seed">one tree</span>
+					<span data-for="lane">shared</span>
+					<span data-for="write">copy-on-write</span>
+					<span data-for="build drift">lane changes</span>
+					<span data-for="fanout">three lanes</span>
+					<span data-for="land">landed</span>
+					<span data-for="gone">freed</span>
+				</span>
+			</figcaption>
+
+			<div class="tree tree-src">
+				<p class="tree-name">main/<span class="tree-meta">12,283 files</span></p>
+				<div class="extent">
+					{blocks.map((i) => (
+						<span class="cell" data-g={landed.has(i) ? 'w1' : 'base'} style={`--i:${i}`}></span>
+					))}
+				</div>
+			</div>
+
+			<p class="divide divide-ref"><span>by reference</span></p>
+
+			<div class="trees">
+				{trees.map((tree, n) => (
+					<div class="tree tree-lane" data-tree={n}>
+						<p class="tree-name">{tree.name}</p>
+						<div class="extent">
+							{blocks.map((i) => (
+								<span class="cell" data-g={group(tree, i, n === 0)} style={`--i:${i}`}></span>
+							))}
+						</div>
+					</div>
+				))}
+			</div>
+
+			<p class="legend">
+				<span class="key" data-g="pass"></span>shared with main/
+				<span class="key" data-g="own"></span>lane changes
+			</p>
+
+			<p class="divide"><span>memory</span></p>
+
+			<div class="memory">
+				<p class="tree-name">
+					.lane/memory/
+					<span class="memory-meta">
+						<span data-for="seed lane">nothing noted yet</span>
+						<span data-for="write build">1 note &middot; fix-login</span>
+						<span data-for="drift">1 note &middot; body-drift</span>
+						<span data-for="fanout">4 notes &middot; 3 lanes</span>
+						<span data-for="land gone">4 on main &middot; 1 in the attic</span>
+					</span>
+				</p>
+				<div class="memos">
+					{[0, 1, 2, 3, 4].map((n) => <span class="memo" data-n={n}></span>)}
+				</div>
+			</div>
+
+			<div class="tally" data-for="seed lane">
+				<span><b>1358.1 MiB</b> shared</span>
+				<span><em>0 B</em> written</span>
+				<span><s>a byte copy: 1358.1 MiB</s></span>
+			</div>
+			<div class="tally" data-for="write">
+				<span><b>1358.1 MiB</b> shared</span>
+				<span><em>12 KiB</em> written</span>
+				<span>one file left the shared set</span>
+			</div>
+			<div class="tally" data-for="build drift">
+				<span><b>1358.1 MiB</b> shared</span>
+				<span><em>106.5 MiB</em> written</span>
+				<span>the rebuild, not your edit</span>
+			</div>
+			<div class="tally" data-for="fanout">
+				<span><b>1358.1 MiB</b> shared</span>
+				<span><em>114.9 MiB</em> written</span>
+				<span>three lanes, one set of extents</span>
+			</div>
+			<div class="tally" data-for="land">
+				<span><b>1358.1 MiB</b> shared</span>
+				<span><em>3 commits</em> landed</span>
+				<span>rebased, then fast-forwarded</span>
+			</div>
+			<div class="tally" data-for="gone">
+				<span><b>1358.1 MiB</b> shared</span>
+				<span><em>114.9 MiB</em> freed</span>
+				<span>the commits and the notes stayed</span>
+			</div>
+		</figure>
+	</div>
+
+	<ol class="flow-acts">
+		{acts.list.map((act, i) => (
+			<li class="act" data-on={i === 0 ? 'true' : 'false'}>
+				<p class="act-head">
+					<span class="act-idx">{String(i + 1).padStart(2, '0')}</span>
+					<span class="act-label">{act.label}</span>
+				</p>
+				<p class="act-claim">{act.claim}</p>
+				<div class="tty">
+					<div class="tty-bar">
+						<span>zsh &mdash; {act.cwd}</span>
+						<span>{i + 1} of {acts.list.length}</span>
+					</div>
+					<div
+						class="tty-screen"
+						style={`--rows:${act.session.filter((l) => l.kind !== 'gap').length};--gaps:${act.session.filter((l) => l.kind === 'gap').length}`}
+					>
+						{act.session.map((line) => (
+							<div class="tty-line" data-kind={line.kind}>
+								{line.kind === 'cmd' ? <span class="tty-prompt">$ </span> : null}
+								{line.kind === 'con' ? <span class="tty-prompt">&gt; </span> : null}
+								{line.text}
+							</div>
+						))}
+					</div>
+					<span class="tty-mark" aria-hidden="true"></span>
+				</div>
+				<p class="act-why">{act.why}</p>
+			</li>
+		))}
+	</ol>
+</div>
+
+<script is:inline>
+	(() => {
+		let flow = document.getElementById('flow');
+		for (let key of Object.keys(flow.dataset)) delete flow.dataset[key];
+		flow.dataset.step = 'seed';
+		for (let screen of flow.querySelectorAll('.tty-screen')) screen.replaceChildren();
+	})();
+</script>
+
+<script>
+	import * as acts from '../scripts/acts';
+
+	let flow = document.getElementById('flow');
+	if (flow) {
+		let items = [...flow.querySelectorAll<HTMLElement>('.act')];
+		let screens = [...flow.querySelectorAll<HTMLElement>('.tty-screen')];
+		let marks = [...flow.querySelectorAll<HTMLElement>('.tty-mark')];
+		let played = new Set<number>();
+		let calm = matchMedia('(prefers-reduced-motion: reduce)');
+		let gen = 0;
+		let at = -1;
+
+		let sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+		function paint(step: acts.Step) {
+			let n = acts.steps.indexOf(step);
+			flow!.dataset.step = step;
+			for (let i = 1; i < acts.steps.length; i++) {
+				flow!.dataset[acts.steps[i]] = String(n >= i);
+			}
+		}
+
+		function draw(screen: HTMLElement, line: acts.Line, upto?: number) {
+			let el = document.createElement('div');
+			el.className = 'tty-line';
+			el.dataset.kind = line.kind;
+			if (line.kind === 'cmd' || line.kind === 'con') {
+				let p = document.createElement('span');
+				p.className = 'tty-prompt';
+				p.textContent = line.kind === 'cmd' ? '$ ' : '> ';
+				el.append(p);
+			}
+			el.append(document.createTextNode(line.text.slice(0, upto ?? line.text.length)));
+			screen.append(el);
+			return el;
+		}
+
+		/** the whole transcript at once, with no typing left to do */
+		function fill(i: number) {
+			screens[i].replaceChildren();
+			for (let line of acts.list[i].session) draw(screens[i], line);
+		}
+
+		/** that, and the frame the act ends on */
+		function settle(i: number) {
+			let act = acts.list[i];
+			fill(i);
+			paint(act.session.reduce((step, line) => line.step ?? step, act.from));
+		}
+
+		async function play(i: number) {
+			let mine = ++gen;
+			played.add(i);
+			// an act scrolled away from mid-line is left reading as a finished one
+			if (at >= 0 && at !== i) fill(at);
+			at = i;
+			items.forEach((el, n) => (el.dataset.on = String(n === i)));
+
+			if (calm.matches) return settle(i);
+
+			let act = acts.list[i];
+			let screen = screens[i];
+			paint(act.from);
+			screen.replaceChildren();
+
+			// only the act being told keeps a caret
+			for (let old of flow!.querySelectorAll('.tty-caret')) old.remove();
+			let caret = document.createElement('span');
+			caret.className = 'tty-caret';
+
+			for (let line of act.session) {
+				if (mine !== gen) return;
+				if (line.kind === 'gap') {
+					draw(screen, line);
+					await sleep(220);
+					continue;
+				}
+				if (line.kind === 'cmd' || line.kind === 'con') {
+					let el = draw(screen, line, 0);
+					el.append(caret);
+					for (let n = 0; n < line.text.length; n++) {
+						if (mine !== gen) return;
+						caret.before(document.createTextNode(line.text[n]));
+						await sleep(line.text[n] === ' ' ? 12 : 16 + Math.random() * 20);
+					}
+					caret.remove();
+					await sleep(300);
+				} else {
+					draw(screen, line);
+					await sleep(110);
+				}
+				if (line.step) paint(line.step);
+				if (line.hold) await sleep(line.hold);
+			}
+
+			if (mine !== gen) return;
+			screen.append(caret);
+		}
+
+		// The act whose pane is sitting in the middle of the screen is the one
+		// being told, so nothing types while it is still on its way up. Stacked,
+		// the panel owns the top of the screen, so the middle is lower down.
+		let stacked = matchMedia('(max-width: 900px)');
+		let band: IntersectionObserver;
+
+		function watch() {
+			band?.disconnect();
+			band = new IntersectionObserver(
+				(entries) => {
+					for (let entry of entries) {
+						if (!entry.isIntersecting) continue;
+						let i = marks.indexOf(entry.target as HTMLElement);
+						if (i !== at) play(i);
+					}
+				},
+				{ rootMargin: stacked.matches ? '-58% 0px -26% 0px' : '-42% 0px -42% 0px' },
+			);
+			for (let el of marks) band.observe(el);
+		}
+
+		watch();
+		stacked.addEventListener('change', watch);
+
+		// scrolled clean past without ever centring: show it, do not leave it blank
+		let skipped = new IntersectionObserver(
+			(entries) => {
+				for (let entry of entries) {
+					if (entry.isIntersecting || entry.boundingClientRect.bottom > 0) continue;
+					let i = items.indexOf(entry.target as HTMLElement);
+					if (!played.has(i)) fill(i);
+				}
+			},
+			{ threshold: 0 },
+		);
+		for (let el of items) skipped.observe(el);
+
+		// nothing types off-screen; whatever was mid-line is left finished
+		new IntersectionObserver(
+			(entries) => {
+				for (let entry of entries) {
+					if (entry.isIntersecting || at < 0) continue;
+					gen++;
+					settle(at);
+					at = -1;
+				}
+			},
+			{ threshold: 0 },
+		).observe(flow);
+	}
+</script>

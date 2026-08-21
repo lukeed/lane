@@ -1,0 +1,16 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "lane",
+	"main": "worker.ts",
+	"compatibility_date": "2025-08-01",
+	// The zone must be on this Cloudflare account; drop this block to deploy to
+	// the workers.dev subdomain instead and attach the domain by hand.
+	"routes": [{ "pattern": "lane.lukeed.com", "custom_domain": true }],
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		// Every other path is served straight from the asset store; only the
+		// root needs the Worker, to look at the user agent.
+		"run_worker_first": ["/"]
+	}
+}

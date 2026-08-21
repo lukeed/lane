@@ -1,0 +1,72 @@
+---
+import Page from '../layouts/Page.astro';
+import Term from '../components/Term.astro';
+import Toc from '../components/Toc.astro';
+import { commands, globals } from '../data/commands';
+
+let slug = (name: string) => name.replace(/ /g, '-');
+
+// A parent command gets one entry on the rail, pointing at the first of its
+// leaves; the page below still gives every leaf its own section.
+let rail = commands.reduce<{ slug: string; text: string }[]>((out, cmd) => {
+	let [head] = cmd.name.split(' ');
+	if (out.some((item) => item.text === head)) return out;
+	return [...out, { slug: slug(cmd.name), text: head }];
+}, []);
+---
+
+<Page
+	title="Commands — lane"
+	description="Every lane subcommand and every flag it accepts, with the transcript each one prints."
+	here="commands"
+>
+	<main class="shell">
+		<article class="sec sec-first doc">
+			<Toc items={rail} />
+
+			<div class="sec-body prose">
+				<h1>Commands</h1>
+				<p>
+					Every subcommand the parser accepts, in the order it defines them, with the flags that
+					belong to each. For the order you would meet them in a day&rsquo;s work, read{' '}
+					<a href="/usage">usage</a>.
+				</p>
+
+				<h3>Accepted everywhere</h3>
+				<dl class="opts opts-global">
+					{globals.map((opt) => (
+						<>
+							<dt><code>{opt.flag}</code></dt>
+							<dd>{opt.about}</dd>
+						</>
+					))}
+				</dl>
+
+				{commands.map((cmd) => (
+					<section class="cmd">
+						<h2 id={slug(cmd.name)}><code>lane {cmd.name}</code></h2>
+						<p>{cmd.summary}</p>
+
+						{cmd.options.length > 0 ? (
+							<dl class="opts">
+								{cmd.options.map((opt) => (
+									<>
+										<dt>
+											<code>{opt.flag}</code>
+											{opt.arg ? <span class="opt-arg">{opt.arg}</span> : null}
+										</dt>
+										<dd>{opt.about}</dd>
+									</>
+								))}
+							</dl>
+						) : (
+							<p class="note">Takes no flags of its own.</p>
+						)}
+
+						<Term text={cmd.example} class="cmd-example" />
+					</section>
+				))}
+			</div>
+		</article>
+	</main>
+</Page>

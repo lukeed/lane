@@ -1,0 +1,31 @@
+---
+import { split } from '../scripts/tty';
+
+type Props = {
+	/** a transcript: prompt lines start with `$ `, continuations with `> ` */
+	text: string;
+	class?: string;
+};
+
+let { text, class: cls } = Astro.props;
+
+// <pre> keeps every space, so the markup is built as a string rather than as a
+// template whose own indentation would land inside it
+let esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+let html = split(text)
+	.map((line) =>
+		line
+			.map((part) =>
+				part.cls === ''
+					? esc(part.text)
+					: part.cls === 'b'
+						? `<b>${esc(part.text)}</b>`
+						: `<span class="${part.cls}">${esc(part.text)}</span>`,
+			)
+			.join(''),
+	)
+	.join('\n');
+---
+
+<pre class:list={['block', cls]} set:html={html} />

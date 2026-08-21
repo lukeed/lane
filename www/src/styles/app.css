@@ -1,0 +1,1629 @@
+@import '@fontsource-variable/martian-mono';
+@import '@fontsource-variable/spline-sans-mono';
+
+:root {
+	--void: #0a0f0e;
+	--panel: #0f1615;
+	--raise: #141d1b;
+	--rule: #1e2b28;
+	--rule-lit: #2c3d39;
+	--bone: #dce2dd;
+	--dim: #75857d;
+	--dimmer: #5d6e67;
+	--ref: #5fd3de;
+	--drift: #e3a64b;
+	--gone: #c4695b;
+
+	--display: 'Martian Mono Variable', ui-monospace, monospace;
+	--term: 'Spline Sans Mono Variable', ui-monospace, 'SF Mono', monospace;
+
+	/* the sticky man rule's height, which everything else sticks under */
+	--top: 44px;
+	--u: 8px;
+	--gutter: 152px;
+	--measure: 82ch;
+	--pad: clamp(20px, 5vw, 56px);
+
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html {
+	background: var(--void);
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	font-family: var(--term);
+	font-size: 15px;
+	line-height: 1.6;
+	font-weight: 400;
+	color: var(--bone);
+	background: var(--void);
+	font-variant-ligatures: none;
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: inherit;
+	text-decoration-color: var(--rule-lit);
+	text-underline-offset: 3px;
+}
+
+a:hover {
+	color: var(--ref);
+	text-decoration-color: var(--ref);
+}
+
+:focus-visible {
+	outline: 2px solid var(--ref);
+	outline-offset: 3px;
+	border-radius: 1px;
+}
+
+/* ---- shell ---------------------------------------------------------- */
+
+.shell {
+	max-width: calc(var(--gutter) + var(--measure) + var(--pad) * 2);
+	margin: 0 auto;
+	padding: 0 var(--pad);
+}
+
+/* the literal top and bottom rule of a man page */
+.manrule {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--u);
+	align-items: baseline;
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--dim);
+	padding: calc(var(--u) * 2.5) 0;
+	border-block: 1px solid var(--rule);
+	white-space: nowrap;
+}
+
+.manrule-mid {
+	color: var(--dimmer);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.manrule-end {
+	text-align: right;
+}
+
+.manrule-home {
+	color: inherit;
+	text-decoration: none;
+	transition: color 0.15s;
+}
+
+.manrule-home:hover {
+	color: var(--ref);
+}
+
+.top {
+	position: sticky;
+	top: 0;
+	z-index: 40;
+	background: color-mix(in oklab, var(--void) 96%, transparent);
+	backdrop-filter: blur(10px);
+	border-bottom: 1px solid var(--rule);
+}
+
+.top .manrule {
+	border-block: 0;
+	padding-block: calc(var(--u) * 1.75);
+}
+
+.top-links {
+	display: flex;
+	gap: calc(var(--u) * 2.5);
+}
+
+.top-links a {
+	text-decoration: none;
+	color: var(--dim);
+	transition: color 0.15s;
+}
+
+.top-links a:hover {
+	color: var(--ref);
+}
+
+.top-links a[aria-current='page'] {
+	color: var(--bone);
+	text-decoration: underline;
+	text-decoration-color: var(--ref);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 6px;
+}
+
+/* ---- man sections --------------------------------------------------- */
+
+.sec {
+	display: grid;
+	grid-template-columns: var(--gutter) minmax(0, 1fr);
+	padding-block: clamp(48px, 7vw, 80px);
+	border-top: 1px solid var(--rule);
+	column-gap: 0;
+}
+
+.sec-first {
+	border-top: 0;
+	padding-top: clamp(40px, 7vw, 76px);
+	padding-bottom: clamp(40px, 6vw, 68px);
+}
+
+.sec-head {
+	font-family: var(--display);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.16em;
+	line-height: 1.5;
+	text-transform: uppercase;
+	color: var(--bone);
+	position: sticky;
+	top: calc(var(--top) + 24px);
+	align-self: start;
+	padding-top: 6px;
+}
+
+/* NAME is what the wordmark under it already says; the column stays so the
+   measure below it lines up with every other section */
+.sec-head-mute {
+	visibility: hidden;
+}
+
+.sec-body {
+	min-width: 0;
+}
+
+.sec-body > * + * {
+	margin-top: calc(var(--u) * 3);
+}
+
+@media (max-width: 560px) {
+	.manrule-mid {
+		display: none;
+	}
+}
+
+/* five entries do not fit one phone line, so the rule takes two */
+@media (max-width: 640px) {
+	:root {
+		--top: 69px;
+	}
+
+	.top .manrule {
+		flex-wrap: wrap;
+		white-space: normal;
+		gap: calc(var(--u) * 1.25) calc(var(--u) * 2);
+	}
+
+	.top-links {
+		flex: 1 0 100%;
+		flex-wrap: wrap;
+		gap: calc(var(--u) * 0.75) calc(var(--u) * 2);
+	}
+}
+
+@media (max-width: 780px) {
+	.sec {
+		grid-template-columns: 1fr;
+		gap: calc(var(--u) * 2);
+	}
+	.sec-head {
+		position: static;
+		padding-top: 0;
+		padding-bottom: calc(var(--u) * 0.5);
+		border-bottom: 1px solid var(--rule);
+	}
+	.sec-head-mute {
+		display: none;
+	}
+}
+
+/* ---- type ----------------------------------------------------------- */
+
+/* the NAME entry of a man page, blown up: `lane — what it is` */
+.name {
+	display: block;
+}
+
+.wordmark {
+	font-family: var(--display);
+	font-size: clamp(3.4rem, 10.5vw, 6.6rem);
+	font-weight: 700;
+	line-height: 0.92;
+	letter-spacing: -0.03em;
+	color: var(--bone);
+	margin-left: -0.04em;
+	display: block;
+}
+
+.name-dash {
+	color: var(--rule-lit);
+}
+
+.tagline {
+	font-size: clamp(19px, 3.1vw, 27px);
+	line-height: 1.35;
+	font-weight: 300;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	max-width: 46ch;
+	text-wrap: balance;
+	display: block;
+	margin-top: calc(var(--u) * 2);
+}
+
+.tagline-solo {
+	max-width: 44ch;
+	margin-top: 0;
+}
+
+.lede {
+	color: var(--dim);
+	max-width: 62ch;
+	font-size: 15px;
+}
+
+.lede strong {
+	color: var(--bone);
+	font-weight: 500;
+}
+
+.note {
+	color: var(--dim);
+	font-size: 13px;
+	max-width: 62ch;
+}
+
+.hl-ref {
+	color: var(--ref);
+}
+.hl-drift {
+	color: var(--drift);
+}
+.hl-gone {
+	color: var(--gone);
+}
+.hl-bone {
+	color: var(--bone);
+}
+.hl-dim {
+	color: var(--dim);
+}
+
+.eyebrow {
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--dim);
+}
+
+/* the hero's one action, set as a prompt rather than a button */
+.prompt {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: calc(var(--u) * 2);
+	border-top: 1px solid var(--rule-lit);
+	border-bottom: 1px solid var(--rule);
+	padding: calc(var(--u) * 2) 0;
+	margin-top: calc(var(--u) * 5) !important;
+	flex-wrap: wrap;
+}
+
+@media (max-width: 620px) {
+	.prompt-cmd {
+		flex: 1 1 100%;
+	}
+}
+
+.prompt-cmd {
+	font-size: clamp(12px, 2.4vw, 14px);
+	color: var(--bone);
+	white-space: pre;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.prompt-cmd .p {
+	color: var(--ref);
+	user-select: none;
+}
+
+/* ---- the workflow --------------------------------------------------- */
+
+/* the disk panel holds still; the transcript beside it is what moves */
+.flow {
+	display: grid;
+	grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+	gap: calc(var(--u) * 3);
+	align-items: start;
+	margin-top: calc(var(--u) * 5) !important;
+}
+
+.flow-panel {
+	position: sticky;
+	top: calc(var(--top) + 32px);
+}
+
+.panel {
+	border: 1px solid var(--rule);
+	background: var(--panel);
+	padding: calc(var(--u) * 2);
+}
+
+.panel-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: var(--u);
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--dimmer);
+	margin-bottom: calc(var(--u) * 2);
+}
+
+.panel-state {
+	color: var(--ref);
+}
+
+/* one frame of the panel is shown at a time, keyed off the step the
+   transcript has reached */
+.panel-state span,
+.memory-meta > span,
+.tally {
+	display: none;
+}
+
+.flow[data-step='seed'] [data-for~='seed'],
+.flow[data-step='lane'] [data-for~='lane'],
+.flow[data-step='write'] [data-for~='write'],
+.flow[data-step='build'] [data-for~='build'],
+.flow[data-step='drift'] [data-for~='drift'],
+.flow[data-step='fanout'] [data-for~='fanout'],
+.flow[data-step='land'] [data-for~='land'],
+.flow[data-step='gone'] [data-for~='gone'] {
+	display: flex;
+}
+
+.tree-name {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 1ch;
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--bone);
+	margin-bottom: 5px;
+	white-space: nowrap;
+}
+
+.tree-meta {
+	color: var(--dim);
+}
+
+.extent {
+	display: grid;
+	grid-template-columns: repeat(24, minmax(0, 1fr));
+	gap: 2px;
+}
+
+.cell {
+	aspect-ratio: 1;
+	background: var(--rule);
+	opacity: 0.3;
+	transform: scale(0.4);
+	transition:
+		background 0.3s ease,
+		box-shadow 0.3s ease,
+		opacity 0.3s ease,
+		transform 0.34s cubic-bezier(0.2, 0.8, 0.3, 1);
+	transition-delay: calc(var(--i) * 3ms);
+}
+
+/* main/ owns the blocks; it is there before the story starts */
+.tree-src .cell {
+	background: var(--ref);
+	opacity: 1;
+	transform: none;
+	transition-delay: 0ms;
+}
+
+/* every block in a lane is a window onto the block above it, until the lane
+   writes over one */
+.tree-lane .cell {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ref) 48%, transparent);
+}
+
+.flow[data-lane='true'] .tree-lane[data-tree='0'] .cell,
+.flow[data-fanout='true'] .tree-lane .cell {
+	opacity: 1;
+	transform: none;
+}
+
+/* the file you edited, then what the rebuild rewrote: the lane's own */
+.flow[data-write='true'] .tree-lane[data-tree='0'] .cell[data-g='w1'],
+.flow[data-build='true'] .tree-lane[data-tree='0'] .cell[data-g='w2'],
+.flow[data-fanout='true'] .tree-lane .cell[data-g='wa'] {
+	background: var(--drift);
+	box-shadow: none;
+	animation: wrote 0.7s ease-out 0.15s 1;
+}
+
+/* the commit lands, so main/ takes the new block */
+.flow[data-land='true'] .tree-src .cell[data-g='w1'] {
+	animation: landed 0.9s ease-out 0.2s 1;
+}
+
+@keyframes wrote {
+	0%,
+	25% {
+		background: var(--bone);
+	}
+}
+
+@keyframes landed {
+	0%,
+	30% {
+		background: var(--bone);
+	}
+}
+
+/* the lane is gone and so is every block it allocated */
+.flow[data-gone='true'] .tree-lane {
+	opacity: 0.32;
+}
+
+.flow[data-gone='true'] .tree-lane[data-tree] .cell[data-g] {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--rule);
+	animation: none;
+}
+
+.flow[data-gone='true'] .tree-lane .tree-name {
+	text-decoration: line-through;
+	text-decoration-color: var(--gone);
+}
+
+.divide {
+	display: flex;
+	align-items: center;
+	gap: 1.5ch;
+	font-family: var(--display);
+	font-size: 9px;
+	font-weight: 500;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--dim);
+	margin-top: calc(var(--u) * 1.75);
+	transition: opacity 0.4s ease;
+}
+
+.divide::before,
+.divide::after {
+	content: '';
+	flex: 1;
+	height: 1px;
+	background: var(--rule);
+}
+
+/* a lane arrives whole, and the other two only once there are three agents */
+.tree-lane {
+	overflow: hidden;
+	max-height: 140px;
+	padding-top: calc(var(--u) * 1.75);
+	transition:
+		opacity 0.4s ease,
+		max-height 0.45s ease,
+		padding-top 0.45s ease;
+}
+
+.flow[data-step] .tree-lane {
+	max-height: 0;
+	padding-top: 0;
+	opacity: 0;
+}
+
+.flow[data-lane='true'] .tree-lane[data-tree='0'],
+.flow[data-fanout='true'] .tree-lane {
+	max-height: 140px;
+	padding-top: calc(var(--u) * 1.75);
+	opacity: 1;
+}
+
+.legend {
+	display: flex;
+	align-items: center;
+	gap: 0.75ch;
+	flex-wrap: wrap;
+	font-size: 11px;
+	color: var(--dim);
+	margin-top: calc(var(--u) * 1.75);
+	transition: opacity 0.4s ease;
+}
+
+/* both point at the lane stack, which is not there yet */
+.flow[data-step='seed'] :is(.legend, .divide-ref) {
+	opacity: 0;
+}
+
+.key {
+	width: 9px;
+	height: 9px;
+	flex: none;
+}
+
+.key[data-g='pass'] {
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ref) 48%, transparent);
+}
+
+.key[data-g='own'] {
+	background: var(--drift);
+	margin-left: 1.75ch;
+}
+
+.memory-meta {
+	color: var(--dim);
+}
+
+.memory-meta > span {
+	display: none;
+}
+
+.memos {
+	display: flex;
+	gap: 5px;
+	margin-top: 6px;
+	min-height: 12px;
+}
+
+.memo {
+	width: 17px;
+	height: 12px;
+	box-shadow: inset 0 0 0 1px var(--rule);
+	opacity: 0;
+	transform: translateY(4px);
+	transition:
+		opacity 0.35s ease,
+		transform 0.35s ease,
+		box-shadow 0.35s ease,
+		background 0.35s ease;
+}
+
+/* a note is written by hand, so it arrives when its command does, not with
+   the blocks a build happens to touch */
+.flow[data-write='true'] .memo[data-n='0'],
+.flow[data-fanout='true'] .memo[data-n='1'],
+.flow[data-fanout='true'] .memo[data-n='2'],
+.flow[data-fanout='true'] .memo[data-n='3'],
+.flow[data-land='true'] .memo[data-n='4'] {
+	opacity: 1;
+	transform: none;
+	box-shadow: inset 0 0 0 1px var(--bone);
+}
+
+.flow[data-drift='true'] .memo[data-n='0'] {
+	box-shadow: inset 0 0 0 1px var(--drift);
+	background: color-mix(in oklab, var(--drift) 20%, transparent);
+}
+
+/* the lanes give their blocks back; the notes they wrote are on main */
+.flow[data-land='true'] .memo[data-n='1'],
+.flow[data-land='true'] .memo[data-n='2'],
+.flow[data-land='true'] .memo[data-n='3'],
+.flow[data-land='true'] .memo[data-n='4'] {
+	box-shadow: inset 0 0 0 1px var(--ref);
+	background: color-mix(in oklab, var(--ref) 20%, transparent);
+}
+
+/* superseded, not deleted */
+.flow[data-land='true'] .memo[data-n='0'] {
+	box-shadow: inset 0 0 0 1px var(--rule-lit);
+	background: none;
+	opacity: 0.4;
+}
+
+.tally {
+	flex-direction: column;
+	gap: 2px;
+	font-size: 11.5px;
+	line-height: 1.5;
+	color: var(--dim);
+	border-top: 1px solid var(--rule);
+	margin-top: calc(var(--u) * 2);
+	padding-top: calc(var(--u) * 1.5);
+}
+
+.tally b {
+	font-weight: 500;
+	color: var(--ref);
+}
+
+.tally em {
+	font-style: normal;
+	font-weight: 500;
+	color: var(--drift);
+}
+
+/* nothing has been written yet, and by the end it cost nothing again */
+.flow[data-step='seed'] .tally em,
+.flow[data-step='lane'] .tally em {
+	color: var(--dim);
+}
+
+.flow[data-land='true'] .tally em {
+	color: var(--ref);
+}
+
+.tally s {
+	color: var(--dim);
+	text-decoration-color: var(--gone);
+}
+
+/* ---- the transcript beside it --------------------------------------- */
+
+.flow-acts {
+	list-style: none;
+}
+
+.act {
+	min-height: 74vh;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding-block: calc(var(--u) * 3);
+}
+
+/* the act being told is marked, not lit: dimming the other four would put
+   their body text under the contrast floor */
+.act-idx {
+	color: var(--dim);
+}
+
+.act[data-on='true'] .act-idx {
+	color: var(--ref);
+}
+
+.act[data-on='true'] .tty {
+	border-color: var(--rule-lit);
+}
+
+.act-head {
+	display: flex;
+	align-items: baseline;
+	gap: 1.5ch;
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--dim);
+}
+
+.act-claim {
+	font-size: clamp(17px, 2.2vw, 21px);
+	line-height: 1.35;
+	font-weight: 300;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	text-wrap: balance;
+	margin-top: calc(var(--u) * 1.75);
+}
+
+.tty {
+	border: 1px solid var(--rule);
+	background: var(--panel);
+	margin-top: calc(var(--u) * 3.5);
+	transition: border-color 0.4s ease;
+	position: relative;
+}
+
+.tty-mark {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	width: 1px;
+	height: 1px;
+}
+
+.tty-bar {
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--dimmer);
+	padding: calc(var(--u) * 1.25) calc(var(--u) * 2);
+	border-bottom: 1px solid var(--rule);
+	display: flex;
+	justify-content: space-between;
+	gap: var(--u);
+	background: var(--void);
+}
+
+.tty-screen {
+	padding: calc(var(--u) * 2);
+	font-size: 12px;
+	line-height: 1.75;
+	overflow-x: auto;
+	scrollbar-width: thin;
+	/* the finished transcript's height, held from the first character, so the
+	   page does not grow a line at a time while it types */
+	min-height: calc(var(--rows) * 1.75em + var(--gaps) * 0.9rem);
+}
+
+.tty-line {
+	white-space: pre;
+	color: var(--dim);
+}
+
+.tty-line[data-kind='cmd'],
+.tty-line[data-kind='con'] {
+	color: var(--bone);
+}
+
+.tty-prompt {
+	color: var(--ref);
+	user-select: none;
+}
+
+.tty-line[data-kind='con'] .tty-prompt {
+	color: var(--dim);
+}
+
+.tty-line[data-kind='hi'] {
+	color: var(--ref);
+}
+
+.tty-line[data-kind='warn'] {
+	color: var(--drift);
+}
+
+.tty-line[data-kind='gone'] {
+	color: var(--gone);
+}
+
+.tty-line[data-kind='gap'] {
+	height: 0.9rem;
+}
+
+.tty-caret {
+	display: inline-block;
+	width: 1ch;
+	height: 1.15em;
+	vertical-align: text-bottom;
+	background: var(--ref);
+	animation: blink 1.06s steps(1) infinite;
+}
+
+@keyframes blink {
+	0%,
+	50% {
+		opacity: 1;
+	}
+	51%,
+	100% {
+		opacity: 0;
+	}
+}
+
+.act-why {
+	color: var(--dim);
+	font-size: 12.5px;
+	line-height: 1.65;
+	margin-top: calc(var(--u) * 3);
+	max-width: 58ch;
+}
+
+@media (max-height: 860px) {
+	.extent {
+		grid-template-columns: repeat(36, minmax(0, 1fr));
+	}
+
+	.tree-lane,
+	.flow[data-lane='true'] .tree-lane[data-tree='0'],
+	.flow[data-fanout='true'] .tree-lane {
+		max-height: 96px;
+	}
+}
+
+/* shorter than the panel: sticking it would put its bottom out of reach */
+@media (max-height: 640px) {
+	.flow-panel {
+		position: static;
+	}
+}
+
+@media (max-width: 900px) {
+	.flow {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0;
+	}
+
+	/* the panel keeps the top of the screen; the transcript passes under it */
+	.flow-panel {
+		top: var(--top);
+		z-index: 10;
+		padding-block: calc(var(--u) * 1.5);
+		background: var(--void);
+	}
+
+	.flow-panel::after {
+		content: '';
+		position: absolute;
+		inset: 100% 0 auto;
+		height: calc(var(--u) * 2);
+		background: linear-gradient(var(--void), transparent);
+	}
+
+	.panel {
+		padding: calc(var(--u) * 1.75);
+	}
+
+	.tree-lane {
+		padding-top: var(--u);
+	}
+
+	.legend,
+	.tally {
+		margin-top: calc(var(--u) * 1.25);
+	}
+
+	.tally {
+		padding-top: var(--u);
+	}
+
+	/* the same 144 blocks, laid out as a strip: the panel has to leave the
+	   transcript most of the screen */
+	.extent {
+		grid-template-columns: repeat(48, minmax(0, 1fr));
+	}
+
+	.tree-lane,
+	.flow[data-lane='true'] .tree-lane[data-tree='0'],
+	.flow[data-fanout='true'] .tree-lane {
+		max-height: 60px;
+	}
+
+	.divide {
+		display: none;
+	}
+
+	.tally {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 0 2.5ch;
+	}
+
+	/* the widest line is 44 columns, and it has to land inside the pane */
+	.tty-screen {
+		padding: calc(var(--u) * 1.75);
+	}
+
+	.act {
+		min-height: 0;
+		padding-block: calc(var(--u) * 9);
+	}
+}
+
+@media (max-width: 420px) {
+	.tty-screen {
+		font-size: 11px;
+		padding: calc(var(--u) * 1.5);
+	}
+}
+
+/* ---- tables --------------------------------------------------------- */
+
+.tbl {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12.5px;
+	line-height: 1.6;
+	text-align: left;
+}
+
+.tbl th,
+.tbl td {
+	padding: calc(var(--u) * 1.25) calc(var(--u) * 2) calc(var(--u) * 1.25) 0;
+	border-bottom: 1px solid var(--rule);
+	vertical-align: top;
+	font-weight: 400;
+}
+
+.tbl thead th {
+	font-family: var(--display);
+	font-size: 10px;
+	letter-spacing: 0.13em;
+	text-transform: uppercase;
+	color: var(--dim);
+	font-weight: 500;
+	border-bottom-color: var(--rule-lit);
+	white-space: nowrap;
+}
+
+.tbl tbody th {
+	color: var(--bone);
+	white-space: nowrap;
+	padding-right: calc(var(--u) * 3);
+}
+
+.tbl td {
+	color: var(--dim);
+}
+
+.tbl .cell-cost {
+	color: var(--dim);
+	opacity: 0.85;
+}
+
+.tbl .cell-free {
+	color: var(--ref);
+}
+
+.tbl tbody tr:last-child th,
+.tbl tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.tbl-total th,
+.tbl-total td {
+	border-top: 1px solid var(--rule-lit);
+	padding-top: calc(var(--u) * 1.75);
+}
+
+.tbl-mark {
+	color: var(--dimmer);
+	width: 1ch;
+	padding-right: 1.5ch !important;
+	user-select: none;
+	text-align: left;
+}
+
+/* the tier's own colour, keyed off the row so table rules cannot out-specify it */
+.tbl tr[data-tone='drift'] .tbl-mark,
+.tbl tr[data-tone='drift'] th {
+	color: var(--drift);
+}
+
+.tbl tr[data-tone='gone'] .tbl-mark,
+.tbl tr[data-tone='gone'] th {
+	color: var(--gone);
+}
+
+/* two-column tables: the label shrinks, the meaning takes the rest */
+.tbl-pair td {
+	width: 100%;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* on a phone a wide table hides its last column with no way to reach it, so
+   both comparison tables become stacked records instead */
+@media (max-width: 640px) {
+	.tbl {
+		font-size: 12px;
+	}
+
+	.tbl-cmp thead,
+	.tbl-tier thead {
+		display: none;
+	}
+
+	.tbl-cmp tbody tr,
+	.tbl-tier tbody tr {
+		display: block;
+		padding: calc(var(--u) * 1.75) 0;
+		border-bottom: 1px solid var(--rule);
+	}
+
+	.tbl-cmp tbody tr:last-child,
+	.tbl-tier tbody tr:last-child {
+		border-bottom: 0;
+	}
+
+	.tbl-cmp th,
+	.tbl-cmp td,
+	.tbl-tier th,
+	.tbl-tier td {
+		display: block;
+		border: 0;
+		padding: 0;
+		white-space: normal;
+	}
+
+	.tbl-cmp tbody th {
+		margin-bottom: calc(var(--u) * 0.75);
+	}
+
+	.tbl-cmp td[data-label] {
+		display: grid;
+		grid-template-columns: 19ch minmax(0, 1fr);
+		gap: 0 1ch;
+		align-items: baseline;
+	}
+
+	.tbl-cmp td[data-label]::before {
+		content: attr(data-label);
+		color: var(--dimmer);
+		font-family: var(--display);
+		font-size: 9px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.tbl-cmp .tbl-total {
+		border-bottom: 0;
+	}
+
+	.tbl-tier tbody tr {
+		display: grid;
+		grid-template-columns: 2ch minmax(0, 1fr);
+		gap: 0 1ch;
+	}
+
+	.tbl-tier .tbl-mark {
+		width: auto;
+		text-align: left;
+	}
+
+	.tbl-tier tbody th,
+	.tbl-tier tbody td:nth-of-type(2),
+	.tbl-tier tbody td:nth-of-type(3) {
+		grid-column: 2;
+	}
+
+	.tbl-tier tbody td:nth-of-type(2) {
+		margin-top: calc(var(--u) * 0.5);
+	}
+
+	.tbl-tier tbody td:nth-of-type(3) {
+		color: var(--dimmer);
+	}
+}
+
+/* ---- code blocks ---------------------------------------------------- */
+
+.block {
+	border: 1px solid var(--rule);
+	background: var(--panel);
+	padding: calc(var(--u) * 2) calc(var(--u) * 2.5);
+	font-size: 12.5px;
+	line-height: 1.8;
+	white-space: pre;
+	overflow-x: auto;
+	color: var(--dim);
+	scrollbar-width: thin;
+}
+
+.block b {
+	color: var(--bone);
+	font-weight: 400;
+}
+
+.block i {
+	color: var(--dim);
+	font-style: normal;
+	opacity: 0.75;
+}
+
+.block .p {
+	color: var(--ref);
+	user-select: none;
+}
+
+.block .c {
+	color: var(--dim);
+	user-select: none;
+}
+
+/* ---- install -------------------------------------------------------- */
+
+.sec-body > .eyebrow + .steps {
+	margin-top: calc(var(--u) * 1.5);
+}
+
+.steps {
+	display: grid;
+	gap: 1px;
+	background: var(--rule);
+	border: 1px solid var(--rule);
+}
+
+.step {
+	background: var(--panel);
+	padding: calc(var(--u) * 2) calc(var(--u) * 2.5);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--u) calc(var(--u) * 2);
+	align-items: center;
+}
+
+.step-cmd {
+	font-size: 13px;
+	color: var(--bone);
+	white-space: pre;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.step-cmd .p {
+	color: var(--ref);
+	user-select: none;
+}
+
+.step-why {
+	font-size: 12px;
+	color: var(--dim);
+	grid-column: 1 / -1;
+}
+
+.copy {
+	appearance: none;
+	border: 1px solid var(--rule-lit);
+	background: transparent;
+	color: var(--dim);
+	font-family: var(--display);
+	font-size: 9px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	padding: 6px 10px;
+	cursor: pointer;
+	transition: color 0.15s, border-color 0.15s;
+}
+
+.copy:hover {
+	color: var(--ref);
+	border-color: var(--ref);
+}
+
+.copy[data-done='true'] {
+	color: var(--ref);
+	border-color: var(--ref);
+}
+
+/* A command has to be readable in full on a phone. Wrapping alone is not
+   enough: the code element must also be held to the container, or it sizes to
+   its content and spills past the padding without ever scrolling. */
+@media (max-width: 620px) {
+	.step {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.step-cmd {
+		width: 100%;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		padding-left: 2ch;
+		text-indent: -2ch;
+	}
+
+	.prompt-cmd {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.copy {
+		justify-self: start;
+	}
+}
+
+/* ---- foot ----------------------------------------------------------- */
+
+.foot {
+	padding-bottom: calc(var(--u) * 6);
+}
+
+/* a man page ends on its rule; leave it a little air and nothing more */
+body > footer {
+	padding-bottom: calc(var(--u) * 3);
+}
+
+.seealso {
+	list-style: none;
+	font-size: 13px;
+	display: grid;
+	gap: 1px;
+	background: var(--rule);
+	border-block: 1px solid var(--rule);
+}
+
+.seealso-row {
+	background: var(--void);
+	display: grid;
+	grid-template-columns: 28ch minmax(0, 1fr);
+	gap: 0 calc(var(--u) * 2);
+	padding: calc(var(--u) * 1.5) 0;
+}
+
+.seealso-row a {
+	text-decoration: none;
+	color: var(--bone);
+}
+
+.seealso-row a:hover {
+	color: var(--ref);
+	text-decoration: underline;
+	text-decoration-color: var(--ref);
+	text-underline-offset: 4px;
+}
+
+.seealso-what {
+	color: var(--dim);
+}
+
+@media (max-width: 640px) {
+	.seealso-row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 4px;
+	}
+}
+
+/* ---- prose ---------------------------------------------------------- */
+
+/* markdown rendered into the same measure the man sections use */
+.doc {
+	padding-top: clamp(32px, 5vw, 52px);
+}
+
+.toc {
+	position: sticky;
+	top: calc(var(--top) + 24px);
+	align-self: start;
+	display: grid;
+	gap: calc(var(--u) * 0.75);
+	padding-top: 6px;
+	padding-right: calc(var(--u) * 2);
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	line-height: 1.4;
+}
+
+.toc a {
+	color: var(--dim);
+	text-decoration: none;
+	border-left: 1px solid var(--rule);
+	padding-left: calc(var(--u) * 1.25);
+	margin-left: -1px;
+	transition: color 0.15s, border-color 0.15s;
+}
+
+.toc a:hover {
+	color: var(--bone);
+	border-color: var(--rule-lit);
+}
+
+.toc a[data-here='true'] {
+	color: var(--bone);
+	border-color: var(--ref);
+}
+
+/* the column is the column; only the running text takes a measure, so a
+   transcript and a rule can use the whole width */
+.prose {
+	color: var(--dim);
+	font-size: 14.5px;
+	line-height: 1.7;
+}
+
+.prose > :is(p, ul, ol, blockquote, h1) {
+	max-width: 74ch;
+}
+
+.prose > * + * {
+	margin-top: calc(var(--u) * 2);
+}
+
+.prose h1 {
+	font-family: var(--display);
+	font-size: clamp(26px, 4vw, 34px);
+	font-weight: 600;
+	line-height: 1.2;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	max-width: 22ch;
+	text-wrap: balance;
+}
+
+.prose h2 {
+	font-size: clamp(19px, 2.6vw, 23px);
+	font-weight: 400;
+	line-height: 1.3;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	border-top: 1px solid var(--rule);
+	padding-top: calc(var(--u) * 3);
+	margin-top: calc(var(--u) * 6);
+}
+
+.prose h3 {
+	font-family: var(--display);
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--bone);
+	margin-top: calc(var(--u) * 4);
+}
+
+.prose h1 + *,
+.prose h2 + *,
+.prose h3 + * {
+	margin-top: calc(var(--u) * 1.5);
+}
+
+/* a heading jumped to from the rail has to clear the man rule above it */
+.prose :is(h1, h2, h3)[id] {
+	scroll-margin-top: calc(var(--top) + 24px);
+}
+
+.prose a {
+	color: var(--ref);
+	text-decoration-color: color-mix(in oklab, var(--ref) 45%, transparent);
+}
+
+.prose strong {
+	color: var(--bone);
+	font-weight: 500;
+}
+
+.prose em {
+	font-style: normal;
+	color: var(--bone);
+}
+
+.prose :not(pre) > code {
+	color: var(--bone);
+	background: color-mix(in oklab, var(--rule) 60%, transparent);
+	padding: 1px 5px;
+	white-space: nowrap;
+}
+
+.prose pre code {
+	color: inherit;
+	background: none;
+	padding: 0;
+	font-size: inherit;
+	white-space: inherit;
+}
+
+.prose ul,
+.prose ol {
+	padding-left: 2.5ch;
+}
+
+.prose li + li {
+	margin-top: calc(var(--u) * 0.75);
+}
+
+.prose li::marker {
+	color: var(--dimmer);
+}
+
+.prose blockquote {
+	border-left: 1px solid var(--rule-lit);
+	padding-left: calc(var(--u) * 2);
+	color: var(--dimmer);
+}
+
+/* the horizontal rules in these documents already have headings doing the
+   dividing, so they only add noise */
+.prose hr {
+	display: none;
+}
+
+.prose table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	text-align: left;
+}
+
+.prose th,
+.prose td {
+	border-top: 1px solid var(--rule);
+	padding: calc(var(--u) * 1.25) calc(var(--u) * 2) calc(var(--u) * 1.25) 0;
+	vertical-align: baseline;
+}
+
+.prose thead th {
+	border-top: 0;
+	border-bottom: 1px solid var(--rule-lit);
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--dimmer);
+	padding-bottom: calc(var(--u) * 1.25);
+}
+
+.prose tbody td:first-child {
+	color: var(--bone);
+	width: 40%;
+}
+
+.prose tbody td:first-child code {
+	white-space: pre-wrap;
+}
+
+@media (max-width: 780px) {
+	.toc {
+		position: static;
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(var(--u) * 1.5);
+		padding: 0 0 calc(var(--u) * 2);
+		border-bottom: 1px solid var(--rule);
+	}
+
+	.toc a {
+		border-left: 0;
+		padding-left: 0;
+		margin-left: 0;
+	}
+
+	.toc a[data-here='true'] {
+		color: var(--ref);
+	}
+
+	.prose table,
+	.prose tbody td:first-child {
+		width: auto;
+	}
+}
+
+/* ---- commands ------------------------------------------------------- */
+
+.cmd {
+	margin-top: calc(var(--u) * 6);
+}
+
+.cmd > * + * {
+	margin-top: calc(var(--u) * 2);
+}
+
+.cmd h2 {
+	margin-top: 0;
+}
+
+.prose .cmd h2 code {
+	background: none;
+	border: 0;
+	padding: 0;
+	color: var(--bone);
+	font-size: 1em;
+}
+
+/* the rule has to run the whole width, so the columns touch and the dt pads
+   its own gutter instead */
+.opts {
+	display: grid;
+	grid-template-columns: 24ch minmax(0, 1fr);
+	font-size: 13px;
+	border-bottom: 1px solid var(--rule);
+	margin-top: calc(var(--u) * 2.5);
+}
+
+.opts-global {
+	margin-bottom: calc(var(--u) * 5);
+}
+
+.opts dt,
+.opts dd {
+	border-top: 1px solid var(--rule);
+	padding: calc(var(--u) * 1.25) 0;
+}
+
+.opts dt {
+	grid-column: 1;
+	color: var(--bone);
+	white-space: nowrap;
+	padding-right: calc(var(--u) * 2);
+}
+
+.opts dd {
+	grid-column: 2;
+	color: var(--dim);
+}
+
+.prose .opts dt code {
+	background: none;
+	border: 0;
+	padding: 0;
+	color: var(--bone);
+	font-size: 1em;
+}
+
+.opt-arg {
+	color: var(--dimmer);
+	margin-left: 1ch;
+}
+
+.cmd-example {
+	margin-top: calc(var(--u) * 2.5) !important;
+}
+
+@media (max-width: 640px) {
+	.opts {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.opts dt {
+		grid-column: 1;
+		padding: calc(var(--u) * 1.25) 0 2px;
+	}
+
+	.opts dd {
+		grid-column: 1;
+		border-top: 0;
+		padding-top: 0;
+	}
+}
+
+/* ---- motion --------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
+	.tty-caret {
+		animation: none;
+	}
+}
+
+/* gated on `js` so a page without it is not left with four invisible sections */
+.js .reveal {
+	opacity: 0;
+	transform: translateY(10px);
+}
+
+.js .reveal[data-seen='true'] {
+	opacity: 1;
+	transform: none;
+	transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.js .reveal {
+		opacity: 1;
+		transform: none;
+	}
+}

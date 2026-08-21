@@ -137,10 +137,35 @@ unnecessary and squash semantics never come up.
 
 ## Install
 
+A prebuilt binary, for macOS and Linux on arm64 and x86_64:
+
 ```bash
-cargo install --path crates/lane
-eval "$(lane shellenv)"     # adds cd-into-the-lane behaviour
-cd yourrepo && lane init
+curl -fsSL https://lane.lukeed.com | sh
+```
+
+It lands in `~/.local/bin`. Set `LANE_INSTALL` to move it, `LANE_VERSION` to pin
+a release, and read the script first at <https://lane.lukeed.com/install.sh>.
+
+The same binary through cargo, or from source:
+
+```bash
+cargo binstall --git https://github.com/lukeed/lane lane
+cargo install --git https://github.com/lukeed/lane
+cargo install --path crates/lane          # from a checkout
+```
+
+Once per machine, in `.zshrc` or `.bashrc`:
+
+```bash
+eval "$(lane shellenv)"     # makes `lane new` leave you inside the lane
+```
+
+Once per repository:
+
+```bash
+cd yourrepo && lane init    # scaffold .lane/, merge rule, AGENTS.md protocol
+lane install hooks          # optional: capture `Why:` trailers from commits
+lane install skill          # optional: the fuller agent workflow for .agents/
 ```
 
 Rust 1.85+, edition 2024. Anchor resolution ships grammars for rust, go, python,
@@ -184,7 +209,7 @@ cannot make. Verdicts: `holds` refreshes the fingerprint, `superseded` writes a
 **new** note and attics the old one (mutation would break union merge),
 `contradicted` quarantines, `unsure` leaves it flagged. Off unless
 `ANTHROPIC_API_KEY` or `LANE_REVIEW_CMD` is set; only drifted notes are sent.
-See USAGE.md.
+See [lane.lukeed.com/usage](https://lane.lukeed.com/usage).
 
 ## Still stubbed
 

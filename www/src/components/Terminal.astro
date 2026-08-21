@@ -1,7 +1,13 @@
 ---
 import * as acts from '../scripts/acts';
 
-let cells = Array.from({ length: 168 }, (_, i) => i);
+// 144 blocks stand for the 1358.1 MiB that arrive shared; the rest are what a
+// write in the lane allocates. 1 source file, then a rebuild: 106.5 MiB, measured.
+let cells = [
+	...Array.from({ length: 144 }, (_, i) => ({ i, g: 'base' })),
+	{ i: 144, g: 'w1' },
+	...Array.from({ length: 12 }, (_, n) => ({ i: 145 + n, g: 'w2' })),
+];
 ---
 
 <figure class="tty" id="tty">
@@ -44,31 +50,55 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 				<span>this happens for you</span>
 			</div>
 			<div class="tty-screen">
-				<!-- 1. disk -->
-				<div class="stage" id="stage-0" data-on="true">
+				<div class="disk" id="disk" data-act="0">
 					<div class="stage-title">disk</div>
 					<div class="paths">
 						<div class="paths-list">
-							<span>main/node_modules/</span>
-							<span>main/target/</span>
-							<span>fix-login/node_modules/</span>
-							<span>fix-login/target/</span>
+							<span>main/</span>
+							<span class="paths-lane">fix-login/</span>
 						</div>
-						<div class="paths-brace"><span>one set of extents</span></div>
+						<div class="paths-brace">
+							<span data-for="0">one set of extents</span>
+							<span data-for="1">one set of extents</span>
+							<span data-for="2">one set of extents</span>
+							<span data-for="3">one owner again</span>
+						</div>
 					</div>
 					<div class="extent">
-						{cells.map((i) => <span class="cell" style={`--i:${i}`}></span>)}
+						{cells.map((c) => <span class="cell" data-g={c.g} style={`--i:${c.i}`}></span>)}
 					</div>
-					<div class="tally">
+					<div class="tally" data-for="0">
 						<span><b>1358.1 MiB</b> shared</span>
-						<span><b>0 B</b> copied</span>
+						<span><em>0 B</em> written</span>
 						<span><s>a byte copy: 1358.1 MiB</s></span>
 					</div>
+					<div class="tally" data-for="1">
+						<span><b>1358.1 MiB</b> shared</span>
+						<span><em>12 KiB</em> written</span>
+						<span>one source file left the shared set</span>
+					</div>
+					<div class="tally" data-for="2">
+						<span><b>1358.1 MiB</b> shared</span>
+						<span><em>106.5 MiB</em> written</span>
+						<span>the rebuild, not your edit</span>
+					</div>
+					<div class="tally" data-for="3">
+						<span><b>1358.1 MiB</b> shared</span>
+						<span><em>106.5 MiB</em> freed</span>
+						<span>the commit and the note stayed</span>
+					</div>
+				</div>
+
+				<!-- 1. disk -->
+				<div class="stage" id="stage-0" data-on="true">
+					<div class="stage-title">reflink</div>
+					<p class="stage-note stage-note-lead">
+						<span class="hl-bone">FICLONE</span> on Linux, <span class="hl-bone">clonefile(2)</span> on
+						macOS &mdash; the kernel call, not <span class="hl-bone">cp --reflink</span>, because lane
+						needs to know, per file, whether it got real sharing or a silent full copy.
+					</p>
 					<p class="stage-note">
-						Two paths, one set of blocks. <span class="hl-bone">FICLONE</span> on Linux, <span
-							class="hl-bone">clonefile(2)</span
-						> on macOS &mdash; the kernel call, not <span class="hl-bone">cp --reflink</span>, because
-						lane needs to know, per file, whether it got real sharing or a silent full copy.
+						Tracked files come from git. Everything git ignores, at any depth, arrives by reference.
 					</p>
 				</div>
 
@@ -144,7 +174,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 					<pre class="graph"><span class="node">*</span> 6b2f01c  <span class="hl-bone">main</span>  lane: sync fix-login memory
 <span class="node">*</span> 4f1a92c        make verify constant-time
 <span class="hl-dim">│</span>
-<span class="gone">×</span> fix-login  <span class="gone">worktree removed, 0 B reclaimed</span></pre>
+<span class="gone">×</span> fix-login  <span class="gone">worktree removed</span></pre>
 					<div class="card" data-tier="fresh" style="margin-top:20px">
 						<span class="card-mark">&nbsp;</span>
 						<span>
@@ -180,6 +210,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 	if (root && session) {
 		let rail = [...root.querySelectorAll<HTMLButtonElement>('.rail-step')];
 		let stages = [...root.querySelectorAll<HTMLElement>('.stage')];
+		let disk = root.querySelector<HTMLElement>('#disk')!;
 		let calm = matchMedia('(prefers-reduced-motion: reduce)');
 		let gen = 0;
 		let live = false;
@@ -204,6 +235,7 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 
 		function mark(i: number) {
 			at = i;
+			disk.dataset.act = String(i);
 			rail.forEach((b, n) => {
 				b.setAttribute('aria-current', String(n === i));
 				b.setAttribute('aria-pressed', String(n === i));
@@ -274,6 +306,9 @@ let cells = Array.from({ length: 168 }, (_, i) => i);
 				play(next);
 			});
 		});
+
+		// so the first pass animates the grid in rather than arriving already full
+		if (!calm.matches) delete disk.dataset.act;
 
 		new IntersectionObserver(
 			(entries) => {

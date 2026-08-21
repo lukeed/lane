@@ -567,7 +567,13 @@ a:hover {
 	max-width: 46ch;
 }
 
-/* — extent map — */
+/* — the disk panel: one grid, four states, never re-mounted — */
+
+.disk {
+	border-bottom: 1px solid var(--rule);
+	padding-bottom: calc(var(--u) * 2.5);
+	margin-bottom: calc(var(--u) * 2.5);
+}
 
 /* a CSS bracket, not a box-drawing one: line-height would break the glyph run */
 .paths {
@@ -582,6 +588,16 @@ a:hover {
 	gap: 3px;
 	color: var(--dim);
 	white-space: nowrap;
+}
+
+.paths-lane {
+	transition: opacity 0.3s, color 0.3s;
+}
+
+.disk[data-act='3'] .paths-lane {
+	opacity: 0.3;
+	text-decoration: line-through;
+	text-decoration-color: var(--gone);
 }
 
 .paths-brace {
@@ -617,41 +633,76 @@ a:hover {
 .cell {
 	aspect-ratio: 1;
 	background: var(--rule);
-	transform: scale(0.55);
-	opacity: 0.5;
+	transform: scale(0.5);
+	opacity: 0.35;
+	transition: background 0.34s ease, opacity 0.34s ease, transform 0.34s cubic-bezier(0.2, 0.8, 0.3, 1);
+	transition-delay: calc(var(--i) * 4ms);
 }
 
-.stage[data-on='true'] .cell {
-	animation: fill 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
-	animation-delay: calc(var(--i) * 6ms + 120ms);
+/* the 1358.1 MiB that arrived by reference: shared in every act */
+.disk[data-act] .cell[data-g='base'] {
+	background: var(--ref);
+	opacity: 1;
+	transform: none;
 }
 
-@keyframes fill {
-	to {
-		background: var(--ref);
-		transform: scale(1);
-		opacity: 1;
-	}
+/* one source file, written in the lane, then landed on trunk */
+.disk[data-act='1'] .cell[data-g='w1'],
+.disk[data-act='2'] .cell[data-g='w1'] {
+	background: var(--drift);
+	opacity: 1;
+	transform: none;
 }
 
-.stage[data-on='true'] .cell-copy {
-	animation-name: fill-copy;
+.disk[data-act='3'] .cell[data-g='w1'] {
+	background: var(--ref);
+	opacity: 1;
+	transform: none;
 }
 
-@keyframes fill-copy {
-	to {
-		background: var(--drift);
-		transform: scale(1);
-		opacity: 1;
+/* the rebuild's output: the lane's alone, and it goes when the lane does */
+.disk[data-act='2'] .cell[data-g='w2'] {
+	background: var(--drift);
+	opacity: 1;
+	transform: none;
+}
+
+/* a written block is few among many, so it announces itself */
+.disk[data-act='1'] .cell[data-g='w1'],
+.disk[data-act='2'] .cell[data-g='w2'] {
+	animation: pop 0.5s ease-out 0.45s both;
+}
+
+@keyframes pop {
+	40% {
+		transform: scale(1.75);
 	}
 }
 
 .tally {
-	display: flex;
+	display: none;
 	flex-wrap: wrap;
 	gap: 0 3ch;
 	font-size: 12px;
 	color: var(--dim);
+}
+
+.disk[data-act='0'] .tally[data-for='0'],
+.disk[data-act='1'] .tally[data-for='1'],
+.disk[data-act='2'] .tally[data-for='2'],
+.disk[data-act='3'] .tally[data-for='3'] {
+	display: flex;
+}
+
+.paths-brace span {
+	display: none;
+}
+
+.disk[data-act='0'] .paths-brace span[data-for='0'],
+.disk[data-act='1'] .paths-brace span[data-for='1'],
+.disk[data-act='2'] .paths-brace span[data-for='2'],
+.disk[data-act='3'] .paths-brace span[data-for='3'] {
+	display: block;
 }
 
 .tally b {
@@ -659,9 +710,30 @@ a:hover {
 	color: var(--ref);
 }
 
+.tally em {
+	font-style: normal;
+	font-weight: 500;
+	color: var(--drift);
+}
+
+/* in act 1 nothing has been written, and in act 4 the cost went away again */
+.disk[data-act='0'] .tally em {
+	color: var(--dim);
+}
+
+.disk[data-act='3'] .tally em {
+	color: var(--ref);
+}
+
 .tally s {
 	color: var(--dim);
 	text-decoration-color: var(--gone);
+}
+
+.stage-note-lead {
+	border-top: 0;
+	padding-top: 0;
+	margin-top: 0;
 }
 
 /* — code + span brace — */
@@ -1152,14 +1224,6 @@ a:hover {
 		animation-duration: 0.001ms !important;
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.001ms !important;
-	}
-	.cell {
-		transform: none;
-		opacity: 1;
-		background: var(--ref);
-	}
-	.cell-copy {
-		background: var(--drift);
 	}
 	.tty-caret {
 		animation: none;

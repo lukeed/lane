@@ -157,6 +157,14 @@ let tiers = [
 						</tbody>
 					</table>
 
+					<p class="lede">
+						That is the copy half. The write half: editing a file in the lane un-shares only that
+						file's blocks. One source edit here, plus the incremental rebuild it triggered, rewrote 550
+						files &mdash; <b>106.5 MiB</b>. The other <b>1251.6 MiB</b> stayed shared, and the 106.5
+						went away with the lane. Your edit is free. The rebuild is what costs, and it does not
+						outlive the worktree.
+					</p>
+
 					<p class="note">
 						Reflink works on APFS, btrfs, XFS with <b>reflink=1</b>, bcachefs and recent ZFS.
 						Everywhere else <b>lane init</b> says so up front and <b>lane new</b> leaves you a plain

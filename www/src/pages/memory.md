@@ -1,6 +1,6 @@
 ---
 layout: ../layouts/Doc.astro
-title: Capturing decisions from commits
+title: Capturing Decisions
 description: "How a Why: trailer in a commit message becomes a lane note, what it refuses to do, and what it costs."
 section: lane(7)
 here: memory
@@ -15,9 +15,10 @@ rail:
   the-honest-cost: The cost
 ---
 
-# Capturing decisions from commits
+# Capturing Decisions
 
-What plan 015 means in practice.
+The reason a change had to be made, written in the commit you were already
+writing.
 
 ## What changes for you
 
@@ -39,9 +40,20 @@ $ git commit -am "make verify constant-time
 > Why: src/auth.rs#fn verify | early return leaks token length"
 ```
 
-One place. A `post-commit` hook reads the trailer, appends it to
-`.git/lane/pending.jsonl`, and the next audit promotes it. From that point it is
-indistinguishable from a note made by hand:
+One place. But nothing reads that trailer until you install the hooks — git
+will carry the line in the commit message forever and lane will never see it.
+Once per repository:
+
+```
+$ lane install hooks
+installed .git/hooks/post-commit
+installed .git/hooks/prepare-commit-msg
+```
+
+That covers every lane, because worktrees share the hooks directory, and it is
+the only setup step. From then on the `post-commit` hook reads the trailer,
+appends it to `.git/lane/pending.jsonl`, and the next audit promotes it — at
+which point it is indistinguishable from a note made by hand:
 
 ```
 $ lane why src/auth.rs
@@ -50,9 +62,6 @@ src/auth.rs#fn verify
     early return leaks token length
       01M0B9MBYB · main · 2026-08-19
 ```
-
-Setup is `lane install hooks`, once. It covers every lane, because worktrees
-share the hooks directory.
 
 ## The two sentences are different
 
@@ -126,9 +135,9 @@ for someone reading history, `.lane/` for someone about to edit the function.
 
 ## What is automatic and what is not
 
-Automatic: the hook firing, parsing, validation, the append to
-`.git/lane/pending.jsonl`, promotion at the next audit, and deduplication. You never
-run any of it.
+Automatic, once `lane install hooks` has run: the hook firing, parsing,
+validation, the append to `.git/lane/pending.jsonl`, promotion at the next
+audit, and deduplication. You never run any of it.
 
 Not automatic: writing the `Why:` line at all. That is deliberate. A note
 generated from the commit without you asking would be the git log again, which

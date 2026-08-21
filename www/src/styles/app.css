@@ -1385,6 +1385,11 @@ body > footer {
 	margin-top: calc(var(--u) * 1.5);
 }
 
+/* a heading jumped to from the rail has to clear the man rule above it */
+.prose :is(h1, h2, h3)[id] {
+	scroll-margin-top: calc(var(--top) + 24px);
+}
+
 .prose a {
 	color: var(--ref);
 	text-decoration-color: color-mix(in oklab, var(--ref) 45%, transparent);

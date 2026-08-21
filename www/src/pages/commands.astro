@@ -5,6 +5,14 @@ import Toc from '../components/Toc.astro';
 import { commands, globals } from '../data/commands';
 
 let slug = (name: string) => name.replace(/ /g, '-');
+
+// A parent command gets one entry on the rail, pointing at the first of its
+// leaves; the page below still gives every leaf its own section.
+let rail = commands.reduce<{ slug: string; text: string }[]>((out, cmd) => {
+	let [head] = cmd.name.split(' ');
+	if (out.some((item) => item.text === head)) return out;
+	return [...out, { slug: slug(cmd.name), text: head }];
+}, []);
 ---
 
 <Page
@@ -14,7 +22,7 @@ let slug = (name: string) => name.replace(/ /g, '-');
 >
 	<main class="shell">
 		<article class="sec sec-first doc">
-			<Toc items={commands.map((cmd) => ({ slug: slug(cmd.name), text: cmd.name }))} />
+			<Toc items={rail} />
 
 			<div class="sec-body prose">
 				<h1>Commands</h1>

@@ -33,6 +33,7 @@ counts before starting, and update your row when done.
 | 028 | An interactive tour that teaches lane by driving it | P3 | M | — | DONE |
 | 029 | Put everything lane owns under `.lane/` | P2 | L | — | DONE |
 | 030 | Make the state file impossible to half-write | P2 | S | — | DONE |
+| 031 | Take the model out of the binary, and make the verdicts verbs | P2 | L | — | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |
@@ -82,6 +83,10 @@ immutable-notes design forced the question of what a note's path really is.
   explicitly excludes so the two can run in parallel lanes.
 - **027 repairs 024.** 024's guarantee — drift stays flagged — is void across a branch
   boundary, which is every lane. Its tests were single-branch and could not see it.
+- **031 is independent of everything in this table**, but its own steps are ordered:
+  1-2 must precede 4. They promote the two transitions the reviewer currently owns, and
+  deleting it first would leave drift resolvable only by deleting a note file. Step 7
+  edits the site, which landed in `e9f5435`.
 - **020 is independent of everything.** It only touches `init()`'s `AGENTS.md` branch and
   is the one plan with a real, unsynthesised fixture: this repository's own stale protocol.
 - **015 is independent of everything.** It adds a producer for `pending.jsonl`; nothing

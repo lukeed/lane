@@ -1,5 +1,6 @@
 ---
 import Page from './Page.astro';
+import Toc from '../components/Toc.astro';
 
 type Heading = { depth: number; slug: string; text: string };
 
@@ -25,9 +26,7 @@ let toc = Astro.props.headings.filter((h) => h.depth === 2);
 	<main class="shell">
 		<article class="sec sec-first doc">
 			{toc.length > 0 ? (
-				<nav class="toc" aria-label="On this page">
-					{toc.map((h) => <a href={`#${h.slug}`}>{h.text}</a>)}
-				</nav>
+				<Toc items={toc} />
 			) : (
 				<p class="sec-head sec-head-mute">{title}</p>
 			)}
@@ -37,38 +36,3 @@ let toc = Astro.props.headings.filter((h) => h.depth === 2);
 		</article>
 	</main>
 </Page>
-
-<script>
-	// mark the heading you are reading, so the rail says where you are
-	let links = [...document.querySelectorAll<HTMLAnchorElement>('.toc a')];
-	if (links.length) {
-		let targets = links
-			.map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))))
-			.filter((el): el is HTMLElement => el != null);
-
-		let queued = false;
-
-		function mark() {
-			queued = false;
-			// the last heading whose top has gone under the man rule
-			let under =
-				parseInt(getComputedStyle(document.documentElement).getPropertyValue('--top'), 10) + 60;
-			let at = -1;
-			for (let i = 0; i < targets.length; i++) {
-				if (targets[i].getBoundingClientRect().top <= under) at = i;
-			}
-			links.forEach((a, i) => (a.dataset.here = String(i === at)));
-		}
-
-		addEventListener(
-			'scroll',
-			() => {
-				if (queued) return;
-				queued = true;
-				requestAnimationFrame(mark);
-			},
-			{ passive: true },
-		);
-		mark();
-	}
-</script>

@@ -1,5 +1,6 @@
 ---
 import Page from '../layouts/Page.astro';
+import Toc from '../components/Toc.astro';
 import { commands, globals } from '../data/commands';
 
 let slug = (name: string) => name.replace(/ /g, '-');
@@ -12,9 +13,7 @@ let slug = (name: string) => name.replace(/ /g, '-');
 >
 	<main class="shell">
 		<article class="sec sec-first doc">
-			<nav class="toc" aria-label="On this page">
-				{commands.map((cmd) => <a href={`#${slug(cmd.name)}`}>{cmd.name}</a>)}
-			</nav>
+			<Toc items={commands.map((cmd) => ({ slug: slug(cmd.name), text: cmd.name }))} />
 
 			<div class="sec-body prose">
 				<h1>Commands</h1>

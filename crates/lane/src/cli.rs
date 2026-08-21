@@ -821,20 +821,23 @@ fn check(json: bool) -> Result<i32> {
     }
 
     // A count says something drifted and not which note, which is a dead end when
-    // the next thing you type needs an id.
-    let mut first = true;
-    for (res, note) in rows.iter().filter(|(res, _)| res.tier != FRESH) {
-        if first {
-            println!();
-            first = false;
+    // the next thing you type needs an id. Grouped, because what you do about a
+    // note depends on which tier it is in.
+    for tier in store::TIERS.iter().filter(|tier| **tier != FRESH) {
+        let mut group = rows.iter().filter(|(res, _)| res.tier == *tier).peekable();
+        if group.peek().is_none() {
+            continue;
         }
-        println!(
-            "{} {}  {}#{}",
-            mark(res.tier),
-            &note.meta.id[..10.min(note.meta.id.len())],
-            note.path(),
-            note.meta.anchor
-        );
+        println!("\n[{tier}]");
+        for (_, note) in group {
+            println!(
+                "{} {}  {}#{}",
+                mark(tier),
+                &note.meta.id[..10.min(note.meta.id.len())],
+                note.path(),
+                note.meta.anchor
+            );
+        }
     }
     Ok(i32::from(missing > 0))
 }

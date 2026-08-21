@@ -204,8 +204,8 @@ Keep the existing keys.
 **The human output grows a list too.** Counts alone say something drifted and not which
 note, which is a dead end when the next thing you type needs an id. After the tier
 counts, print one row per non-fresh note — mark, ten characters of id, `path#anchor` —
-so `lane check` hands you what `lane holds` wants. `--json` must not be the only way a
-person can get an id.
+under a `[tier]` subheader, because what you do about a note depends on which tier it is
+in. `--json` must not be the only way a person can get an id.
 
 **Verify**: `lane check --json` on a repo with one drifted and several fresh notes →
 every record has `note`, exactly the non-fresh ones have `span`, and the span text matches

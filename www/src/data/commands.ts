@@ -84,16 +84,16 @@ export let commands: Command[] = [
 		usage: "lane holds <id>",
 		summary: "re-vouches for a drifted note and refreshes its fingerprint. Takes any unambiguous prefix of an id, and refuses one that matches two notes.",
 		options: [],
-		example: "$ lane check\n...\n~ 01M0B4KQTX  src/auth.rs#fn verify\n\n$ lane holds 01M0B4KQTX\nholds -> 01M0B4KQTX7H3EZ8FE7S6BJ91N",
+		example: "$ lane check\n...\n[body-drift]\n~ 01M0B4KQTX  src/auth.rs#fn verify\n\n$ lane holds 01M0B4KQTX\nholds -> 01M0B4KQTX7H3EZ8FE7S6BJ91N",
 	},
 	{
 		name: "check",
 		usage: "lane check [--json]",
-		summary: "counts the notes in each staleness tier, lists the ones that are not fresh, and exits 1 if any anchor is missing.",
+		summary: "counts the notes in each staleness tier, lists the ones that are not fresh under their tier, and exits 1 if any anchor is missing.",
 		options: [
 			{ flag: "--json", arg: null, about: "print each note as JSON, with current spans on non-fresh work items." },
 		],
-		example: "$ lane check\nfresh              7\nbody-drift         1\nsignature-changed  0\nanchor-missing     0\nunverifiable       0\n\n~ 01M0B4KQTX  src/auth.rs#fn verify",
+		example: "$ lane check\nfresh              7\nbody-drift         1\nsignature-changed  0\nanchor-missing     0\nunverifiable       0\n\n[body-drift]\n~ 01M0B4KQTX  src/auth.rs#fn verify",
 	},
 	{
 		name: "audit",

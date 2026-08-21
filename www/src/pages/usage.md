@@ -192,6 +192,7 @@ signature-changed  0
 anchor-missing     0
 unverifiable       0
 
+[body-drift]
 ~ 01M0B4KQTX  src/auth.rs#fn verify
 ```
 

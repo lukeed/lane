@@ -182,16 +182,23 @@ let asleep = Object.fromEntries(
 			return el;
 		}
 
-		/** the finished frame, with no typing left to do */
+		/** the whole transcript at once, with no typing left to do */
+		function fill(i: number) {
+			screens[i].replaceChildren();
+			for (let line of acts.list[i].session) draw(screens[i], line);
+		}
+
+		/** that, and the frame the act ends on */
 		function settle(i: number) {
 			let act = acts.list[i];
-			screens[i].replaceChildren();
-			for (let line of act.session) draw(screens[i], line);
+			fill(i);
 			paint(act.session.reduce((step, line) => line.step ?? step, act.from));
 		}
 
 		async function play(i: number) {
 			let mine = ++gen;
+			// an act scrolled away from mid-line is left reading as a finished one
+			if (at >= 0 && at !== i) fill(at);
 			at = i;
 			items.forEach((el, n) => (el.dataset.on = String(n === i)));
 
@@ -202,6 +209,8 @@ let asleep = Object.fromEntries(
 			paint(act.from);
 			screen.replaceChildren();
 
+			// only the act being told keeps a caret
+			for (let old of flow!.querySelectorAll('.tty-caret')) old.remove();
 			let caret = document.createElement('span');
 			caret.className = 'tty-caret';
 

@@ -379,7 +379,7 @@ a:hover {
 }
 
 .tree-meta {
-	color: var(--dimmer);
+	color: var(--dim);
 }
 
 .extent {
@@ -475,7 +475,7 @@ a:hover {
 	font-weight: 500;
 	letter-spacing: 0.16em;
 	text-transform: uppercase;
-	color: var(--dimmer);
+	color: var(--dim);
 	margin-top: calc(var(--u) * 1.75);
 	transition: opacity 0.4s ease;
 }
@@ -518,7 +518,7 @@ a:hover {
 	gap: 0.75ch;
 	flex-wrap: wrap;
 	font-size: 11px;
-	color: var(--dimmer);
+	color: var(--dim);
 	margin-top: calc(var(--u) * 1.75);
 	transition: opacity 0.4s ease;
 }
@@ -576,7 +576,7 @@ a:hover {
 }
 
 .tally s {
-	color: var(--dimmer);
+	color: var(--dim);
 	text-decoration-color: var(--gone);
 }
 
@@ -592,12 +592,20 @@ a:hover {
 	flex-direction: column;
 	justify-content: center;
 	padding-block: calc(var(--u) * 3);
-	transition: opacity 0.4s ease;
 }
 
-/* gated on `js`, or a reader without it is left with four dimmed acts */
-.js .act[data-on='false'] {
-	opacity: 0.38;
+/* the act being told is marked, not lit: dimming the other four would put
+   their body text under the contrast floor */
+.act-idx {
+	color: var(--dim);
+}
+
+.act[data-on='true'] .act-idx {
+	color: var(--ref);
+}
+
+.act[data-on='true'] .tty {
+	border-color: var(--rule-lit);
 }
 
 .act-head {
@@ -610,10 +618,6 @@ a:hover {
 	letter-spacing: 0.16em;
 	text-transform: uppercase;
 	color: var(--dim);
-}
-
-.act-idx {
-	color: var(--ref);
 }
 
 .act-claim {
@@ -630,6 +634,7 @@ a:hover {
 	border: 1px solid var(--rule);
 	background: var(--panel);
 	margin-top: calc(var(--u) * 2.5);
+	transition: border-color 0.4s ease;
 }
 
 .tty-bar {

@@ -811,16 +811,24 @@ fn check(json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let notes = store::load_notes(&root, None);
     let mut checker = store::Checker::new(&root);
-    let rows: Vec<(&str, _)> = notes.iter().map(|n| (checker.check(n).tier, n)).collect();
+    let rows: Vec<_> = notes
+        .iter()
+        .map(|note| (checker.check(note), note))
+        .collect();
 
     if json {
         let out: Vec<_> = rows
             .iter()
-            .map(|(tier, n)| {
-                serde_json::json!({
-                    "id": n.meta.id, "path": n.path(),
-                    "anchor": n.meta.anchor, "tier": tier,
-                })
+            .map(|(res, note)| {
+                let mut row = serde_json::json!({
+                    "id": note.meta.id, "path": note.path(),
+                    "anchor": note.meta.anchor, "tier": res.tier,
+                    "note": note.body.trim(),
+                });
+                if res.tier != FRESH {
+                    row["span"] = serde_json::json!(checker.span_text(note));
+                }
+                row
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&out)?);
@@ -829,7 +837,7 @@ fn check(json: bool) -> Result<i32> {
 
     let mut missing = 0;
     for tier in store::TIERS {
-        let count = rows.iter().filter(|(t, _)| *t == tier).count();
+        let count = rows.iter().filter(|(res, _)| res.tier == tier).count();
         if tier == MISSING {
             missing = count;
         }

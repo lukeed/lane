@@ -444,7 +444,7 @@ is "it has frontmatter naming the skill" \
 is "it teaches the Why trailer form" \
    "$(grep -c '^Why: src/auth.rs#fn verify' .agents/skills/lane/SKILL.md)" "1"
 is "it teaches lane note with a path" \
-   "$(grep -c 'lane note -p ' .agents/skills/lane/SKILL.md)" "1"
+   "$(grep -Fc 'lane note -p src/auth.rs -a "fn verify" "must stay constant-time"' .agents/skills/lane/SKILL.md)" "1"
 "$LANE" install skill > /tmp/skill2.out 2>&1
 is "installing twice is a no-op" "$?" "0"
 echo "edited by hand" >> .agents/skills/lane/SKILL.md
@@ -573,6 +573,31 @@ is "and the drift survives the landing" \
    "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
 is "and is still reported by a later audit" \
    "$("$LANE" audit > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+
+echo "== 31. holds survives a landing =="
+setup
+"$LANE" new holds > /dev/null 2>&1
+cd "$TMP/repo/.lane/trees/holds"
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A .lane && git commit -qm memory
+sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
+git add src/auth.rs && git commit -qm drift
+"$LANE" check --json > /tmp/holds-before.json
+ID=$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["id"])')
+is "note starts drifted" \
+   "$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["tier"])')" "body-drift"
+"$LANE" holds "$ID" > /tmp/holds.out 2>&1
+is "holds succeeds" "$?" "0"
+is "holds makes the note fresh" \
+   "$("$LANE" check --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["tier"])')" "fresh"
+is "holds clears body drift" \
+   "$("$LANE" check | awk '/^body-drift/{print $2}')" "0"
+git add -A .lane && git commit -qm holds
+( "$LANE" done > /tmp/holds-done.out 2>&1 )
+cd "$TMP/repo"
+is "fresh state and change survive done" \
+   "$("$LANE" check | awk '/^fresh/{print $2}'):$(grep -c '&& true' src/auth.rs)" "1:1"
 
 echo
 echo "passed: $pass   failed: $fail"

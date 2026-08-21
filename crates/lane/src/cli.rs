@@ -784,6 +784,25 @@ fn holds(id: &str) -> Result<i32> {
     Ok(0)
 }
 
+fn check_json_rows(
+    rows: &[(store::Check, &crate::note::Note)],
+    checker: &mut store::Checker,
+) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|(res, note)| {
+            let mut row = serde_json::json!({
+                "id": note.meta.id, "path": note.path(),
+                "anchor": note.meta.anchor, "tier": res.tier,
+                "note": note.body.trim(),
+            });
+            if res.tier != FRESH {
+                row["span"] = serde_json::json!(checker.span_text(note));
+            }
+            row
+        })
+        .collect()
+}
+
 fn check(json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let notes = store::load_notes(&root, None);
@@ -794,20 +813,7 @@ fn check(json: bool) -> Result<i32> {
         .collect();
 
     if json {
-        let out: Vec<_> = rows
-            .iter()
-            .map(|(res, note)| {
-                let mut row = serde_json::json!({
-                    "id": note.meta.id, "path": note.path(),
-                    "anchor": note.meta.anchor, "tier": res.tier,
-                    "note": note.body.trim(),
-                });
-                if res.tier != FRESH {
-                    row["span"] = serde_json::json!(checker.span_text(note));
-                }
-                row
-            })
-            .collect();
+        let out = check_json_rows(&rows, &mut checker);
         println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(0);
     }
@@ -1160,5 +1166,55 @@ mod tests {
             protocol_action(Some(&existing)),
             ProtocolAction::Refuse
         ));
+    }
+
+    #[test]
+    fn check_json_includes_only_drifted_spans() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(
+            root.path().join("src/drift.rs"),
+            "pub fn drift() {\n    println!(\"old\");\n}\n",
+        )
+        .unwrap();
+        std::fs::write(root.path().join("src/fresh.rs"), "pub fn fresh() {}\n").unwrap();
+        for (path, anchor, text) in [
+            ("src/drift.rs", "fn drift", "drift note"),
+            ("src/fresh.rs", "fn fresh", "fresh note"),
+        ] {
+            store::append_pending(
+                root.path(),
+                &store::PendingNote {
+                    text: text.into(),
+                    path: path.into(),
+                    anchor: anchor.into(),
+                    branch: "main".into(),
+                    at: "2026-08-21T00:00:00Z".into(),
+                    supersedes: String::new(),
+                },
+            )
+            .unwrap();
+        }
+        store::promote_pending(root.path()).unwrap();
+        std::fs::write(
+            root.path().join("src/drift.rs"),
+            "pub fn drift() {\n    println!(\"new\");\n}\n",
+        )
+        .unwrap();
+
+        let notes = store::load_notes(root.path(), None);
+        let mut checker = store::Checker::new(root.path());
+        let rows: Vec<_> = notes
+            .iter()
+            .map(|note| (checker.check(note), note))
+            .collect();
+        let json = check_json_rows(&rows, &mut checker);
+        let drifted = json.iter().find(|row| row["tier"] == BODY).unwrap();
+        let fresh = json.iter().find(|row| row["tier"] == FRESH).unwrap();
+
+        assert_eq!(drifted["note"], "drift note");
+        assert!(drifted["span"].as_str().unwrap().contains("\"new\""));
+        assert_eq!(fresh["note"], "fresh note");
+        assert!(fresh.get("span").is_none());
     }
 }

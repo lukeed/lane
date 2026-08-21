@@ -257,6 +257,7 @@ mod tests {
     use super::*;
     use crate::note::Meta;
     use crate::store::Check;
+    use crate::syntax::Source;
 
     fn check(tier: &'static str, suffix: &str) -> Check {
         Check {
@@ -283,6 +284,30 @@ mod tests {
             checked: "2026-01-01T00:00:00Z".into(),
             norm: crate::syntax::NORM_VERSION.into(),
         }
+    }
+
+    fn note_fixture(root: &Path, source: &str) -> Note {
+        let rel = "src/auth.rs";
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join(rel), source).unwrap();
+        let parsed = Source::new(source, rel);
+        let span = parsed.resolve("fn verify").unwrap();
+        let (sig, body_hash, raw_hash) = parsed.hashes(span, "fn verify");
+        let note = Note::new(
+            Meta {
+                id: "01M0A".into(),
+                anchor: "fn verify".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+                sig,
+                body_hash,
+                raw_hash,
+                ..Default::default()
+            },
+            "must stay constant-time",
+        );
+        let file = store::note_dir(root, rel).join("01M0A-note.md");
+        note.write(&file).unwrap();
+        crate::note::parse(&file).unwrap()
     }
 
     #[test]
@@ -315,6 +340,51 @@ mod tests {
         let saved = state["01M0A"].clone();
         assert_ne!(saved.body_hash, old.body_hash);
         assert_eq!(saved.status, FRESH);
+    }
+
+    #[test]
+    fn holds_refreshes_all_hashes_and_sets_fresh() {
+        let root = tempfile::tempdir().unwrap();
+        let note = note_fixture(
+            root.path(),
+            "pub fn verify() {\n    println!(\"old\");\n}\n",
+        );
+        std::fs::write(
+            root.path().join("src/auth.rs"),
+            "pub fn verify() {\n    println!(\"new\");\n}\n",
+        )
+        .unwrap();
+        let current = store::Checker::new(root.path()).check(&note);
+        assert_eq!(current.tier, BODY);
+
+        holds(root.path(), &note.meta.id).unwrap();
+
+        let saved = store::load_state(root.path())[&note.meta.id].clone();
+        assert_eq!(saved.sig, current.sig);
+        assert_eq!(saved.body_hash, current.body_hash);
+        assert_eq!(saved.raw_hash, current.raw_hash);
+        assert_eq!(saved.status, FRESH);
+        assert_eq!(store::Checker::new(root.path()).check(&note).tier, FRESH);
+    }
+
+    #[test]
+    fn holds_refuses_missing_anchor_without_changing_state() {
+        let root = tempfile::tempdir().unwrap();
+        let note = note_fixture(root.path(), "pub fn verify() { old(); }\n");
+        let mut state = store::State::from([(note.meta.id.clone(), old_state())]);
+        store::save_state(root.path(), &state).unwrap();
+        let before = serde_json::to_value(&state).unwrap();
+        std::fs::write(
+            root.path().join("src/auth.rs"),
+            "pub const ENABLED: bool = true;\n",
+        )
+        .unwrap();
+
+        let error = holds(root.path(), &note.meta.id).unwrap_err();
+
+        state = store::own_state(root.path());
+        assert!(error.to_string().contains(MISSING));
+        assert_eq!(serde_json::to_value(state).unwrap(), before);
     }
 
     #[test]

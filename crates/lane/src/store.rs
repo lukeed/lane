@@ -976,4 +976,38 @@ mod tests {
         assert!(promote_pending(root.path()).unwrap().is_empty());
         assert_eq!(load_notes(root.path(), Some("src/auth.rs")).len(), 1);
     }
+
+    #[test]
+    fn pending_supersede_links_and_attics_its_predecessor() {
+        let root = tempfile::tempdir().unwrap();
+        let old = fixture(root.path(), "pub fn v() {}\n");
+        let branch = git::current_branch();
+        write_state(root.path(), &branch, &old.meta.id, NoteState::default());
+        append_pending(
+            root.path(),
+            &PendingNote {
+                text: "replacement note".into(),
+                path: "src/a.rs".into(),
+                anchor: "@file".into(),
+                branch,
+                at: "2026-08-21T00:00:00Z".into(),
+                supersedes: old.meta.id.clone(),
+            },
+        )
+        .unwrap();
+
+        let created = promote_pending(root.path()).unwrap();
+
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].meta.supersedes, old.meta.id);
+        assert_eq!(load_notes(root.path(), Some("src/a.rs")).len(), 1);
+        assert!(
+            attic_dir(root.path(), "src/a.rs")
+                .join("01M0A-a-note.md")
+                .is_file()
+        );
+        let state = own_state(root.path());
+        assert!(state.contains_key(&created[0].meta.id));
+        assert!(!state.contains_key(&old.meta.id));
+    }
 }

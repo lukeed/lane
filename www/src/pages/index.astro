@@ -19,8 +19,8 @@ let anchors = [
 
 let tiers = [
 	[' ', 'fresh', 'The span is unchanged.', 'Nothing happens, and it cost nothing to know.', 'ok'],
-	['~', 'body-drift', 'The implementation moved, the contract held.', 'Flagged, and sent for review at lane done.', 'drift'],
-	['!', 'signature-changed', 'The thing being described changed shape.', 'Flagged, and sent for review at lane done.', 'drift'],
+	['~', 'body-drift', 'The implementation moved, the contract held.', 'Flagged until you resolve it.', 'drift'],
+	['!', 'signature-changed', 'The thing being described changed shape.', 'Flagged until you resolve it.', 'drift'],
 	['x', 'anchor-missing', 'The symbol is gone.', 'Moved to .lane/attic/, recoverable with git mv.', 'gone'],
 ];
 ---
@@ -214,7 +214,7 @@ src/auth.rs#fn verify
 					Each anchor is hashed on its own span, normalized, so running a formatter stales nothing
 					and editing <b>#script</b> leaves a note on <b>#style</b> alone. A moved or renamed file is
 					followed, not evicted — <b>lane audit</b> reads git's own rename detection. A drifted note
-					keeps getting reported until a reviewer resolves it or you rewrite it.
+					keeps getting reported until you hold it, supersede it, or delete it.
 				</p>
 			</div>
 		</section>
@@ -311,9 +311,8 @@ src/auth.rs#fn verify
 				</div>
 
 				<p class="lede">
-					Review is off until you turn it on. Set <b>ANTHROPIC_API_KEY</b>, or point{' '}
-					<b>LANE_REVIEW_CMD</b> at any command that reads stdin and writes stdout. With neither,{' '}
-					<b>lane done</b> still works on a plane, and only drifted notes are ever sent.
+					Lane never calls a model. <b>lane done</b> is local and deterministic, so it works
+					the same way on a plane.
 				</p>
 
 				<pre class="block"><span class="p">$ </span><b>cargo run -p lane-tour -- start</b>

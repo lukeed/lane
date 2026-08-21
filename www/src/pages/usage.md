@@ -145,8 +145,6 @@ read one to find out it is wrong.
 $ lane done
   rebased onto main
   memory: +2 new; checked 8: 7 fresh, 1 body-drift, 0 signature-changed, 0 missing
-  reviewed 1 drifted note(s) via anthropic(claude-haiku-4-5-20251001)
-  superseded    src/sync.rs#fn reconnect -> 01M0B9MFVB
   committed memory update
   fast-forwarded main
   removed lane fix-login
@@ -166,48 +164,32 @@ normalized so comments and whitespace don't count:
 | tier | meaning | what happens |
 |---|---|---|
 | `fresh` | unchanged | nothing, costs nothing |
-| `body-drift` | implementation moved | sent for review |
-| `signature-changed` | the described thing changed shape | sent for review |
+| `body-drift` | implementation moved | flagged until you resolve it |
+| `signature-changed` | the described thing changed shape | flagged until you resolve it |
 | `anchor-missing` | symbol gone | evicted to `.lane/attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
 genuinely gone.
 
-A drifted note stays flagged until a reviewer resolves it or a human rewrites it, so
+A drifted note stays flagged until you run `lane holds <id>`, replace it with
+`lane note --supersedes <id>`, or delete its note file and commit. Until then,
 `lane check` keeps reporting it.
 
 Editing `#script` never stales a note on `#style`. Running a formatter stales
 nothing at all.
 
-### Review
+### Resolving drift
 
-When a span drifts, a hash can tell you it changed but not whether the note is
-still true. That judgment goes to a model, once, during `done`:
+Before `lane done`, run `lane check --json` and read each drifted note with its
+current span. Take one action: `lane holds <id>` when the sentence remains true;
+`lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject
+is right but the sentence must change; or delete the note file and commit when
+the constraint is gone. Lane never calls a model.
 
-```bash
-$ export ANTHROPIC_API_KEY=...        # or
-$ export LANE_REVIEW_CMD='claude -p'  # any CLI reading stdin, writing stdout
-```
-
-| verdict | action |
-|---|---|
-| `holds` | fingerprint refreshed, note stays |
-| `superseded` | a **new** note is written with a rewrite, old one to the attic |
-| `contradicted` | quarantined to the attic — a confidently wrong note is worse than none |
-| `unsure` | left flagged for you |
-
-Supersede writes a new file rather than editing the old one. That's what keeps
-parallel lanes conflict-free, so it holds even here.
-
-Review is **off unless you configure it**. No key, no command, no spending, and
-`lane done` still works on a plane. Only drifted notes are sent, capped by
-`--review-max` (default 20).
-
-```bash
-$ lane audit --review none      # force off for one run
-$ lane audit --review cmd --review-cmd './my-reviewer'
-```
+Supersede writes a new file and moves the predecessor to the attic. A `?` has no
+grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves
+the note to the attic instead of vouching for it.
 
 ### Budget
 
@@ -278,24 +260,16 @@ The short version. See [commands](/commands) for full information.
 | `lane new <name> [--dirty] [--base <ref>]` | create a lane |
 | `lane ls` | lanes, branch, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
-| `lane note -p <file> -a <anchor> "<text>"` | record a finding |
+| `lane note -p <file> -a <anchor> [--supersedes <id>] "<text>"` | record or replace a finding |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
 | `lane uninstall skill|hooks` | remove them |
 | `lane why <file> [-a <anchor>]` | read the notes on a file; changes nothing |
+| `lane holds <id>` | re-vouch for a resolved note |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
-| `lane audit [--base <ref>] [--review ...]` | run the memory pass alone |
+| `lane audit [--base <ref>]` | run the memory pass alone |
 | `lane done [--keep] [--trunk <ref>]` | rebase, audit, fast-forward, remove |
 | `lane rm <name> [--force]` | discard a lane; it keeps a branch holding commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |
-
-### Environment
-
-| var | |
-|---|---|
-| `ANTHROPIC_API_KEY` | enables review |
-| `LANE_REVIEW_CMD` | reviewer command, takes precedence over the API |
-| `LANE_REVIEW_MODEL` | default `claude-haiku-4-5-20251001` |
-| `LANE_REVIEW` | `auto` (default), `none`, `cmd`, `anthropic` |
 
 ### Layout
 
@@ -305,7 +279,7 @@ yourproject/
     memory/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
     attic/                        evicted, recoverable
     branch/<name>/state.json      fingerprints, per branch
-    branch/<name>/log.jsonl       verdicts and evictions, per branch
+    branch/<name>/log.jsonl       holds and evictions, per branch
     trees/
       fix-login/                  the lane worktree
   .gitattributes                  one union rule, for log/*.jsonl

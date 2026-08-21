@@ -124,7 +124,7 @@ lane note -p … -a … "…"  ────────────────�
 ```
 
 Nothing downstream knows which one a note came from. Same promotion, same
-fingerprinting, same budget, same review.
+fingerprinting, same budget.
 
 Overlap is safe. Promotion drops a pending record whose text already matches a
 live note on the same anchor, so writing a `Why:` trailer *and* running

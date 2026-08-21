@@ -1,0 +1,79 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  # So the build matrix can be proven on a branch without cutting a release.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          # musl, so one Linux artifact per arch runs on any glibc vintage.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - run: rustup target add ${{ matrix.target }}
+
+      # The anchor grammars are C, so a musl target needs a musl C compiler.
+      - if: endsWith(matrix.target, '-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_$(echo '${{ matrix.target }}' | tr - _)=musl-gcc" >> "$GITHUB_ENV"
+
+      - run: cargo build --release -p lane --target ${{ matrix.target }}
+
+      - name: package
+        run: |
+          bin=target/${{ matrix.target }}/release/lane
+          "$bin" --version
+          tar -czf lane-${{ matrix.target }}.tar.gz -C "$(dirname "$bin")" lane
+          archive=lane-${{ matrix.target }}.tar.gz
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$archive" | cut -d' ' -f1 > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" | cut -d' ' -f1 > "$archive.sha256"
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lane-${{ matrix.target }}
+          path: lane-${{ matrix.target }}.tar.gz*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          merge-multiple: true
+
+      - run: ls -l
+
+      # gh is preinstalled on the runner, so the release needs no third-party action.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            lane-*.tar.gz lane-*.tar.gz.sha256

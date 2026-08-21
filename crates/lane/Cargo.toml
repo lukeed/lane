@@ -6,6 +6,21 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# The release workflow publishes one flat tarball per target under this name, so
+# `cargo binstall` and www/public/install.sh resolve the same asset.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/lane-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
+
+# Linux ships musl only, so a glibc host is pointed at it rather than left to
+# binstall's fallback order.
+[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/lane-x86_64-unknown-linux-musl.tar.gz"
+
+[package.metadata.binstall.overrides.aarch64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/lane-aarch64-unknown-linux-musl.tar.gz"
+
 [lib]
 name = "lane"
 path = "src/lib.rs"

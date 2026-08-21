@@ -20,3 +20,19 @@ rebuild it triggered rewrote 550 files in `target/`.
 
 `typescript` is pinned to 6.x on purpose: `astro check` uses the programmatic
 compiler API, which TypeScript 7's native compiler does not expose yet.
+
+## The install script
+
+`public/install.sh` is served two ways:
+
+- `https://lane.lukeed.com/install.sh` on any static host.
+- `https://lane.lukeed.com` itself, when the request comes from curl or wget.
+  That second one needs an edge function. `functions/_middleware.ts` implements
+  it for Cloudflare Pages; point the Pages project at this directory and it is
+  picked up with no configuration. On a host without edge functions the root
+  serves the page as usual and only the `/install.sh` form works.
+
+Binaries come from GitHub release assets, built by `.github/workflows/release.yml`
+on a `v*` tag. The tarball is flat — one `lane` at the root — so the script and
+`cargo binstall` resolve the same asset. Linux is musl, so one artifact per
+architecture runs on any glibc vintage.

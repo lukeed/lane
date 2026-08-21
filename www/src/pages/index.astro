@@ -80,8 +80,8 @@ let tiers = [
 						on disk, and brings the notes with it.
 					</p>
 					<div class="prompt">
-						<code class="prompt-cmd"><span class="p">$ </span>cargo install --git https://github.com/lukeed/lane</code>
-						<button class="copy" type="button" data-copy="cargo install --git https://github.com/lukeed/lane">copy</button>
+						<code class="prompt-cmd"><span class="p">$ </span>curl -fsSL https://lane.lukeed.com | sh</code>
+						<button class="copy" type="button" data-copy="curl -fsSL https://lane.lukeed.com | sh">copy</button>
 					</div>
 				</div>
 			</section>
@@ -279,12 +279,31 @@ agent-c    agent-c    clean   0 pending note(s)</pre>
 			<section class="sec" id="installation">
 				<h2 class="sec-head">Installation</h2>
 				<div class="sec-body reveal">
+					<h3 class="eyebrow">Get the binary &mdash; pick one</h3>
 					<div class="steps">
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>curl -fsSL https://lane.lukeed.com | sh</code>
+							<button class="copy" type="button" data-copy="curl -fsSL https://lane.lukeed.com | sh">copy</button>
+							<span class="step-why">
+								macOS and Linux, arm64 and x86_64. Lands in <b>~/.local/bin</b>; set{' '}
+								<b>LANE_INSTALL</b> to put it elsewhere, <b>LANE_VERSION</b> to pin a release. Read it
+								first at <a href="/install.sh">lane.lukeed.com/install.sh</a>.
+							</span>
+						</div>
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>cargo binstall --git https://github.com/lukeed/lane lane</code>
+							<button class="copy" type="button" data-copy="cargo binstall --git https://github.com/lukeed/lane lane">copy</button>
+							<span class="step-why">The same prebuilt binary, if you already run binstall.</span>
+						</div>
 						<div class="step">
 							<code class="step-cmd"><span class="p">$ </span>cargo install --git https://github.com/lukeed/lane</code>
 							<button class="copy" type="button" data-copy="cargo install --git https://github.com/lukeed/lane">copy</button>
-							<span class="step-why">Rust 1.85 or newer, edition 2024. One binary.</span>
+							<span class="step-why">Builds from source. Rust 1.85 or newer, edition 2024.</span>
 						</div>
+					</div>
+
+					<h3 class="eyebrow">Then, once per machine and once per repo</h3>
+					<div class="steps">
 						<div class="step">
 							<code class="step-cmd"><span class="p">$ </span>eval "$(lane shellenv)"</code>
 							<button class="copy" type="button" data-copy={'eval "$(lane shellenv)"'}>copy</button>

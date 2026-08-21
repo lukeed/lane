@@ -137,8 +137,26 @@ unnecessary and squash semantics never come up.
 
 ## Install
 
+A prebuilt binary, for macOS and Linux on arm64 and x86_64:
+
 ```bash
-cargo install --path crates/lane
+curl -fsSL https://lane.lukeed.com | sh
+```
+
+It lands in `~/.local/bin`. Set `LANE_INSTALL` to move it, `LANE_VERSION` to pin
+a release, and read the script first at <https://lane.lukeed.com/install.sh>.
+
+The same binary through cargo, or from source:
+
+```bash
+cargo binstall --git https://github.com/lukeed/lane lane
+cargo install --git https://github.com/lukeed/lane
+cargo install --path crates/lane          # from a checkout
+```
+
+Then, once per machine and once per repository:
+
+```bash
 eval "$(lane shellenv)"     # adds cd-into-the-lane behaviour
 cd yourrepo && lane init
 ```

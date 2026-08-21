@@ -18,7 +18,7 @@
 	--term: 'Spline Sans Mono Variable', ui-monospace, 'SF Mono', monospace;
 
 	--u: 8px;
-	--gutter: 13ch;
+	--gutter: 152px;
 	--measure: 82ch;
 	--pad: clamp(20px, 5vw, 56px);
 
@@ -1101,6 +1101,10 @@ a:hover {
 }
 
 /* ---- install -------------------------------------------------------- */
+
+.sec-body > .eyebrow + .steps {
+	margin-top: calc(var(--u) * 1.5);
+}
 
 .steps {
 	display: grid;

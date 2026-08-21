@@ -68,11 +68,9 @@ pub fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
     entry.norm = crate::syntax::NORM_VERSION.into();
 }
 
-pub fn holds(root: &Path, id: &str) -> Result<()> {
-    let note = store::load_notes(root, None)
-        .into_iter()
-        .find(|note| note.meta.id == id)
-        .ok_or_else(|| anyhow::anyhow!("live note {id} not found"))?;
+pub fn holds(root: &Path, id: &str) -> Result<String> {
+    let note = store::resolve_id(root, id)?;
+    let id = note.meta.id.clone();
     let mut checker = store::Checker::new(root);
     let res = checker.check(&note);
     if res.span.is_none() {
@@ -93,7 +91,7 @@ pub fn holds(root: &Path, id: &str) -> Result<()> {
             "branch": git::current_branch(),
         }),
     )?;
-    Ok(())
+    Ok(id)
 }
 
 fn eviction_key(

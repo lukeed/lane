@@ -31,12 +31,16 @@ current, `~` the implementation moved, `!` the described thing changed shape, `x
 is gone, `?` the file's language has no grammar so nothing was checked. A `~` note is often
 still true — the words are what matter, not the hash.
 
-Before `lane done`, run `lane check --json`. For each `~` or `!`, read the note and its
-current span, then take exactly one action:
+Before `lane done`, run `lane check`. It lists every note that is not fresh, each with
+the id you need next. Read the note and its current span, then take exactly one action:
 
 - `lane holds <id>` when the note is still true.
 - `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is
   still right but the sentence is wrong.
+
+Any unambiguous prefix of an id works, so the ten characters `lane check` and `lane why`
+print are enough. `lane check --json` carries the same rows plus each note's body and
+current span, for when you would rather not open the files.
 - Delete the note file and commit when the constraint is gone.
 
 A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone;

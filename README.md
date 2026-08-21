@@ -205,10 +205,11 @@ cloned file shows `shared` extents on Linux.
 
 ## Resolving drift
 
-Run `lane check --json` to read each drifted note and its current span. Use
-`lane holds <id>` when it remains true, `lane note -p <path> -a <anchor>
+`lane check` lists every note that is not fresh, each with the id you need next.
+Use `lane holds <id>` when it remains true, `lane note -p <path> -a <anchor>
 --supersedes <id> "<rewrite>"` when its sentence must change, or delete the note
-file and commit when the constraint is gone. Lane never calls a model.
+file and commit when the constraint is gone. Any unambiguous prefix of an id
+works. `--json` adds each note's body and current span. Lane never calls a model.
 See [lane.lukeed.com/usage](https://lane.lukeed.com/usage).
 
 ## Still stubbed

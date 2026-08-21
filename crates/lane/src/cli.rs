@@ -680,13 +680,12 @@ fn path(name: &str) -> Result<i32> {
 
 fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Result<i32> {
     let root = git::repo_root()?;
-    if let Some(id) = supersedes
-        && !store::load_notes(&root, None)
-            .iter()
-            .any(|note| note.meta.id == id)
-    {
-        bail!("live note {id} not found; note not recorded");
-    }
+    // Resolved here, so the queue carries a whole id and promotion cannot be
+    // handed a prefix that has since grown ambiguous.
+    let supersedes = match supersedes {
+        Some(id) => store::resolve_id(&root, id)?.meta.id,
+        None => String::new(),
+    };
     let rel = store::rel_to_repo(&root, path)?;
     if !root.join(&rel).exists() {
         // Otherwise the note is promoted, found missing, and atticked in the same audit.
@@ -711,7 +710,7 @@ fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Resul
             anchor: anchor.to_string(),
             branch: git::current_branch(),
             at: now_iso(),
-            supersedes: supersedes.unwrap_or_default().to_string(),
+            supersedes: supersedes.clone(),
         },
     )?;
     println!("noted -> {rel}#{anchor}");
@@ -747,13 +746,7 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
         group.sort_by(|a, b| a.meta.id.cmp(&b.meta.id));
         for note in group {
             let tier = checker.check(&note).tier;
-            let mark = match tier {
-                BODY => "~",
-                SIG => "!",
-                MISSING => "x",
-                UNVERIFIABLE => "?",
-                _ => " ",
-            };
+            let mark = mark(tier);
             let tail = if tier == FRESH {
                 String::new()
             } else {
@@ -779,8 +772,8 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
 }
 
 fn holds(id: &str) -> Result<i32> {
-    audit::holds(&git::repo_root()?, id)?;
-    println!("holds -> {id}");
+    // The whole id, not the prefix you typed, so you can see which note you held.
+    println!("holds -> {}", audit::holds(&git::repo_root()?, id)?);
     Ok(0)
 }
 
@@ -826,7 +819,34 @@ fn check(json: bool) -> Result<i32> {
         }
         println!("{tier:<18} {count}");
     }
+
+    // A count says something drifted and not which note, which is a dead end when
+    // the next thing you type needs an id.
+    let mut first = true;
+    for (res, note) in rows.iter().filter(|(res, _)| res.tier != FRESH) {
+        if first {
+            println!();
+            first = false;
+        }
+        println!(
+            "{} {}  {}#{}",
+            mark(res.tier),
+            &note.meta.id[..10.min(note.meta.id.len())],
+            note.path(),
+            note.meta.anchor
+        );
+    }
     Ok(i32::from(missing > 0))
+}
+
+fn mark(tier: &str) -> &'static str {
+    match tier {
+        BODY => "~",
+        SIG => "!",
+        MISSING => "x",
+        UNVERIFIABLE => "?",
+        _ => " ",
+    }
 }
 
 fn options(base: &str, budget: &BudgetArgs) -> audit::Options {

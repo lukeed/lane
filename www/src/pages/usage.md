@@ -181,11 +181,29 @@ nothing at all.
 
 ### Resolving drift
 
-Before `lane done`, run `lane check --json` and read each drifted note with its
-current span. Take one action: `lane holds <id>` when the sentence remains true;
-`lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject
-is right but the sentence must change; or delete the note file and commit when
-the constraint is gone. Lane never calls a model.
+Before `lane done`, run `lane check`. It lists every note that is not fresh with
+the id you need next:
+
+```bash
+$ lane check
+fresh              7
+body-drift         1
+signature-changed  0
+anchor-missing     0
+unverifiable       0
+
+~ 01M0B4KQTX  src/auth.rs#fn verify
+```
+
+Read the note and the code it points at, then take one action: `lane holds <id>`
+when the sentence remains true; `lane note -p <path> -a <anchor> --supersedes
+<id> "<rewrite>"` when the subject is right but the sentence must change; or
+delete the note file and commit when the constraint is gone. Lane never calls a
+model.
+
+Any unambiguous prefix of an id works, so the ten characters above are enough;
+an ambiguous one is refused and names what it matched. Add `--json` for the same
+rows plus each note's body and current span, which is what an agent reads.
 
 Supersede writes a new file and moves the predecessor to the attic. A `?` has no
 grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves

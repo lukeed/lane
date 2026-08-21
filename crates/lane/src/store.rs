@@ -288,6 +288,27 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
     Ok(created)
 }
 
+/// An id, or any unambiguous prefix of one. `lane why` prints ten characters of a
+/// ULID, so what a reader can see has to be what the verbs accept.
+pub fn resolve_id(root: &Path, id: &str) -> Result<Note> {
+    let mut hits: Vec<Note> = load_notes(root, None)
+        .into_iter()
+        .filter(|note| note.meta.id.starts_with(id))
+        .collect();
+    match hits.len() {
+        0 => anyhow::bail!("live note {id} not found"),
+        1 => Ok(hits.remove(0)),
+        n => {
+            let shown: Vec<String> = hits
+                .iter()
+                .take(5)
+                .map(|note| format!("{} {}#{}", note.meta.id, note.path(), note.meta.anchor))
+                .collect();
+            anyhow::bail!("{id} matches {n} notes:\n  {}", shown.join("\n  "))
+        }
+    }
+}
+
 pub fn supersede(root: &Path, old: &mut Note, fresh: &Note, state: &mut State) -> Result<()> {
     if let Some(entry) = state.get(&old.meta.id).cloned() {
         state.insert(fresh.meta.id.clone(), entry);
@@ -655,6 +676,30 @@ mod tests {
         let mut existing = read_state_file(&path);
         existing.insert(id.to_string(), entry);
         write_state_file(&path, &existing).unwrap();
+    }
+
+    #[test]
+    fn resolve_id_takes_a_prefix_and_refuses_an_ambiguous_one() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0AKEEP", "keep");
+        seed_note(root.path(), "src/b.rs", "01M0BDROP", "drop");
+
+        // what `lane check` and `lane why` print is a prefix, so it has to work
+        assert_eq!(
+            resolve_id(root.path(), "01M0AK").unwrap().meta.id,
+            "01M0AKEEP"
+        );
+        assert_eq!(
+            resolve_id(root.path(), "01M0AKEEP").unwrap().meta.id,
+            "01M0AKEEP"
+        );
+
+        let ambiguous = resolve_id(root.path(), "01M0").unwrap_err().to_string();
+        assert!(ambiguous.contains("matches 2 notes"), "{ambiguous}");
+        assert!(ambiguous.contains("01M0AKEEP"), "{ambiguous}");
+
+        let unknown = resolve_id(root.path(), "ZZZ").unwrap_err().to_string();
+        assert!(unknown.contains("not found"), "{unknown}");
     }
 
     #[test]

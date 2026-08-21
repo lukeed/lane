@@ -595,7 +595,8 @@ a:hover {
 	transition: opacity 0.4s ease;
 }
 
-.act[data-on='false'] {
+/* gated on `js`, or a reader without it is left with four dimmed acts */
+.js .act[data-on='false'] {
 	opacity: 0.38;
 }
 
@@ -738,12 +739,37 @@ a:hover {
 		gap: 0;
 	}
 
-	/* the panel keeps the top of the screen and gives up a third of its height */
+	/* the panel keeps the top of the screen; the transcript passes under it */
 	.flow-panel {
 		top: 44px;
 		z-index: 10;
 		padding-block: calc(var(--u) * 1.5);
 		background: var(--void);
+	}
+
+	.flow-panel::after {
+		content: '';
+		position: absolute;
+		inset: 100% 0 auto;
+		height: calc(var(--u) * 2);
+		background: linear-gradient(var(--void), transparent);
+	}
+
+	.panel {
+		padding: calc(var(--u) * 1.75);
+	}
+
+	.tree-lane {
+		padding-top: var(--u);
+	}
+
+	.legend,
+	.tally {
+		margin-top: calc(var(--u) * 1.25);
+	}
+
+	.tally {
+		padding-top: var(--u);
 	}
 
 	.extent {

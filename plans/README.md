@@ -33,7 +33,7 @@ counts before starting, and update your row when done.
 | 028 | An interactive tour that teaches lane by driving it | P3 | M | — | DONE |
 | 029 | Put everything lane owns under `.lane/` | P2 | L | — | DONE |
 | 030 | Make the state file impossible to half-write | P2 | S | — | DONE |
-| 031 | Take the model out of the binary, and make the verdicts verbs | P2 | L | — | TODO |
+| 031 | Take the model out of the binary, and make the verdicts verbs | P2 | L | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |
@@ -157,8 +157,6 @@ Verified against the tree, not assumed. The plan files were deleted; this is the
 
 ## Not audited
 
-- The Anthropic reviewer backend has never been run against the live API; only the `cmd`
-  backend is exercised, via `tests/fake-reviewer`.
 - Extent sharing is verified on APFS only. btrfs, XFS with `reflink=1`, bcachefs and ZFS
   are covered by the same assertion wherever the suite runs, but nobody has run it there.
 - Anchor resolution quality *within* a supported language. Tree-sitter fixed the extent

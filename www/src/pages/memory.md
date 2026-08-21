@@ -1,3 +1,11 @@
+---
+layout: ../layouts/Doc.astro
+title: Capturing decisions from commits
+description: "How a Why: trailer in a commit message becomes a lane note, what it refuses to do, and what it costs."
+section: lane(7)
+here: memory
+---
+
 # Capturing decisions from commits
 
 What plan 015 means in practice.

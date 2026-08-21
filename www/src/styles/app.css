@@ -17,6 +17,8 @@
 	--display: 'Martian Mono Variable', ui-monospace, monospace;
 	--term: 'Spline Sans Mono Variable', ui-monospace, 'SF Mono', monospace;
 
+	/* the sticky man rule's height, which everything else sticks under */
+	--top: 44px;
 	--u: 8px;
 	--gutter: 152px;
 	--measure: 82ch;
@@ -155,7 +157,7 @@ a:hover {
 	text-transform: uppercase;
 	color: var(--bone);
 	position: sticky;
-	top: 68px;
+	top: calc(var(--top) + 24px);
 	align-self: start;
 	padding-top: 6px;
 }
@@ -177,6 +179,25 @@ a:hover {
 @media (max-width: 560px) {
 	.manrule-mid {
 		display: none;
+	}
+}
+
+/* five entries do not fit one phone line, so the rule takes two */
+@media (max-width: 640px) {
+	:root {
+		--top: 69px;
+	}
+
+	.top .manrule {
+		flex-wrap: wrap;
+		white-space: normal;
+		gap: calc(var(--u) * 1.25) calc(var(--u) * 2);
+	}
+
+	.top-links {
+		flex: 1 0 100%;
+		flex-wrap: wrap;
+		gap: calc(var(--u) * 0.75) calc(var(--u) * 2);
 	}
 }
 
@@ -322,7 +343,7 @@ a:hover {
 
 .flow-panel {
 	position: sticky;
-	top: 76px;
+	top: calc(var(--top) + 32px);
 }
 
 .panel {
@@ -825,7 +846,7 @@ a:hover {
 
 	/* the panel keeps the top of the screen; the transcript passes under it */
 	.flow-panel {
-		top: 44px;
+		top: var(--top);
 		z-index: 10;
 		padding-block: calc(var(--u) * 1.5);
 		background: var(--void);
@@ -1242,6 +1263,324 @@ body > footer {
 	.seealso-row {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 4px;
+	}
+}
+
+/* ---- prose ---------------------------------------------------------- */
+
+/* markdown rendered into the same measure the man sections use */
+.doc {
+	padding-top: clamp(32px, 5vw, 52px);
+}
+
+.toc {
+	position: sticky;
+	top: calc(var(--top) + 24px);
+	align-self: start;
+	display: grid;
+	gap: calc(var(--u) * 0.75);
+	padding-top: 6px;
+	padding-right: calc(var(--u) * 2);
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	line-height: 1.4;
+}
+
+.toc a {
+	color: var(--dim);
+	text-decoration: none;
+	border-left: 1px solid var(--rule);
+	padding-left: calc(var(--u) * 1.25);
+	margin-left: -1px;
+	transition: color 0.15s, border-color 0.15s;
+}
+
+.toc a:hover {
+	color: var(--bone);
+	border-color: var(--rule-lit);
+}
+
+.toc a[data-here='true'] {
+	color: var(--bone);
+	border-color: var(--ref);
+}
+
+/* the column is the column; only the running text takes a measure, so a
+   transcript and a rule can use the whole width */
+.prose {
+	color: var(--dim);
+	font-size: 14.5px;
+	line-height: 1.7;
+}
+
+.prose > :is(p, ul, ol, blockquote, h1) {
+	max-width: 74ch;
+}
+
+.prose > * + * {
+	margin-top: calc(var(--u) * 2);
+}
+
+.prose h1 {
+	font-family: var(--display);
+	font-size: clamp(26px, 4vw, 34px);
+	font-weight: 600;
+	line-height: 1.2;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	max-width: 22ch;
+	text-wrap: balance;
+}
+
+.prose h2 {
+	font-size: clamp(19px, 2.6vw, 23px);
+	font-weight: 400;
+	line-height: 1.3;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	border-top: 1px solid var(--rule);
+	padding-top: calc(var(--u) * 3);
+	margin-top: calc(var(--u) * 6);
+}
+
+.prose h3 {
+	font-family: var(--display);
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--bone);
+	margin-top: calc(var(--u) * 4);
+}
+
+.prose h1 + *,
+.prose h2 + *,
+.prose h3 + * {
+	margin-top: calc(var(--u) * 1.5);
+}
+
+.prose a {
+	color: var(--ref);
+	text-decoration-color: color-mix(in oklab, var(--ref) 45%, transparent);
+}
+
+.prose strong {
+	color: var(--bone);
+	font-weight: 500;
+}
+
+.prose em {
+	font-style: normal;
+	color: var(--bone);
+}
+
+.prose :not(pre) > code {
+	color: var(--bone);
+	background: color-mix(in oklab, var(--rule) 60%, transparent);
+	padding: 1px 5px;
+	white-space: nowrap;
+}
+
+.prose pre {
+	border: 1px solid var(--rule);
+	background: var(--panel);
+	padding: calc(var(--u) * 2) calc(var(--u) * 2.5);
+	font-size: 12.5px;
+	line-height: 1.8;
+	overflow-x: auto;
+	scrollbar-width: thin;
+	color: var(--dim);
+}
+
+.prose pre code {
+	color: inherit;
+	background: none;
+	border: 0;
+	padding: 0;
+	font-size: inherit;
+}
+
+.prose ul,
+.prose ol {
+	padding-left: 2.5ch;
+}
+
+.prose li + li {
+	margin-top: calc(var(--u) * 0.75);
+}
+
+.prose li::marker {
+	color: var(--dimmer);
+}
+
+.prose blockquote {
+	border-left: 1px solid var(--rule-lit);
+	padding-left: calc(var(--u) * 2);
+	color: var(--dimmer);
+}
+
+/* the horizontal rules in these documents already have headings doing the
+   dividing, so they only add noise */
+.prose hr {
+	display: none;
+}
+
+.prose table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	text-align: left;
+}
+
+.prose th,
+.prose td {
+	border-top: 1px solid var(--rule);
+	padding: calc(var(--u) * 1.25) calc(var(--u) * 2) calc(var(--u) * 1.25) 0;
+	vertical-align: baseline;
+}
+
+.prose thead th {
+	border-top: 0;
+	border-bottom: 1px solid var(--rule-lit);
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--dimmer);
+	padding-bottom: calc(var(--u) * 1.25);
+}
+
+.prose tbody td:first-child {
+	color: var(--bone);
+	width: 40%;
+}
+
+.prose tbody td:first-child code {
+	white-space: pre-wrap;
+}
+
+@media (max-width: 780px) {
+	.toc {
+		position: static;
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(var(--u) * 1.5);
+		padding: 0 0 calc(var(--u) * 2);
+		border-bottom: 1px solid var(--rule);
+	}
+
+	.toc a {
+		border-left: 0;
+		padding-left: 0;
+		margin-left: 0;
+	}
+
+	.toc a[data-here='true'] {
+		color: var(--ref);
+	}
+
+	.prose table,
+	.prose tbody td:first-child {
+		width: auto;
+	}
+}
+
+/* ---- commands ------------------------------------------------------- */
+
+.cmd {
+	margin-top: calc(var(--u) * 6);
+}
+
+.cmd > * + * {
+	margin-top: calc(var(--u) * 2);
+}
+
+.cmd h2 {
+	margin-top: 0;
+}
+
+.prose .cmd h2 code {
+	background: none;
+	border: 0;
+	padding: 0;
+	color: var(--bone);
+	font-size: 1em;
+}
+
+.cmd-usage {
+	font-size: 12.5px;
+	color: var(--ref);
+	white-space: pre-wrap;
+	margin-top: calc(var(--u) * 1) !important;
+}
+
+/* the rule has to run the whole width, so the columns touch and the dt pads
+   its own gutter instead */
+.opts {
+	display: grid;
+	grid-template-columns: 24ch minmax(0, 1fr);
+	font-size: 13px;
+	border-bottom: 1px solid var(--rule);
+	margin-top: calc(var(--u) * 2.5);
+}
+
+.opts-global {
+	margin-bottom: calc(var(--u) * 5);
+}
+
+.opts dt,
+.opts dd {
+	border-top: 1px solid var(--rule);
+	padding: calc(var(--u) * 1.25) 0;
+}
+
+.opts dt {
+	grid-column: 1;
+	color: var(--bone);
+	white-space: nowrap;
+	padding-right: calc(var(--u) * 2);
+}
+
+.opts dd {
+	grid-column: 2;
+	color: var(--dim);
+}
+
+.prose .opts dt code {
+	background: none;
+	border: 0;
+	padding: 0;
+	color: var(--bone);
+	font-size: 1em;
+}
+
+.opt-arg {
+	color: var(--dimmer);
+	margin-left: 1ch;
+}
+
+.cmd-example {
+	margin-top: calc(var(--u) * 2.5) !important;
+}
+
+@media (max-width: 640px) {
+	.opts {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.opts dt {
+		grid-column: 1;
+		padding: calc(var(--u) * 1.25) 0 2px;
+	}
+
+	.opts dd {
+		grid-column: 1;
+		border-top: 0;
+		padding-top: 0;
 	}
 }
 

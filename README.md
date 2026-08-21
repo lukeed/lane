@@ -209,7 +209,7 @@ cannot make. Verdicts: `holds` refreshes the fingerprint, `superseded` writes a
 **new** note and attics the old one (mutation would break union merge),
 `contradicted` quarantines, `unsure` leaves it flagged. Off unless
 `ANTHROPIC_API_KEY` or `LANE_REVIEW_CMD` is set; only drifted notes are sent.
-See USAGE.md.
+See [lane.lukeed.com/usage](https://lane.lukeed.com/usage).
 
 ## Still stubbed
 

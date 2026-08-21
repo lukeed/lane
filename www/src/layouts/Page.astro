@@ -1,0 +1,97 @@
+---
+import '../styles/app.css';
+
+export let repo = 'https://github.com/lukeed/lane';
+
+type Props = {
+	/** the <title>, and the left half of the man rule */
+	title: string;
+	description: string;
+	/** the section of the manual this page stands for */
+	section?: string;
+	/** the nav entry to mark as the one you are on */
+	here?: string;
+};
+
+let { title, description, section = 'lane(1)', here } = Astro.props;
+
+let nav = [
+	['/#installation', 'install'],
+	['/usage', 'usage'],
+	['/memory', 'memory'],
+	['/commands', 'commands'],
+	[repo, 'github'],
+];
+
+let built = new Date().toISOString().slice(0, 10);
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<meta name="theme-color" content="#0a0f0e" />
+		<script is:inline>document.documentElement.classList.add('js');</script>
+		<meta property="og:title" content={section} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content="website" />
+	</head>
+
+	<body>
+		<header class="top">
+			<div class="shell">
+				<div class="manrule">
+					<span>{section}</span>
+					<nav class="top-links">
+						{nav.map(([href, label]) => (
+							<a href={href} aria-current={label === here ? 'page' : undefined}>{label}</a>
+						))}
+					</nav>
+				</div>
+			</div>
+		</header>
+
+		<slot />
+
+		<footer class="shell">
+			<div class="manrule">
+				<span>lane 0.1.0</span>
+				<span class="manrule-mid">{built}</span>
+				<span class="manrule-end">{section}</span>
+			</div>
+		</footer>
+
+		<script>
+			for (let btn of document.querySelectorAll<HTMLButtonElement>('.copy')) {
+				btn.addEventListener('click', async () => {
+					try {
+						await navigator.clipboard.writeText(btn.dataset.copy ?? '');
+					} catch {
+						return;
+					}
+					btn.dataset.done = 'true';
+					btn.textContent = 'copied';
+					setTimeout(() => {
+						btn.dataset.done = 'false';
+						btn.textContent = 'copy';
+					}, 1600);
+				});
+			}
+
+			let io = new IntersectionObserver(
+				(entries) => {
+					for (let entry of entries) {
+						if (!entry.isIntersecting) continue;
+						(entry.target as HTMLElement).dataset.seen = 'true';
+						io.unobserve(entry.target);
+					}
+				},
+				{ rootMargin: '-8% 0px -8% 0px' },
+			);
+			for (let el of document.querySelectorAll('.reveal')) io.observe(el);
+		</script>
+	</body>
+</html>

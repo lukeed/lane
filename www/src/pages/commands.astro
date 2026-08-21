@@ -1,0 +1,65 @@
+---
+import Page from '../layouts/Page.astro';
+import { commands, globals } from '../data/commands';
+
+let slug = (name: string) => name.replace(/ /g, '-');
+---
+
+<Page
+	title="Commands — lane"
+	description="Every lane subcommand and every flag it accepts, with the transcript each one prints."
+	here="commands"
+>
+	<main class="shell">
+		<article class="sec sec-first doc">
+			<nav class="toc" aria-label="On this page">
+				{commands.map((cmd) => <a href={`#${slug(cmd.name)}`}>{cmd.name}</a>)}
+			</nav>
+
+			<div class="sec-body prose">
+				<h1>Commands</h1>
+				<p>
+					Every subcommand the parser accepts, in the order it defines them. Anything not marked
+					here is not a flag. For the order you would meet them in a day&rsquo;s work, read{' '}
+					<a href="/usage">usage</a>.
+				</p>
+
+				<h3>Accepted everywhere</h3>
+				<dl class="opts opts-global">
+					{globals.map((opt) => (
+						<>
+							<dt><code>{opt.flag}</code></dt>
+							<dd>{opt.about}</dd>
+						</>
+					))}
+				</dl>
+
+				{commands.map((cmd) => (
+					<section class="cmd">
+						<h2 id={slug(cmd.name)}><code>lane {cmd.name}</code></h2>
+						<p class="cmd-usage">{cmd.usage}</p>
+						<p>{cmd.summary}</p>
+
+						{cmd.options.length > 0 ? (
+							<dl class="opts">
+								{cmd.options.map((opt) => (
+									<>
+										<dt>
+											<code>{opt.flag}</code>
+											{opt.arg ? <span class="opt-arg">{opt.arg}</span> : null}
+										</dt>
+										<dd>{opt.about}</dd>
+									</>
+								))}
+							</dl>
+						) : (
+							<p class="note">Takes no flags of its own.</p>
+						)}
+
+						<pre class="cmd-example">{cmd.example}</pre>
+					</section>
+				))}
+			</div>
+		</article>
+	</main>
+</Page>

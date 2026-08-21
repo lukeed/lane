@@ -1,3 +1,11 @@
+---
+layout: ../layouts/Doc.astro
+title: Using lane
+description: Every lane command in the order you meet them — opening a lane, leaving notes, reading what earlier lanes learned, and closing it again.
+section: lane(1)
+here: usage
+---
+
 # Using lane
 
 A lane is a throwaway worktree that costs almost nothing to open, and leaves
@@ -123,7 +131,7 @@ read one to find out it is wrong.
 ```bash
 lane done
   rebased onto main
-  memory: +2 new, 7 fresh, 1 body-drift, 0 signature-changed, 0 missing
+  memory: +2 new; checked 8: 7 fresh, 1 body-drift, 0 signature-changed, 0 missing
   reviewed 1 drifted note(s) via anthropic(claude-haiku-4-5-20251001)
   superseded    src/sync.rs#fn reconnect -> 01M0B9MFVB
   committed memory update
@@ -132,7 +140,8 @@ lane done
 ```
 
 `done` never touches the network for git. Add `--keep` to preserve the
-worktree, `--trunk <name>` for a non-default trunk.
+worktree, `--squash` to land one commit, `--trunk <name>` for a non-default
+trunk.
 
 ---
 
@@ -248,6 +257,9 @@ Land them in any order.
 
 ## Reference
 
+The short version. Every flag of every command, one entry each, is on
+[commands](/commands).
+
 | command | |
 |---|---|
 | `lane init` | scaffold, probe reflink |
@@ -257,7 +269,7 @@ Land them in any order.
 | `lane note -p <file> -a <anchor> "<text>"` | record a finding |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
 | `lane uninstall skill|hooks` | remove them |
-| `lane why <file> [-a <anchor>]` | read context, bump read counts |
+| `lane why <file> [-a <anchor>]` | read the notes on a file; changes nothing |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>] [--review ...]` | run the memory pass alone |
 | `lane done [--keep] [--trunk <ref>]` | rebase, audit, fast-forward, remove |

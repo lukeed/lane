@@ -1,0 +1,74 @@
+---
+import Page from './Page.astro';
+
+type Heading = { depth: number; slug: string; text: string };
+
+type Props = {
+	frontmatter: {
+		title: string;
+		description: string;
+		/** the man rule's section name, e.g. lane(7) */
+		section?: string;
+		/** the nav entry to mark as current */
+		here?: string;
+	};
+	headings: Heading[];
+};
+
+let { title, description, section, here } = Astro.props.frontmatter;
+
+// only the top level; a two-deep rail in a 152px gutter is a wall, not a map
+let toc = Astro.props.headings.filter((h) => h.depth === 2);
+---
+
+<Page title={`${title} — lane`} description={description} section={section} here={here}>
+	<main class="shell">
+		<article class="sec sec-first doc">
+			{toc.length > 0 ? (
+				<nav class="toc" aria-label="On this page">
+					{toc.map((h) => <a href={`#${h.slug}`}>{h.text}</a>)}
+				</nav>
+			) : (
+				<p class="sec-head sec-head-mute">{title}</p>
+			)}
+			<div class="sec-body prose">
+				<slot />
+			</div>
+		</article>
+	</main>
+</Page>
+
+<script>
+	// mark the heading you are reading, so the rail says where you are
+	let links = [...document.querySelectorAll<HTMLAnchorElement>('.toc a')];
+	if (links.length) {
+		let targets = links
+			.map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))))
+			.filter((el): el is HTMLElement => el != null);
+
+		let queued = false;
+
+		function mark() {
+			queued = false;
+			// the last heading whose top has gone under the man rule
+			let under =
+				parseInt(getComputedStyle(document.documentElement).getPropertyValue('--top'), 10) + 60;
+			let at = -1;
+			for (let i = 0; i < targets.length; i++) {
+				if (targets[i].getBoundingClientRect().top <= under) at = i;
+			}
+			links.forEach((a, i) => (a.dataset.here = String(i === at)));
+		}
+
+		addEventListener(
+			'scroll',
+			() => {
+				if (queued) return;
+				queued = true;
+				requestAnimationFrame(mark);
+			},
+			{ passive: true },
+		);
+		mark();
+	}
+</script>

@@ -154,11 +154,18 @@ cargo install --git https://github.com/lukeed/lane
 cargo install --path crates/lane          # from a checkout
 ```
 
-Then, once per machine and once per repository:
+Once per machine, in `.zshrc` or `.bashrc`:
 
 ```bash
-eval "$(lane shellenv)"     # adds cd-into-the-lane behaviour
-cd yourrepo && lane init
+eval "$(lane shellenv)"     # makes `lane new` leave you inside the lane
+```
+
+Once per repository:
+
+```bash
+cd yourrepo && lane init    # scaffold .lane/, merge rule, AGENTS.md protocol
+lane install hooks          # optional: capture `Why:` trailers from commits
+lane install skill          # optional: the fuller agent workflow for .agents/
 ```
 
 Rust 1.85+, edition 2024. Anchor resolution ships grammars for rust, go, python,

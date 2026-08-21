@@ -25,12 +25,22 @@ compiler API, which TypeScript 7's native compiler does not expose yet.
 
 `public/install.sh` is served two ways:
 
-- `https://lane.lukeed.com/install.sh` on any static host.
+- `https://lane.lukeed.com/install.sh`, a plain static asset.
 - `https://lane.lukeed.com` itself, when the request comes from curl or wget.
-  That second one needs an edge function. `functions/_middleware.ts` implements
-  it for Cloudflare Pages; point the Pages project at this directory and it is
-  picked up with no configuration. On a host without edge functions the root
-  serves the page as usual and only the `/install.sh` form works.
+
+The second one is why this deploys as a Worker rather than as static hosting:
+`worker.ts` reads the user agent on `/` and answers with the script or the page.
+`run_worker_first` in `wrangler.jsonc` scopes that to `/` alone, so every other
+asset is served without invoking the Worker.
+
+```bash
+bun run serve     # astro build && wrangler dev — the real runtime, locally
+bun run deploy    # astro build && wrangler deploy
+```
+
+`wrangler.jsonc` claims `lane.lukeed.com` as a custom domain. That needs the zone
+on the same Cloudflare account; drop the `routes` block to deploy to a
+`workers.dev` subdomain instead.
 
 Binaries come from GitHub release assets, built by `.github/workflows/release.yml`
 on a `v*` tag. The tarball is flat — one `lane` at the root — so the script and

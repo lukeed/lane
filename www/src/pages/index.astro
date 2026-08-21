@@ -302,19 +302,43 @@ agent-c    agent-c    clean   0 pending note(s)</pre>
 						</div>
 					</div>
 
-					<h3 class="eyebrow">Then, once per machine and once per repo</h3>
+					<h3 class="eyebrow">Once per machine</h3>
 					<div class="steps">
 						<div class="step">
 							<code class="step-cmd"><span class="p">$ </span>eval "$(lane shellenv)"</code>
 							<button class="copy" type="button" data-copy={'eval "$(lane shellenv)"'}>copy</button>
-							<span class="step-why">Add it to .zshrc so <b>lane new</b> drops you inside the new lane.</span>
+							<span class="step-why">
+								Put it in .zshrc or .bashrc. It is what makes <b>lane new</b> leave you inside the
+								lane instead of printing its path.
+							</span>
 						</div>
+					</div>
+
+					<h3 class="eyebrow">Once per repository</h3>
+					<div class="steps">
 						<div class="step">
 							<code class="step-cmd"><span class="p">$ </span>cd yourproject &amp;&amp; lane init</code>
 							<button class="copy" type="button" data-copy="lane init">copy</button>
 							<span class="step-why">
-								Scaffolds <b>.lane/</b>, adds the merge rule and the agent protocol, and tells you
-								whether this filesystem does reflink.
+								Scaffolds <b>.lane/</b>, adds the union merge rule and the agent protocol, and tells
+								you whether this filesystem does reflink. Commit what it writes.
+							</span>
+						</div>
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>lane install hooks</code>
+							<button class="copy" type="button" data-copy="lane install hooks">copy</button>
+							<span class="step-why">
+								Captures <b>Why:</b> trailers from commit messages into notes. Worktrees share a hooks
+								directory, so this covers every lane. Optional.
+							</span>
+						</div>
+						<div class="step">
+							<code class="step-cmd"><span class="p">$ </span>lane install skill</code>
+							<button class="copy" type="button" data-copy="lane install skill">copy</button>
+							<span class="step-why">
+								Writes the fuller agent workflow to <b>.agents/skills/lane/SKILL.md</b>, loaded only
+								when an agent is doing lane work. Optional; <b>lane init</b> already leaves a short
+								protocol in AGENTS.md.
 							</span>
 						</div>
 					</div>

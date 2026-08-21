@@ -1122,13 +1122,6 @@ a:hover {
 	align-items: center;
 }
 
-@media (max-width: 620px) {
-	.step {
-		grid-template-columns: minmax(0, 1fr);
-		justify-items: start;
-	}
-}
-
 .step-cmd {
 	font-size: 13px;
 	color: var(--bone);
@@ -1171,6 +1164,32 @@ a:hover {
 .copy[data-done='true'] {
 	color: var(--ref);
 	border-color: var(--ref);
+}
+
+/* A command has to be readable in full on a phone. Wrapping alone is not
+   enough: the code element must also be held to the container, or it sizes to
+   its content and spills past the padding without ever scrolling. */
+@media (max-width: 620px) {
+	.step {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.step-cmd {
+		width: 100%;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		padding-left: 2ch;
+		text-indent: -2ch;
+	}
+
+	.prompt-cmd {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.copy {
+		justify-self: start;
+	}
 }
 
 /* ---- foot ----------------------------------------------------------- */

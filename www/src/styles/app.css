@@ -797,9 +797,21 @@ a:hover {
 		gap: 0 2.5ch;
 	}
 
+	/* the widest line is 44 columns, and it has to land inside the pane */
+	.tty-screen {
+		padding: calc(var(--u) * 1.75);
+	}
+
 	.act {
 		min-height: 0;
 		padding-block: calc(var(--u) * 6);
+	}
+}
+
+@media (max-width: 420px) {
+	.tty-screen {
+		font-size: 11px;
+		padding: calc(var(--u) * 1.5);
 	}
 }
 

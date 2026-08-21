@@ -79,7 +79,7 @@ export let list: Act[] = [
 			{ kind: 'out', text: 'noted -> src/auth.rs#fn verify' },
 			{ kind: 'gap', text: '' },
 			{ kind: 'cmd', text: '$EDITOR src/auth.rs', step: 'write', hold: 1600 },
-			{ kind: 'cmd', text: 'git commit -am "verify: constant-time"' },
+			{ kind: 'cmd', text: 'git commit -am "make verify constant-time"' },
 			{ kind: 'out', text: '[fix-login 4f1a92c] 1 file changed' },
 		],
 		why: 'The edit un-shares that one file, and only inside the lane — main/ still reads the block it always read. Copy costs nothing until you write, and then it costs one file.',

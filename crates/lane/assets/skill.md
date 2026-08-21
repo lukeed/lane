@@ -42,7 +42,7 @@ current span, then take exactly one action:
 A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone;
 let audit move that note to the attic instead of vouching for it.
 
-Reading bumps a counter, and notes nobody reads are evicted first.
+Notes are evicted oldest and stalest first, and only when an anchor is over budget.
 
 ## Record what you learned
 

@@ -124,9 +124,9 @@ export let list: Act[] = [
 		cwd: '~/…/fix-login',
 		from: 'fanout',
 		session: [
-			{ kind: 'cmd', text: 'OLD=01M0B4KQTX7H3EZ8FE7S6BJ91N' },
 			{ kind: 'cmd', text: 'lane note -p src/auth.rs -a "fn verify" \\' },
-			{ kind: 'con', text: '--supersedes "$OLD" "constant-time"' },
+			{ kind: 'con', text: '--supersedes 01M0B4KQTX7H3EZ8FE7S6BJ91N \\' },
+			{ kind: 'con', text: '"constant-time; no early return"' },
 			{ kind: 'out', text: 'noted -> src/auth.rs#fn verify' },
 			{ kind: 'gap', text: '' },
 			{ kind: 'cmd', text: 'lane done   # in each lane, in any order' },

@@ -96,6 +96,8 @@ enum Command {
         #[arg(short, long)]
         anchor: Option<String>,
     },
+    /// re-vouch for a drifted note
+    Holds { id: String },
     /// staleness report
     Check {
         #[arg(long)]
@@ -181,6 +183,7 @@ pub fn run() -> Result<i32> {
             Ok(0)
         }
         Command::Why { path, anchor } => why(path.as_deref(), anchor.as_deref()),
+        Command::Holds { id } => holds(&id),
         Command::Check { json } => check(json),
         Command::Audit {
             base,
@@ -780,6 +783,12 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
             );
         }
     }
+    Ok(0)
+}
+
+fn holds(id: &str) -> Result<i32> {
+    audit::holds(&git::repo_root()?, id)?;
+    println!("holds -> {id}");
     Ok(0)
 }
 

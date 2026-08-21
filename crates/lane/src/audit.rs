@@ -63,13 +63,41 @@ fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool 
     unresolved
 }
 
-fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
+pub fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
     entry.sig = res.sig.clone();
     entry.body_hash = res.body_hash.clone();
     entry.raw_hash = res.raw_hash.clone();
     entry.status = FRESH.into();
     entry.checked = now_iso();
     entry.norm = crate::syntax::NORM_VERSION.into();
+}
+
+pub fn holds(root: &Path, id: &str) -> Result<()> {
+    let note = store::load_notes(root, None)
+        .into_iter()
+        .find(|note| note.meta.id == id)
+        .ok_or_else(|| anyhow::anyhow!("live note {id} not found"))?;
+    let mut checker = store::Checker::new(root);
+    let res = checker.check(&note);
+    if res.span.is_none() {
+        anyhow::bail!(
+            "cannot hold note {id}: anchor does not resolve ({})",
+            res.tier
+        );
+    }
+
+    let mut state = store::own_state(root);
+    refresh_holds(state.entry(id.to_string()).or_default(), &res);
+    store::save_state(root, &state)?;
+    store::append_log(
+        root,
+        &serde_json::json!({
+            "at": now_iso(), "kind": "holds", "id": id,
+            "path": note.path(), "anchor": note.meta.anchor,
+            "branch": git::current_branch(),
+        }),
+    )?;
+    Ok(())
 }
 
 fn eviction_key(

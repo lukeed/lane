@@ -132,7 +132,7 @@ src/auth.rs#fn verify
     must stay constant-time; early return leaks token length
       01M0B9MBYB · fix-login · 2026-08-14
   ~ callers rely on false-on-expiry, not an error
-      01M0B4KQTX · rate-limit · 2026-07-30   [body-drift]
+      01M0B4KQTX · rate-limit · 2026-07-30   [content-changed]
 ```
 
 The leading mark is freshness: blank is fresh, `~` drifted, `!` the signature
@@ -144,7 +144,7 @@ read one to find out it is wrong.
 ```bash
 $ lane done
   rebased onto main
-  memory: +2 new; checked 8: 7 fresh, 1 body-drift, 0 signature-changed, 0 missing
+  memory: +2 new; checked 8: 7 fresh, 1 content-changed, 0 signature-changed, 0 missing
   committed memory update
   fast-forwarded main
   removed lane fix-login
@@ -164,7 +164,7 @@ normalized so comments and whitespace don't count:
 | tier | meaning | what happens |
 |---|---|---|
 | `fresh` | unchanged | nothing, costs nothing |
-| `body-drift` | implementation moved | flagged until you resolve it |
+| `content-changed` | implementation moved | flagged until you resolve it |
 | `signature-changed` | the described thing changed shape | flagged until you resolve it |
 | `anchor-missing` | symbol gone | evicted to `.lane/attic/` |
 
@@ -187,12 +187,12 @@ the id you need next:
 ```bash
 $ lane check
 fresh              7
-body-drift         1
+content-changed         1
 signature-changed  0
 anchor-missing     0
 unverifiable       0
 
-[body-drift]
+[content-changed]
 ~ 01M0B4KQTX  src/auth.rs#fn verify
 ```
 

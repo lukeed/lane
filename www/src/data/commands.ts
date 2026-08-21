@@ -77,14 +77,14 @@ export let commands: Command[] = [
 		options: [
 			{ flag: "-a, --anchor", arg: "<anchor>", about: "show only the notes on this anchor." },
 		],
-		example: "$ lane why src/auth.rs\n\nsrc/auth.rs#fn verify\n    must stay constant-time; early return leaks length\n      01M0B9MBYB · fix-login · 2026-08-14\n  ~ callers rely on false-on-expiry   [body-drift]\n      01M0B4KQTX · rate-limit · 2026-07-30",
+		example: "$ lane why src/auth.rs\n\nsrc/auth.rs#fn verify\n    must stay constant-time; early return leaks length\n      01M0B9MBYB · fix-login · 2026-08-14\n  ~ callers rely on false-on-expiry   [content-changed]\n      01M0B4KQTX · rate-limit · 2026-07-30",
 	},
 	{
 		name: "holds",
 		usage: "lane holds <id>",
 		summary: "re-vouches for a drifted note and refreshes its fingerprint. Takes any unambiguous prefix of an id, and refuses one that matches two notes.",
 		options: [],
-		example: "$ lane check\n...\n[body-drift]\n~ 01M0B4KQTX  src/auth.rs#fn verify\n\n$ lane holds 01M0B4KQTX\nholds -> 01M0B4KQTX7H3EZ8FE7S6BJ91N",
+		example: "$ lane check\n...\n[content-changed]\n~ 01M0B4KQTX  src/auth.rs#fn verify\n\n$ lane holds 01M0B4KQTX\nholds -> 01M0B4KQTX7H3EZ8FE7S6BJ91N",
 	},
 	{
 		name: "check",
@@ -93,7 +93,7 @@ export let commands: Command[] = [
 		options: [
 			{ flag: "--json", arg: null, about: "print each note as JSON, with current spans on non-fresh work items." },
 		],
-		example: "$ lane check\nfresh              7\nbody-drift         1\nsignature-changed  0\nanchor-missing     0\nunverifiable       0\n\n[body-drift]\n~ 01M0B4KQTX  src/auth.rs#fn verify",
+		example: "$ lane check\nfresh              7\ncontent-changed         1\nsignature-changed  0\nanchor-missing     0\nunverifiable       0\n\n[content-changed]\n~ 01M0B4KQTX  src/auth.rs#fn verify",
 	},
 	{
 		name: "audit",
@@ -105,7 +105,7 @@ export let commands: Command[] = [
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 			{ flag: "--json", arg: null, about: "print the outcome as JSON instead of the report." },
 		],
-		example: "$ lane audit\nmemory: +2 new; checked 8: 7 fresh, 1 body-drift,\n        0 signature-changed, 0 missing\n  drift   src/sync.rs#fn reconnect",
+		example: "$ lane audit\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 signature-changed, 0 missing\n  drift   src/sync.rs#fn reconnect",
 	},
 	{
 		name: "done",
@@ -119,7 +119,7 @@ export let commands: Command[] = [
 			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 		],
-		example: "$ lane done\nrebased onto main\nmemory: +2 new; checked 8: 7 fresh, 1 body-drift,\n        0 signature-changed, 0 missing\ncommitted memory update\nfast-forwarded main\nremoved lane fix-login",
+		example: "$ lane done\nrebased onto main\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 signature-changed, 0 missing\ncommitted memory update\nfast-forwarded main\nremoved lane fix-login",
 	},
 	{
 		name: "rm",

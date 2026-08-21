@@ -176,7 +176,7 @@ pub const SCENES: &[Scene] = &[
             ),
             In(".lane/trees/fix-empty-token", "lane check"),
             Say(
-                "`body-drift` means the implementation changed while the signature held. Lane\n\
+                "`content-changed` means the implementation changed while the signature held. Lane\n\
                  cannot know whether the note is still true — that is a judgment — so it flags\n\
                  it and leaves it flagged.",
             ),

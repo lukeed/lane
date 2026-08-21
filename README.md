@@ -84,7 +84,7 @@ that anchor's span only:
 | tier | meaning | action |
 |---|---|---|
 | `fresh` | span unchanged | none |
-| `body-drift` | implementation moved, contract held | stays flagged until resolved |
+| `content-changed` | implementation moved, contract held | stays flagged until resolved |
 | `signature-changed` | the described thing changed shape | resolve |
 | `anchor-missing` | symbol gone | evict to `attic/` |
 

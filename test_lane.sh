@@ -107,7 +107,7 @@ sedi 's|  let undoStack = \[\];|  let undoStack = [];\n  let cursor = 0;|' src/E
 "$LANE" check --json > /tmp/c.json
 is "#script drifts" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/c.json"));print([x["tier"] for x in d if x["anchor"]=="#script"][0])')" \
-   "body-drift"
+   "content-changed"
 is "#style unaffected" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/c.json"));print([x["tier"] for x in d if x["anchor"]=="#style"][0])')" \
    "fresh"
@@ -269,7 +269,7 @@ is "the fingerprint lives in state" \
    "$(find .lane/branch -name 'state.json' | wc -l | tr -d ' ')" "1"
 is "state records the drift" \
    "$(python3 -c 'import json,glob;d=json.load(open(glob.glob(".lane/branch/*/state.json")[0]));print(list(d.values())[0]["status"])')" \
-   "body-drift"
+   "content-changed"
 
 mkdir -p attic && echo "user content" > attic/f.txt
 git add -A && git commit -qm user-attic
@@ -520,10 +520,10 @@ setup
 sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
 "$LANE" audit > /dev/null
 is "drift survives an audit" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "content-changed" for x in json.load(sys.stdin)))')" "1"
 "$LANE" audit > /dev/null
 is "and is re-reported by the next audit" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "content-changed" for x in json.load(sys.stdin)))')" "1"
 echo "== 28. landings are serialized and marked =="
 setup
 "$LANE" new solo > /dev/null 2>&1
@@ -570,9 +570,9 @@ is "a lane preserves the baseline it compared against" \
    "$(python3 -c "import json;print(int(any(v.get('body_hash') for v in json.load(open('$TMP/repo/.lane/trees/carry/.lane/branch/carry/state.json')).values())))")" "1"
 ( cd "$TMP/repo/.lane/trees/carry" && "$LANE" done > /dev/null 2>&1 )
 is "and the drift survives the landing" \
-   "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+   "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
 is "and is still reported by a later audit" \
-   "$("$LANE" audit > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+   "$("$LANE" audit > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
 
 echo "== 31. holds survives a landing =="
 setup
@@ -586,13 +586,13 @@ git add src/auth.rs && git commit -qm drift
 "$LANE" check --json > /tmp/holds-before.json
 ID=$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["id"])')
 is "note starts drifted" \
-   "$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["tier"])')" "body-drift"
+   "$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["tier"])')" "content-changed"
 "$LANE" holds "$ID" > /tmp/holds.out 2>&1
 is "holds succeeds" "$?" "0"
 is "holds makes the note fresh" \
    "$("$LANE" check --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["tier"])')" "fresh"
 is "holds clears body drift" \
-   "$("$LANE" check | awk '/^body-drift/{print $2}')" "0"
+   "$("$LANE" check | awk '/^content-changed/{print $2}')" "0"
 git add -A .lane && git commit -qm holds
 ( "$LANE" done > /tmp/holds-done.out 2>&1 )
 cd "$TMP/repo"

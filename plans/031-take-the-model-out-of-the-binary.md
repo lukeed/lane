@@ -168,9 +168,9 @@ promotion is never handed a prefix that has since grown ambiguous.
 **It must refuse when the anchor does not resolve.** Vouching for a span that is not there
 is a lie the store would then carry as fact. Exit non-zero with a message naming the tier.
 
-**Verify**: in a scratch repo, edit a noted function body, `lane check` → `body-drift 1`
+**Verify**: in a scratch repo, edit a noted function body, `lane check` → `content-changed 1`
 and a row naming the note; paste the ten characters it printed into `lane holds`;
-`lane check` → `fresh` for that note and `body-drift 0`. Then delete the function and
+`lane check` → `fresh` for that note and `content-changed 0`. Then delete the function and
 `lane holds <id>` → non-zero, and `lane check` still reports `anchor-missing 1`. Also
 check that a prefix matching two notes is refused and names both.
 

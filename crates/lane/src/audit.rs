@@ -219,7 +219,7 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
     let n = |tier: &str| out.stats.get(tier).copied().unwrap_or(0);
     writeln!(
         w,
-        "memory: +{} new; checked {}: {} fresh, {} body-drift, {} signature-changed, {} missing",
+        "memory: +{} new; checked {}: {} fresh, {} content-changed, {} signature-changed, {} missing",
         out.created.len(),
         out.stats.values().sum::<usize>(),
         n(FRESH),

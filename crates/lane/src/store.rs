@@ -31,7 +31,9 @@ pub fn pending_path(worktree: &Path) -> PathBuf {
 }
 
 pub const FRESH: &str = "fresh";
-pub const BODY: &str = "body-drift";
+// The tier for a changed body_hash. The constant keeps the name of the hash it
+// comes from; the string is what a reader sees.
+pub const BODY: &str = "content-changed";
 pub const SIG: &str = "signature-changed";
 pub const MISSING: &str = "anchor-missing";
 pub const UNVERIFIABLE: &str = "unverifiable";

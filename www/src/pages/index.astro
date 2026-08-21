@@ -1,5 +1,5 @@
 ---
-import Terminal from '../components/Terminal.astro';
+import Workflow from '../components/Workflow.astro';
 import '../styles/app.css';
 
 let repo = 'https://github.com/lukeed/lane';
@@ -9,7 +9,6 @@ let seealso = [
 	[repo, 'github.com/lukeed/lane', 'the source'],
 	[`${repo}/blob/main/USAGE.md`, 'USAGE.md', 'every command, in full'],
 	[`${repo}/blob/main/explainer.md`, 'explainer.md', 'capturing decisions from commit trailers'],
-	[`${repo}/tree/main/plans`, 'plans/', 'how each piece was decided'],
 ];
 
 let anchors = [
@@ -64,7 +63,7 @@ let tiers = [
 
 		<main class="shell">
 			<section class="sec sec-first" aria-label="Name">
-				<p class="sec-head">Name</p>
+				<p class="sec-head sec-head-mute">Name</p>
 				<div class="sec-body">
 					<h1 class="name">
 						<span class="wordmark">lane</span>{' '}
@@ -87,15 +86,13 @@ let tiers = [
 			</section>
 
 			<section class="sec">
-				<h2 class="sec-head">Synopsis</h2>
+				<h2 class="sec-head">Workflow</h2>
 				<div class="sec-body">
 					<p class="lede">
-						One lane, opened and closed. The left pane is what you type. The right pane is what lane
-						does about it.
+						Five commands, start to finish. The panel is the disk &mdash; one set of blocks, and every
+						tree pointing at it. Beside it is what you type to get there.
 					</p>
-					<div class="breakout">
-						<Terminal />
-					</div>
+					<Workflow />
 				</div>
 			</section>
 
@@ -127,17 +124,17 @@ let tiers = [
 							<tr>
 								<th scope="row">node_modules, at any depth</th>
 								<td class="cell-cost" data-label="git worktree add">absent</td>
-								<td class="cell-free" data-label="lane new">by reference</td>
+								<td class="cell-free" data-label="lane new">exists, by reference</td>
 							</tr>
 							<tr>
 								<th scope="row">target/, dist/, .venv/</th>
 								<td class="cell-cost" data-label="git worktree add">absent</td>
-								<td class="cell-free" data-label="lane new">by reference</td>
+								<td class="cell-free" data-label="lane new">exists, by reference</td>
 							</tr>
 							<tr>
 								<th scope="row">.env and the rest of .gitignore</th>
 								<td class="cell-cost" data-label="git worktree add">absent</td>
-								<td class="cell-free" data-label="lane new">by reference</td>
+								<td class="cell-free" data-label="lane new">exists, by reference</td>
 							</tr>
 							<tr>
 								<th scope="row">uncommitted work</th>
@@ -150,7 +147,7 @@ let tiers = [
 								<td class="cell-free" data-label="lane new">lane why &lt;file&gt;</td>
 							</tr>
 							<tr class="tbl-total">
-								<th scope="row">this repo, 12,283 ignored files</th>
+								<th scope="row">what those 12,283 files cost</th>
 								<td class="cell-cost" data-label="git worktree add">1358.1 MiB, then npm i and a cold build</td>
 								<td class="cell-free" data-label="lane new">0 B, 4.0s</td>
 							</tr>
@@ -257,17 +254,19 @@ src/auth.rs#fn verify
 			<section class="sec">
 				<h2 class="sec-head">Agents</h2>
 				<div class="sec-body reveal">
-					<p class="tagline tagline-solo">Three agents, three warm trees, no extra disk.</p>
-					<pre class="block"><span class="p">$ </span><b>lane new agent-a &amp;&amp; lane new agent-b &amp;&amp; lane new agent-c</b>
-<span class="p">$ </span><b>lane ls</b>
-agent-a    agent-a    clean   3 pending note(s)
-agent-b    agent-b    dirty   1 pending note(s)
-agent-c    agent-c    clean   0 pending note(s)</pre>
+					<p class="tagline tagline-solo">The next agent reads the constraints before it edits.</p>
 					<p class="lede">
-						Each one gets its own tree and its own warm build cache. They can annotate the same file
-						and the same anchor at the same moment: a note file is written once and never modified, so
-						there is nothing to lock and nothing to resolve. Land them in any order.
+						Two agents can annotate the same file, and the same anchor, in the same second. A note
+						file is written once and never modified, so there is nothing to lock and nothing to
+						resolve. Land them in any order; both notes are there afterwards.
 					</p>
+					<pre class="block"><span class="p">$ </span><b>lane why src/auth.rs</b>
+
+src/auth.rs#fn verify
+    must stay constant-time; early return leaks token length
+      01M0B9MBYB · agent-b · 2026-08-14
+    the token bytes must never reach a log, even at debug
+      01M0B9MZQ4 · agent-c · 2026-08-14</pre>
 					<p class="note">
 						<b>lane init</b> writes a four-line protocol into <b>AGENTS.md</b> so the notes are already
 						in context. Notes are plain markdown at predictable paths — an agent finds them with no

@@ -160,6 +160,12 @@ a:hover {
 	padding-top: 6px;
 }
 
+/* NAME is what the wordmark under it already says; the column stays so the
+   measure below it lines up with every other section */
+.sec-head-mute {
+	visibility: hidden;
+}
+
 .sec-body {
 	min-width: 0;
 }
@@ -184,6 +190,9 @@ a:hover {
 		padding-top: 0;
 		padding-bottom: calc(var(--u) * 0.5);
 		border-bottom: 1px solid var(--rule);
+	}
+	.sec-head-mute {
+		display: none;
 	}
 }
 
@@ -300,158 +309,334 @@ a:hover {
 	user-select: none;
 }
 
-/* ---- the terminal --------------------------------------------------- */
+/* ---- the workflow --------------------------------------------------- */
 
-.breakout {
-	margin-left: calc(var(--gutter) * -1);
+/* the disk panel holds still; the transcript beside it is what moves */
+.flow {
+	display: grid;
+	grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+	gap: calc(var(--u) * 3);
+	align-items: start;
 }
 
-@media (max-width: 780px) {
-	.breakout {
-		margin-left: 0;
+.flow-panel {
+	position: sticky;
+	top: 76px;
+}
+
+.panel {
+	border: 1px solid var(--rule);
+	background: var(--panel);
+	padding: calc(var(--u) * 2);
+}
+
+.panel-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: var(--u);
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--dimmer);
+	margin-bottom: calc(var(--u) * 2);
+}
+
+.panel-state {
+	color: var(--ref);
+}
+
+/* one frame of the panel is shown at a time, keyed off the step the
+   transcript has reached */
+.panel-state span,
+.tally {
+	display: none;
+}
+
+.flow[data-step='seed'] [data-for~='seed'],
+.flow[data-step='lane'] [data-for~='lane'],
+.flow[data-step='write'] [data-for~='write'],
+.flow[data-step='build'] [data-for~='build'],
+.flow[data-step='drift'] [data-for~='drift'],
+.flow[data-step='fanout'] [data-for~='fanout'],
+.flow[data-step='land'] [data-for~='land'],
+.flow[data-step='gone'] [data-for~='gone'] {
+	display: flex;
+}
+
+.tree-name {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 1ch;
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--bone);
+	margin-bottom: 5px;
+	white-space: nowrap;
+}
+
+.tree-meta {
+	color: var(--dimmer);
+}
+
+.extent {
+	display: grid;
+	grid-template-columns: repeat(24, minmax(0, 1fr));
+	gap: 2px;
+}
+
+.cell {
+	aspect-ratio: 1;
+	background: var(--rule);
+	opacity: 0.3;
+	transform: scale(0.4);
+	transition:
+		background 0.3s ease,
+		box-shadow 0.3s ease,
+		opacity 0.3s ease,
+		transform 0.34s cubic-bezier(0.2, 0.8, 0.3, 1);
+	transition-delay: calc(var(--i) * 3ms);
+}
+
+/* main/ owns the blocks; it is there before the story starts */
+.tree-src .cell {
+	background: var(--ref);
+	opacity: 1;
+	transform: none;
+	transition-delay: 0ms;
+}
+
+/* every block in a lane is a window onto the block above it, until the lane
+   writes over one */
+.tree-lane .cell {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ref) 48%, transparent);
+}
+
+.flow[data-lane='true'] .tree-lane[data-tree='0'] .cell,
+.flow[data-fanout='true'] .tree-lane .cell {
+	opacity: 1;
+	transform: none;
+}
+
+/* the file you edited, then what the rebuild rewrote: the lane's own */
+.flow[data-write='true'] .tree-lane[data-tree='0'] .cell[data-g='w1'],
+.flow[data-build='true'] .tree-lane[data-tree='0'] .cell[data-g='w2'],
+.flow[data-fanout='true'] .tree-lane .cell[data-g='wa'] {
+	background: var(--drift);
+	box-shadow: none;
+	animation: wrote 0.7s ease-out 0.15s 1;
+}
+
+/* the commit lands, so main/ takes the new block */
+.flow[data-land='true'] .tree-src .cell[data-g='w1'] {
+	animation: landed 0.9s ease-out 0.2s 1;
+}
+
+@keyframes wrote {
+	0%,
+	25% {
+		background: var(--bone);
 	}
+}
+
+@keyframes landed {
+	0%,
+	30% {
+		background: var(--bone);
+	}
+}
+
+/* the lane is gone and so is every block it allocated */
+.flow[data-gone='true'] .tree-lane {
+	opacity: 0.32;
+}
+
+.flow[data-gone='true'] .tree-lane[data-tree] .cell[data-g] {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--rule);
+	animation: none;
+}
+
+.flow[data-gone='true'] .tree-lane .tree-name {
+	text-decoration: line-through;
+	text-decoration-color: var(--gone);
+}
+
+.byref {
+	display: flex;
+	align-items: center;
+	gap: 1.5ch;
+	font-family: var(--display);
+	font-size: 9px;
+	font-weight: 500;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--dimmer);
+	margin-top: calc(var(--u) * 1.75);
+	transition: opacity 0.4s ease;
+}
+
+.byref::before,
+.byref::after {
+	content: '';
+	flex: 1;
+	height: 1px;
+	background: var(--rule);
+}
+
+/* a lane arrives whole, and the other two only once there are three agents */
+.tree-lane {
+	overflow: hidden;
+	max-height: 140px;
+	padding-top: calc(var(--u) * 1.75);
+	transition:
+		opacity 0.4s ease,
+		max-height 0.45s ease,
+		padding-top 0.45s ease;
+}
+
+.flow[data-step] .tree-lane {
+	max-height: 0;
+	padding-top: 0;
+	opacity: 0;
+}
+
+.flow[data-lane='true'] .tree-lane[data-tree='0'],
+.flow[data-fanout='true'] .tree-lane {
+	max-height: 140px;
+	padding-top: calc(var(--u) * 1.75);
+	opacity: 1;
+}
+
+.legend {
+	display: flex;
+	align-items: center;
+	gap: 0.75ch;
+	flex-wrap: wrap;
+	font-size: 11px;
+	color: var(--dimmer);
+	margin-top: calc(var(--u) * 1.75);
+	transition: opacity 0.4s ease;
+}
+
+/* both point at the lane stack, which is not there yet */
+.flow[data-step='seed'] :is(.legend, .byref) {
+	opacity: 0;
+}
+
+.key {
+	width: 9px;
+	height: 9px;
+	flex: none;
+}
+
+.key[data-g='pass'] {
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ref) 48%, transparent);
+}
+
+.key[data-g='own'] {
+	background: var(--drift);
+	margin-left: 1.75ch;
+}
+
+.tally {
+	flex-direction: column;
+	gap: 2px;
+	font-size: 11.5px;
+	line-height: 1.5;
+	color: var(--dim);
+	border-top: 1px solid var(--rule);
+	margin-top: calc(var(--u) * 2);
+	padding-top: calc(var(--u) * 1.5);
+}
+
+.tally b {
+	font-weight: 500;
+	color: var(--ref);
+}
+
+.tally em {
+	font-style: normal;
+	font-weight: 500;
+	color: var(--drift);
+}
+
+/* nothing has been written yet, and by the end it cost nothing again */
+.flow[data-step='seed'] .tally em,
+.flow[data-step='lane'] .tally em {
+	color: var(--dim);
+}
+
+.flow[data-land='true'] .tally em {
+	color: var(--ref);
+}
+
+.tally s {
+	color: var(--dimmer);
+	text-decoration-color: var(--gone);
+}
+
+/* ---- the transcript beside it --------------------------------------- */
+
+.flow-acts {
+	list-style: none;
+}
+
+.act {
+	min-height: 56vh;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding-block: calc(var(--u) * 3);
+	transition: opacity 0.4s ease;
+}
+
+.act[data-on='false'] {
+	opacity: 0.38;
+}
+
+.act-head {
+	display: flex;
+	align-items: baseline;
+	gap: 1.5ch;
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--dim);
+}
+
+.act-idx {
+	color: var(--ref);
+}
+
+.act-claim {
+	font-size: clamp(17px, 2.2vw, 21px);
+	line-height: 1.35;
+	font-weight: 300;
+	letter-spacing: -0.02em;
+	color: var(--bone);
+	text-wrap: balance;
+	margin-top: calc(var(--u) * 1.25);
 }
 
 .tty {
 	border: 1px solid var(--rule);
 	background: var(--panel);
-	position: relative;
-}
-
-.tty-rail {
-	display: flex;
-	border-bottom: 1px solid var(--rule);
-	overflow-x: auto;
-	scrollbar-width: none;
-}
-
-.tty-rail::-webkit-scrollbar {
-	display: none;
-}
-
-.rail-step {
-	appearance: none;
-	border: 0;
-	border-right: 1px solid var(--rule);
-	background: transparent;
-	font-family: var(--term);
-	font-size: 12px;
-	font-weight: 400;
-	letter-spacing: 0.01em;
-	color: var(--dim);
-	padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-	cursor: pointer;
-	position: relative;
-	white-space: nowrap;
-	flex: 1 0 auto;
-	text-align: left;
-	transition: color 0.18s, background 0.18s;
-}
-
-.rail-step:hover {
-	color: var(--bone);
-	background: var(--raise);
-}
-
-.rail-step[aria-current='true'] {
-	color: var(--bone);
-	background: var(--raise);
-}
-
-.rail-step .rail-idx {
-	color: var(--dimmer);
-	margin-right: 1ch;
-}
-
-.rail-step[aria-current='true'] .rail-idx {
-	color: var(--ref);
-}
-
-/* the fill bar is the progress of the act, drawn like a tty progress bar */
-.rail-step::after {
-	content: '';
-	position: absolute;
-	left: 0;
-	bottom: -1px;
-	height: 1px;
-	width: 0;
-	background: var(--ref);
-}
-
-/* steps already played stay filled, so the rail reads as one pass through the
-   workflow rather than four unrelated tabs */
-.rail-step[data-done='true']::after {
-	width: 100%;
-	background: color-mix(in oklab, var(--ref) 45%, var(--rule));
-}
-
-.rail-step[aria-current='true']::after {
-	width: 100%;
-	background: var(--ref);
-	transition: width linear;
-	transition-duration: var(--dwell, 0ms);
-}
-
-.tty-panes {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-@media (max-width: 900px) {
-	.tty-panes {
-		grid-template-columns: minmax(0, 1fr);
-	}
-}
-
-@media (max-width: 620px) {
-	.tty-rail {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		overflow: visible;
-	}
-
-	.rail-step {
-		padding: calc(var(--u) * 1.25) calc(var(--u) * 1.5);
-		font-size: 11px;
-		border-bottom: 1px solid var(--rule);
-	}
-
-	.rail-step:nth-child(2n) {
-		border-right: 0;
-	}
-
-	.rail-step:nth-last-child(-n + 2) {
-		border-bottom: 0;
-	}
-
-	.rail-step[aria-current='true']::after {
-		bottom: 0;
-	}
-}
-
-.tty-pane {
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.tty-pane + .tty-pane {
-	border-left: 1px solid var(--rule);
-}
-
-@media (max-width: 900px) {
-	.tty-pane + .tty-pane {
-		border-left: 0;
-		border-top: 1px solid var(--rule);
-	}
+	margin-top: calc(var(--u) * 2.5);
 }
 
 .tty-bar {
+	font-family: var(--display);
 	font-size: 10px;
+	font-weight: 500;
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
-	font-family: var(--display);
-	font-weight: 500;
 	color: var(--dimmer);
 	padding: calc(var(--u) * 1.25) calc(var(--u) * 2);
 	border-bottom: 1px solid var(--rule);
@@ -462,22 +647,15 @@ a:hover {
 }
 
 .tty-screen {
-	padding: calc(var(--u) * 2.5);
-	font-size: 12.5px;
+	padding: calc(var(--u) * 2);
+	font-size: 12px;
 	line-height: 1.75;
-	min-height: 22rem;
 	overflow-x: auto;
 	scrollbar-width: thin;
-	flex: 1;
+	/* the finished transcript's height, held from the first character, so the
+	   page does not grow a line at a time while it types */
+	min-height: calc(var(--rows) * 1.75em + var(--gaps) * 0.9rem);
 }
-
-@media (max-width: 900px) {
-	.tty-screen {
-		min-height: 17rem;
-	}
-}
-
-/* session pane */
 
 .tty-line {
 	white-space: pre;
@@ -498,10 +676,6 @@ a:hover {
 	color: var(--dim);
 }
 
-.tty-line[data-kind='ok'] {
-	color: var(--dim);
-}
-
 .tty-line[data-kind='hi'] {
 	color: var(--ref);
 }
@@ -510,7 +684,7 @@ a:hover {
 	color: var(--drift);
 }
 
-.tty-line[data-kind='bad'] {
+.tty-line[data-kind='gone'] {
 	color: var(--gone);
 }
 
@@ -538,360 +712,64 @@ a:hover {
 	}
 }
 
-/* machine pane */
-
-.stage {
-	display: none;
-}
-
-.stage[data-on='true'] {
-	display: block;
-}
-
-.stage-title {
-	font-size: 10px;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	font-family: var(--display);
+.act-why {
 	color: var(--dim);
-	margin-bottom: calc(var(--u) * 1.75);
+	font-size: 12.5px;
+	line-height: 1.65;
+	margin-top: calc(var(--u) * 2);
+	max-width: 58ch;
 }
 
-.stage-note {
-	color: var(--dim);
-	font-size: 12px;
-	line-height: 1.6;
-	border-top: 1px solid var(--rule);
-	padding-top: calc(var(--u) * 1.5);
-	margin-top: calc(var(--u) * 2.5);
-	max-width: 46ch;
-}
+@media (max-height: 780px) {
+	.extent {
+		grid-template-columns: repeat(36, minmax(0, 1fr));
+	}
 
-/* — the disk panel: one grid, four states, never re-mounted — */
-
-.disk {
-	border-bottom: 1px solid var(--rule);
-	padding-bottom: calc(var(--u) * 2.5);
-	margin-bottom: calc(var(--u) * 2.5);
-}
-
-/* a CSS bracket, not a box-drawing one: line-height would break the glyph run */
-.paths {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
-	gap: 0 calc(var(--u) * 1.5);
-	font-size: 12px;
-}
-
-.paths-list {
-	display: grid;
-	gap: 3px;
-	color: var(--dim);
-	white-space: nowrap;
-}
-
-.paths-lane {
-	transition: opacity 0.3s, color 0.3s;
-}
-
-.disk[data-act='3'] .paths-lane {
-	opacity: 0.3;
-	text-decoration: line-through;
-	text-decoration-color: var(--gone);
-}
-
-.paths-brace {
-	border-left: 1px solid var(--rule-lit);
-	display: flex;
-	align-items: center;
-	padding-left: calc(var(--u) * 1.5);
-	position: relative;
-}
-
-.paths-brace::before {
-	content: '';
-	position: absolute;
-	left: 0;
-	top: 50%;
-	width: var(--u);
-	height: 1px;
-	background: var(--rule-lit);
-}
-
-.paths-brace span {
-	color: var(--dim);
-	font-size: 11px;
-}
-
-.extent {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(6px, 1fr));
-	gap: 2px;
-	margin: calc(var(--u) * 2) 0 calc(var(--u) * 1.5);
-}
-
-.cell {
-	aspect-ratio: 1;
-	background: var(--rule);
-	transform: scale(0.5);
-	opacity: 0.35;
-	transition: background 0.34s ease, opacity 0.34s ease, transform 0.34s cubic-bezier(0.2, 0.8, 0.3, 1);
-	transition-delay: calc(var(--i) * 4ms);
-}
-
-/* the 1358.1 MiB that arrived by reference: shared in every act */
-.disk[data-act] .cell[data-g='base'] {
-	background: var(--ref);
-	opacity: 1;
-	transform: none;
-}
-
-/* one source file, written in the lane, then landed on trunk */
-.disk[data-act='1'] .cell[data-g='w1'],
-.disk[data-act='2'] .cell[data-g='w1'] {
-	background: var(--drift);
-	opacity: 1;
-	transform: none;
-}
-
-.disk[data-act='3'] .cell[data-g='w1'] {
-	background: var(--ref);
-	opacity: 1;
-	transform: none;
-}
-
-/* the rebuild's output: the lane's alone, and it goes when the lane does */
-.disk[data-act='2'] .cell[data-g='w2'] {
-	background: var(--drift);
-	opacity: 1;
-	transform: none;
-}
-
-/* a written block is few among many, so it announces itself */
-.disk[data-act='1'] .cell[data-g='w1'],
-.disk[data-act='2'] .cell[data-g='w2'] {
-	animation: pop 0.5s ease-out 0.45s both;
-}
-
-@keyframes pop {
-	40% {
-		transform: scale(1.75);
+	.tree-lane,
+	.flow[data-lane='true'] .tree-lane[data-tree='0'],
+	.flow[data-fanout='true'] .tree-lane {
+		max-height: 96px;
 	}
 }
 
-.tally {
-	display: none;
-	flex-wrap: wrap;
-	gap: 0 3ch;
-	font-size: 12px;
-	color: var(--dim);
-}
+@media (max-width: 900px) {
+	.flow {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0;
+	}
 
-.disk[data-act='0'] .tally[data-for='0'],
-.disk[data-act='1'] .tally[data-for='1'],
-.disk[data-act='2'] .tally[data-for='2'],
-.disk[data-act='3'] .tally[data-for='3'] {
-	display: flex;
-}
+	/* the panel keeps the top of the screen and gives up a third of its height */
+	.flow-panel {
+		top: 44px;
+		z-index: 10;
+		padding-block: calc(var(--u) * 1.5);
+		background: var(--void);
+	}
 
-.paths-brace span {
-	display: none;
-}
+	.extent {
+		grid-template-columns: repeat(36, minmax(0, 1fr));
+	}
 
-.disk[data-act='0'] .paths-brace span[data-for='0'],
-.disk[data-act='1'] .paths-brace span[data-for='1'],
-.disk[data-act='2'] .paths-brace span[data-for='2'],
-.disk[data-act='3'] .paths-brace span[data-for='3'] {
-	display: block;
-}
+	.tree-lane,
+	.flow[data-lane='true'] .tree-lane[data-tree='0'],
+	.flow[data-fanout='true'] .tree-lane {
+		max-height: 90px;
+	}
 
-.tally b {
-	font-weight: 500;
-	color: var(--ref);
-}
+	.byref {
+		display: none;
+	}
 
-.tally em {
-	font-style: normal;
-	font-weight: 500;
-	color: var(--drift);
-}
+	.tally {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 0 2.5ch;
+	}
 
-/* in act 1 nothing has been written, and in act 4 the cost went away again */
-.disk[data-act='0'] .tally em {
-	color: var(--dim);
-}
-
-.disk[data-act='3'] .tally em {
-	color: var(--ref);
-}
-
-.tally s {
-	color: var(--dim);
-	text-decoration-color: var(--gone);
-}
-
-.stage-note-lead {
-	border-top: 0;
-	padding-top: 0;
-	margin-top: 0;
-}
-
-/* — code + span brace — */
-
-.src {
-	font-size: 12px;
-	line-height: 1.75;
-	white-space: pre;
-	color: var(--dim);
-	overflow-x: auto;
-}
-
-.src-file {
-	color: var(--bone);
-	display: block;
-	margin-bottom: calc(var(--u) * 1.25);
-}
-
-.src-row {
-	display: grid;
-	grid-template-columns: 3ch 1ch minmax(0, 1fr);
-	gap: 1ch;
-}
-
-.src-no {
-	color: var(--dimmer);
-	text-align: right;
-}
-
-.src-bar {
-	color: var(--rule-lit);
-}
-
-.src-row[data-span='true'] .src-bar {
-	color: var(--ref);
-}
-
-/* the hashed span, marked as one block rather than four box-drawing glyphs that
-   line-height would pull apart */
-.span-group {
-	position: relative;
-	background: color-mix(in oklab, var(--ref) 7%, transparent);
-	padding-right: 9ch;
-}
-
-.span-group::after {
-	content: attr(data-label);
-	position: absolute;
-	right: 1ch;
-	top: 50%;
-	transform: translateY(-50%);
-	color: var(--dim);
-	font-size: 11px;
-}
-
-.src-row[data-changed='true'] .src-code {
-	color: var(--drift);
-}
-
-.hashes {
-	margin-top: calc(var(--u) * 2);
-	font-size: 12px;
-	display: grid;
-	gap: 2px;
-	color: var(--dim);
-}
-
-.hash-row {
-	display: grid;
-	grid-template-columns: 6ch minmax(0, 1fr);
-	gap: 1ch;
-	white-space: pre;
-}
-
-.hash-val[data-state='moved'] {
-	color: var(--drift);
-}
-
-.hash-val[data-state='held'] {
-	color: var(--bone);
-}
-
-.was {
-	color: var(--dimmer);
-	text-decoration: line-through;
-	text-decoration-color: var(--gone);
-}
-
-/* — note cards — */
-
-.card {
-	border: 1px solid var(--rule);
-	padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-	font-size: 12px;
-	line-height: 1.6;
-	background: var(--void);
-	display: grid;
-	grid-template-columns: 2ch minmax(0, 1fr);
-	gap: 1ch;
-}
-
-.card + .card {
-	margin-top: calc(var(--u) * 1);
-}
-
-.card-mark {
-	color: var(--dimmer);
-	user-select: none;
-}
-
-.card[data-tier='drift'] {
-	border-color: color-mix(in oklab, var(--drift) 40%, var(--rule));
-}
-
-.card[data-tier='drift'] .card-mark {
-	color: var(--drift);
-}
-
-.card[data-tier='gone'] {
-	opacity: 0.42;
-}
-
-.card-text {
-	color: var(--bone);
-	font-weight: 400;
-	display: block;
-}
-
-.card-meta {
-	color: var(--dim);
-	font-size: 11px;
-	margin-top: 4px;
-	display: block;
-}
-
-.card-path {
-	color: var(--ref);
-	font-size: 11px;
-	display: block;
-	margin-bottom: 3px;
-}
-
-/* — trunk graph — */
-
-.graph {
-	font-size: 12px;
-	line-height: 1.8;
-	white-space: pre;
-	color: var(--dim);
-}
-
-.graph .node {
-	color: var(--ref);
-}
-
-.graph .gone {
-	color: var(--dim);
-	opacity: 0.8;
+	.act {
+		min-height: 0;
+		padding-block: calc(var(--u) * 6);
+	}
 }
 
 /* ---- tables --------------------------------------------------------- */

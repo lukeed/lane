@@ -553,14 +553,14 @@ a:hover {
 	display: none;
 }
 
-.notes {
+.memos {
 	display: flex;
 	gap: 5px;
 	margin-top: 6px;
 	min-height: 12px;
 }
 
-.note {
+.memo {
 	width: 17px;
 	height: 12px;
 	box-shadow: inset 0 0 0 1px var(--rule);
@@ -575,32 +575,32 @@ a:hover {
 
 /* a note is written by hand, so it arrives when its command does, not with
    the blocks a build happens to touch */
-.flow[data-write='true'] .note[data-n='0'],
-.flow[data-fanout='true'] .note[data-n='1'],
-.flow[data-fanout='true'] .note[data-n='2'],
-.flow[data-fanout='true'] .note[data-n='3'],
-.flow[data-land='true'] .note[data-n='4'] {
+.flow[data-write='true'] .memo[data-n='0'],
+.flow[data-fanout='true'] .memo[data-n='1'],
+.flow[data-fanout='true'] .memo[data-n='2'],
+.flow[data-fanout='true'] .memo[data-n='3'],
+.flow[data-land='true'] .memo[data-n='4'] {
 	opacity: 1;
 	transform: none;
 	box-shadow: inset 0 0 0 1px var(--bone);
 }
 
-.flow[data-drift='true'] .note[data-n='0'] {
+.flow[data-drift='true'] .memo[data-n='0'] {
 	box-shadow: inset 0 0 0 1px var(--drift);
 	background: color-mix(in oklab, var(--drift) 20%, transparent);
 }
 
 /* the lanes give their blocks back; the notes they wrote are on main */
-.flow[data-land='true'] .note[data-n='1'],
-.flow[data-land='true'] .note[data-n='2'],
-.flow[data-land='true'] .note[data-n='3'],
-.flow[data-land='true'] .note[data-n='4'] {
+.flow[data-land='true'] .memo[data-n='1'],
+.flow[data-land='true'] .memo[data-n='2'],
+.flow[data-land='true'] .memo[data-n='3'],
+.flow[data-land='true'] .memo[data-n='4'] {
 	box-shadow: inset 0 0 0 1px var(--ref);
 	background: color-mix(in oklab, var(--ref) 20%, transparent);
 }
 
 /* superseded, not deleted */
-.flow[data-land='true'] .note[data-n='0'] {
+.flow[data-land='true'] .memo[data-n='0'] {
 	box-shadow: inset 0 0 0 1px var(--rule-lit);
 	background: none;
 	opacity: 0.4;
@@ -1197,7 +1197,12 @@ a:hover {
 /* ---- foot ----------------------------------------------------------- */
 
 .foot {
-	padding-bottom: calc(var(--u) * 8);
+	padding-bottom: calc(var(--u) * 6);
+}
+
+/* a man page ends on its rule; leave it a little air and nothing more */
+body > footer {
+	padding-bottom: calc(var(--u) * 3);
 }
 
 .seealso {

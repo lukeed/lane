@@ -317,6 +317,7 @@ a:hover {
 	grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
 	gap: calc(var(--u) * 3);
 	align-items: start;
+	margin-top: calc(var(--u) * 5) !important;
 }
 
 .flow-panel {
@@ -351,6 +352,7 @@ a:hover {
 /* one frame of the panel is shown at a time, keyed off the step the
    transcript has reached */
 .panel-state span,
+.memory-meta > span,
 .tally {
 	display: none;
 }
@@ -466,7 +468,7 @@ a:hover {
 	text-decoration-color: var(--gone);
 }
 
-.byref {
+.divide {
 	display: flex;
 	align-items: center;
 	gap: 1.5ch;
@@ -480,8 +482,8 @@ a:hover {
 	transition: opacity 0.4s ease;
 }
 
-.byref::before,
-.byref::after {
+.divide::before,
+.divide::after {
 	content: '';
 	flex: 1;
 	height: 1px;
@@ -524,7 +526,7 @@ a:hover {
 }
 
 /* both point at the lane stack, which is not there yet */
-.flow[data-step='seed'] :is(.legend, .byref) {
+.flow[data-step='seed'] :is(.legend, .divide-ref) {
 	opacity: 0;
 }
 
@@ -541,6 +543,67 @@ a:hover {
 .key[data-g='own'] {
 	background: var(--drift);
 	margin-left: 1.75ch;
+}
+
+.memory-meta {
+	color: var(--dim);
+}
+
+.memory-meta > span {
+	display: none;
+}
+
+.notes {
+	display: flex;
+	gap: 5px;
+	margin-top: 6px;
+	min-height: 12px;
+}
+
+.note {
+	width: 17px;
+	height: 12px;
+	box-shadow: inset 0 0 0 1px var(--rule);
+	opacity: 0;
+	transform: translateY(4px);
+	transition:
+		opacity 0.35s ease,
+		transform 0.35s ease,
+		box-shadow 0.35s ease,
+		background 0.35s ease;
+}
+
+/* a note is written by hand, so it arrives when its command does, not with
+   the blocks a build happens to touch */
+.flow[data-write='true'] .note[data-n='0'],
+.flow[data-fanout='true'] .note[data-n='1'],
+.flow[data-fanout='true'] .note[data-n='2'],
+.flow[data-fanout='true'] .note[data-n='3'],
+.flow[data-land='true'] .note[data-n='4'] {
+	opacity: 1;
+	transform: none;
+	box-shadow: inset 0 0 0 1px var(--bone);
+}
+
+.flow[data-drift='true'] .note[data-n='0'] {
+	box-shadow: inset 0 0 0 1px var(--drift);
+	background: color-mix(in oklab, var(--drift) 20%, transparent);
+}
+
+/* the lanes give their blocks back; the notes they wrote are on main */
+.flow[data-land='true'] .note[data-n='1'],
+.flow[data-land='true'] .note[data-n='2'],
+.flow[data-land='true'] .note[data-n='3'],
+.flow[data-land='true'] .note[data-n='4'] {
+	box-shadow: inset 0 0 0 1px var(--ref);
+	background: color-mix(in oklab, var(--ref) 20%, transparent);
+}
+
+/* superseded, not deleted */
+.flow[data-land='true'] .note[data-n='0'] {
+	box-shadow: inset 0 0 0 1px var(--rule-lit);
+	background: none;
+	opacity: 0.4;
 }
 
 .tally {
@@ -587,7 +650,7 @@ a:hover {
 }
 
 .act {
-	min-height: 56vh;
+	min-height: 74vh;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -627,14 +690,23 @@ a:hover {
 	letter-spacing: -0.02em;
 	color: var(--bone);
 	text-wrap: balance;
-	margin-top: calc(var(--u) * 1.25);
+	margin-top: calc(var(--u) * 1.75);
 }
 
 .tty {
 	border: 1px solid var(--rule);
 	background: var(--panel);
-	margin-top: calc(var(--u) * 2.5);
+	margin-top: calc(var(--u) * 3.5);
 	transition: border-color 0.4s ease;
+	position: relative;
+}
+
+.tty-mark {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	width: 1px;
+	height: 1px;
 }
 
 .tty-bar {
@@ -722,11 +794,11 @@ a:hover {
 	color: var(--dim);
 	font-size: 12.5px;
 	line-height: 1.65;
-	margin-top: calc(var(--u) * 2);
+	margin-top: calc(var(--u) * 3);
 	max-width: 58ch;
 }
 
-@media (max-height: 780px) {
+@media (max-height: 860px) {
 	.extent {
 		grid-template-columns: repeat(36, minmax(0, 1fr));
 	}
@@ -735,6 +807,13 @@ a:hover {
 	.flow[data-lane='true'] .tree-lane[data-tree='0'],
 	.flow[data-fanout='true'] .tree-lane {
 		max-height: 96px;
+	}
+}
+
+/* shorter than the panel: sticking it would put its bottom out of reach */
+@media (max-height: 640px) {
+	.flow-panel {
+		position: static;
 	}
 }
 
@@ -777,17 +856,19 @@ a:hover {
 		padding-top: var(--u);
 	}
 
+	/* the same 144 blocks, laid out as a strip: the panel has to leave the
+	   transcript most of the screen */
 	.extent {
-		grid-template-columns: repeat(36, minmax(0, 1fr));
+		grid-template-columns: repeat(48, minmax(0, 1fr));
 	}
 
 	.tree-lane,
 	.flow[data-lane='true'] .tree-lane[data-tree='0'],
 	.flow[data-fanout='true'] .tree-lane {
-		max-height: 90px;
+		max-height: 60px;
 	}
 
-	.byref {
+	.divide {
 		display: none;
 	}
 
@@ -804,7 +885,7 @@ a:hover {
 
 	.act {
 		min-height: 0;
-		padding-block: calc(var(--u) * 6);
+		padding-block: calc(var(--u) * 9);
 	}
 }
 

@@ -100,7 +100,7 @@ export let list: Act[] = [
 			{ kind: 'out', text: 'signature-changed  0' },
 			{ kind: 'out', text: 'anchor-missing     0' },
 		],
-		why: 'The rebuild rewrote 550 files. Those blocks are the lane’s own and leave with it. The note noticed too: fn verify kept its signature and changed its body, so lane flags it rather than guess whether it is still true.',
+		why: 'The rebuild rewrote 550 files. Those blocks belong to the lane and leave with it. The note noticed too: fn verify kept its signature and changed its body, so lane flags it rather than guess whether it is still true.',
 	},
 	{
 		label: 'lane ls',
@@ -116,7 +116,7 @@ export let list: Act[] = [
 			{ kind: 'out', text: 'agent-b    dirty  3 pending note(s)' },
 			{ kind: 'out', text: 'agent-c    clean  0 pending note(s)' },
 		],
-		why: 'Three trees, three warm caches, one set of extents. Each agent writes only the blocks it touches, and a note is a new file every time — so two of them can annotate the same function in the same second.',
+		why: 'Three trees, three warm caches, one set of extents. Each agent writes only the blocks it touches, and every note is a new file — so two of them can annotate the same function in the same second.',
 	},
 	{
 		label: 'lane done',

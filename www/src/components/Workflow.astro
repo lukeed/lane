@@ -37,7 +37,7 @@ let asleep = Object.fromEntries(
 					<span data-for="seed">one tree</span>
 					<span data-for="lane">shared</span>
 					<span data-for="write">copy-on-write</span>
-					<span data-for="build drift">the lane&rsquo;s own</span>
+					<span data-for="build drift">lane changes</span>
 					<span data-for="fanout">three lanes</span>
 					<span data-for="land">landed</span>
 					<span data-for="gone">freed</span>
@@ -53,7 +53,7 @@ let asleep = Object.fromEntries(
 				</div>
 			</div>
 
-			<p class="byref"><span>by reference</span></p>
+			<p class="divide divide-ref"><span>by reference</span></p>
 
 			<div class="trees">
 				{trees.map((tree, n) => (
@@ -70,8 +70,26 @@ let asleep = Object.fromEntries(
 
 			<p class="legend">
 				<span class="key" data-g="pass"></span>shared with main/
-				<span class="key" data-g="own"></span>the lane&rsquo;s own
+				<span class="key" data-g="own"></span>lane changes
 			</p>
+
+			<p class="divide"><span>memory</span></p>
+
+			<div class="memory">
+				<p class="tree-name">
+					.lane/memory/
+					<span class="memory-meta">
+						<span data-for="seed lane">nothing noted yet</span>
+						<span data-for="write build">1 note &middot; fix-login</span>
+						<span data-for="drift">1 note &middot; body-drift</span>
+						<span data-for="fanout">4 notes &middot; 3 lanes</span>
+						<span data-for="land gone">4 on main &middot; 1 in the attic</span>
+					</span>
+				</p>
+				<div class="notes">
+					{[0, 1, 2, 3, 4].map((n) => <span class="note" data-n={n}></span>)}
+				</div>
+			</div>
 
 			<div class="tally" data-for="seed lane">
 				<span><b>1358.1 MiB</b> shared</span>
@@ -131,6 +149,7 @@ let asleep = Object.fromEntries(
 							</div>
 						))}
 					</div>
+					<span class="tty-mark" aria-hidden="true"></span>
 				</div>
 				<p class="act-why">{act.why}</p>
 			</li>
@@ -143,6 +162,7 @@ let asleep = Object.fromEntries(
 		let flow = document.getElementById('flow');
 		for (let key of Object.keys(flow.dataset)) delete flow.dataset[key];
 		flow.dataset.step = 'seed';
+		for (let screen of flow.querySelectorAll('.tty-screen')) screen.replaceChildren();
 	})();
 </script>
 
@@ -153,6 +173,8 @@ let asleep = Object.fromEntries(
 	if (flow) {
 		let items = [...flow.querySelectorAll<HTMLElement>('.act')];
 		let screens = [...flow.querySelectorAll<HTMLElement>('.tty-screen')];
+		let marks = [...flow.querySelectorAll<HTMLElement>('.tty-mark')];
+		let played = new Set<number>();
 		let calm = matchMedia('(prefers-reduced-motion: reduce)');
 		let gen = 0;
 		let at = -1;
@@ -197,6 +219,7 @@ let asleep = Object.fromEntries(
 
 		async function play(i: number) {
 			let mine = ++gen;
+			played.add(i);
 			// an act scrolled away from mid-line is left reading as a finished one
 			if (at >= 0 && at !== i) fill(at);
 			at = i;
@@ -243,18 +266,42 @@ let asleep = Object.fromEntries(
 			screen.append(caret);
 		}
 
-		// the act crossing the middle of the viewport is the one being told
-		let band = new IntersectionObserver(
+		// The act whose pane is sitting in the middle of the screen is the one
+		// being told, so nothing types while it is still on its way up. Stacked,
+		// the panel owns the top of the screen, so the middle is lower down.
+		let stacked = matchMedia('(max-width: 900px)');
+		let band: IntersectionObserver;
+
+		function watch() {
+			band?.disconnect();
+			band = new IntersectionObserver(
+				(entries) => {
+					for (let entry of entries) {
+						if (!entry.isIntersecting) continue;
+						let i = marks.indexOf(entry.target as HTMLElement);
+						if (i !== at) play(i);
+					}
+				},
+				{ rootMargin: stacked.matches ? '-58% 0px -26% 0px' : '-42% 0px -42% 0px' },
+			);
+			for (let el of marks) band.observe(el);
+		}
+
+		watch();
+		stacked.addEventListener('change', watch);
+
+		// scrolled clean past without ever centring: show it, do not leave it blank
+		let skipped = new IntersectionObserver(
 			(entries) => {
 				for (let entry of entries) {
-					if (!entry.isIntersecting) continue;
+					if (entry.isIntersecting || entry.boundingClientRect.bottom > 0) continue;
 					let i = items.indexOf(entry.target as HTMLElement);
-					if (i !== at) play(i);
+					if (!played.has(i)) fill(i);
 				}
 			},
-			{ rootMargin: '-46% 0px -46% 0px' },
+			{ threshold: 0 },
 		);
-		for (let el of items) band.observe(el);
+		for (let el of items) skipped.observe(el);
 
 		// nothing types off-screen; whatever was mid-line is left finished
 		new IntersectionObserver(

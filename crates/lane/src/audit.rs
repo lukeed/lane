@@ -317,12 +317,7 @@ fn apply_review(
                 let mut fresh = Note::new(meta, v.rewrite.clone());
                 fresh.write(&file)?;
                 fresh.file = Some(file);
-                if let Some(entry) = state.get(&note.meta.id).cloned() {
-                    state.insert(fresh.meta.id.clone(), entry);
-                }
-                let reason = format!("superseded by {}", fresh.meta.id);
-                store::evict(root, note, &reason)?;
-                state.remove(&note.meta.id);
+                store::supersede(root, note, &fresh, state)?;
                 applied.push((note.clone(), "superseded".into(), Some(fresh)));
             }
             "contradicted" => {

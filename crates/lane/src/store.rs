@@ -199,6 +199,8 @@ pub struct PendingNote {
     pub anchor: String,
     pub branch: String,
     pub at: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub supersedes: String,
 }
 
 /// Pending notes are resolved and fingerprinted here, never at write time, so a rebase
@@ -210,10 +212,18 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
     }
     let text = std::fs::read_to_string(&pending)?;
     let mut created = Vec::new();
-    let mut seen: HashSet<(String, String, String)> = load_notes(root, None)
+    let mut seen: HashSet<(String, String, String, String)> = load_notes(root, None)
         .into_iter()
-        .map(|note| (note.path(), note.meta.anchor, note.body.trim().to_string()))
+        .map(|note| {
+            (
+                note.path(),
+                note.meta.anchor,
+                note.body.trim().to_string(),
+                note.meta.supersedes,
+            )
+        })
         .collect();
+    let mut state = own_state(root);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: PendingNote = match serde_json::from_str(line) {
@@ -227,6 +237,7 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             rec.path.clone(),
             rec.anchor.clone(),
             rec.text.trim().to_string(),
+            rec.supersedes.clone(),
         );
         if seen.contains(&key) {
             continue;
@@ -237,6 +248,7 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             created: rec.at,
             branch: rec.branch,
             norm: crate::syntax::NORM_VERSION.into(),
+            supersedes: rec.supersedes.clone(),
             ..Default::default()
         };
         if let Ok(body_text) = std::fs::read_to_string(root.join(&rec.path)) {
@@ -252,14 +264,38 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
         let file =
             note_dir(root, &rec.path).join(format!("{}-{}.md", meta.id, slug(&rec.text, 28)));
         let mut note = Note::new(meta, rec.text);
+        let mut predecessor = if rec.supersedes.is_empty() {
+            None
+        } else {
+            Some(
+                load_notes(root, None)
+                    .into_iter()
+                    .find(|old| old.meta.id == rec.supersedes)
+                    .ok_or_else(|| anyhow::anyhow!("live note {} not found", rec.supersedes))?,
+            )
+        };
         note.write(&file)?;
         note.file = Some(file);
+        if let Some(old) = predecessor.as_mut() {
+            supersede(root, old, &note, &mut state)?;
+        }
         created.push(note);
         seen.insert(key);
     }
 
+    save_state(root, &state)?;
     std::fs::remove_file(&pending)?;
     Ok(created)
+}
+
+pub fn supersede(root: &Path, old: &mut Note, fresh: &Note, state: &mut State) -> Result<()> {
+    if let Some(entry) = state.get(&old.meta.id).cloned() {
+        state.insert(fresh.meta.id.clone(), entry);
+    }
+    let reason = format!("superseded by {}", fresh.meta.id);
+    evict(root, old, &reason)?;
+    state.remove(&old.meta.id);
+    Ok(())
 }
 
 /// Never delete: the audit is the only writer here without a reviewer, so it stays inspectable.
@@ -931,6 +967,7 @@ mod tests {
             anchor: "fn verify".into(),
             branch: "main".into(),
             at: "2026-08-19T00:00:00Z".into(),
+            supersedes: String::new(),
         };
 
         append_pending(root.path(), &pending).unwrap();

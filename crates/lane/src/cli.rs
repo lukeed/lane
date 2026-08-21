@@ -77,6 +77,8 @@ enum Command {
         path: String,
         #[arg(short, long, default_value = "@file")]
         anchor: String,
+        #[arg(long)]
+        supersedes: Option<String>,
     },
     /// install lane's agent integrations
     Install {
@@ -169,7 +171,12 @@ pub fn run() -> Result<i32> {
         } => new(&name, base.as_deref(), dirty, cd),
         Command::Ls => ls(),
         Command::Path { name } => path(&name),
-        Command::Note { text, path, anchor } => note(&text, &path, &anchor),
+        Command::Note {
+            text,
+            path,
+            anchor,
+            supersedes,
+        } => note(&text, &path, &anchor, supersedes.as_deref()),
         Command::Install { what } => match what {
             Installable::Hooks => hooks_install(),
             Installable::Skill => skill_install(),
@@ -694,8 +701,15 @@ fn path(name: &str) -> Result<i32> {
     Ok(0)
 }
 
-fn note(text: &str, path: &str, anchor: &str) -> Result<i32> {
+fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Result<i32> {
     let root = git::repo_root()?;
+    if let Some(id) = supersedes
+        && !store::load_notes(&root, None)
+            .iter()
+            .any(|note| note.meta.id == id)
+    {
+        bail!("live note {id} not found; note not recorded");
+    }
     let rel = store::rel_to_repo(&root, path)?;
     if !root.join(&rel).exists() {
         // Otherwise the note is promoted, found missing, and atticked in the same audit.
@@ -720,6 +734,7 @@ fn note(text: &str, path: &str, anchor: &str) -> Result<i32> {
             anchor: anchor.to_string(),
             branch: git::current_branch(),
             at: now_iso(),
+            supersedes: supersedes.unwrap_or_default().to_string(),
         },
     )?;
     println!("noted -> {rel}#{anchor}");

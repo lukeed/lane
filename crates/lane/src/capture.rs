@@ -161,6 +161,7 @@ fn capture_rev(rev: &str) -> Result<()> {
             anchor: captured.anchor.clone(),
             branch: branch.clone(),
             at: now_iso(),
+            supersedes: String::new(),
         };
         if let Err(error) = store::append_pending(&root, &pending) {
             eprintln!("warning: could not record Why trailer for {rel}: {error}");

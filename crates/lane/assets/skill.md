@@ -31,6 +31,17 @@ current, `~` the implementation moved, `!` the described thing changed shape, `x
 is gone, `?` the file's language has no grammar so nothing was checked. A `~` note is often
 still true — the words are what matter, not the hash.
 
+Before `lane done`, run `lane check --json`. For each `~` or `!`, read the note and its
+current span, then take exactly one action:
+
+- `lane holds <id>` when the note is still true.
+- `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is
+  still right but the sentence is wrong.
+- Delete the note file and commit when the constraint is gone.
+
+A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone;
+let audit move that note to the attic instead of vouching for it.
+
 Reading bumps a counter, and notes nobody reads are evicted first.
 
 ## Record what you learned
@@ -79,7 +90,7 @@ One note, one thought. Do not classify it — a note costs one command, on purpo
 
 ## Do not
 
-- Edit anything under `.lane/` by hand. `lane done` owns it.
+- Rewrite anything under `.lane/` by hand; delete a note only to retire its constraint.
 - Pass `--dirty` unless you want the parent tree's uncommitted work in your lane.
 - Write notes about what a commit changed, or notes you have not read the file to confirm.
 

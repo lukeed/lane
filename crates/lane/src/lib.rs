@@ -4,7 +4,6 @@ pub mod cli;
 pub mod cow;
 pub mod git;
 pub mod note;
-pub mod review;
 pub mod store;
 pub mod syntax;
 pub mod util;

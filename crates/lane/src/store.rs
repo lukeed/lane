@@ -298,7 +298,7 @@ pub fn supersede(root: &Path, old: &mut Note, fresh: &Note, state: &mut State) -
     Ok(())
 }
 
-/// Never delete: the audit is the only writer here without a reviewer, so it stays inspectable.
+/// Never delete: audit moves notes to the attic so every retirement stays inspectable.
 pub fn evict(root: &Path, note: &mut Note, reason: &str) -> Result<()> {
     let Some(file) = note.file.clone() else {
         return Ok(());

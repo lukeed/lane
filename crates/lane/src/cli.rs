@@ -3,7 +3,6 @@
 use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
-use crate::review;
 use crate::store::{self, BODY, FRESH, LANE_DIR, MISSING, SIG, UNVERIFIABLE};
 use crate::syntax::{Resolution, Source};
 use crate::util::{now_iso, slug};
@@ -28,18 +27,6 @@ const MAX_CHARS: usize = 1200;
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
-}
-
-#[derive(Args, Debug, Clone)]
-struct ReviewArgs {
-    /// drift reviewer (default: auto)
-    #[arg(long, value_parser = ["auto", "none", "cmd", "anthropic"])]
-    review: Option<String>,
-    /// command receiving JSON on stdin, e.g. 'claude -p'
-    #[arg(long)]
-    review_cmd: Option<String>,
-    #[arg(long, default_value_t = 20)]
-    review_max: usize,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -111,8 +98,6 @@ enum Command {
         base: String,
         #[command(flatten)]
         budget: BudgetArgs,
-        #[command(flatten)]
-        review: ReviewArgs,
         #[arg(long)]
         json: bool,
     },
@@ -129,8 +114,6 @@ enum Command {
         squash: bool,
         #[command(flatten)]
         budget: BudgetArgs,
-        #[command(flatten)]
-        review: ReviewArgs,
     },
     /// discard a lane without landing it
     Rm {
@@ -192,20 +175,14 @@ pub fn run() -> Result<i32> {
         Command::Why { path, anchor } => why(path.as_deref(), anchor.as_deref()),
         Command::Holds { id } => holds(&id),
         Command::Check { json } => check(json),
-        Command::Audit {
-            base,
-            budget,
-            review,
-            json,
-        } => audit_cmd(&base, &budget, &review, json),
+        Command::Audit { base, budget, json } => audit_cmd(&base, &budget, json),
         Command::Done {
             trunk,
             keep,
             cd,
             squash,
             budget,
-            review,
-        } => done(trunk.as_deref(), keep, cd, squash, &budget, &review),
+        } => done(trunk.as_deref(), keep, cd, squash, &budget),
         Command::Rm { name, force } => rm(&name, force),
         Command::Shellenv => shellenv(),
     }
@@ -846,39 +823,32 @@ fn check(json: bool) -> Result<i32> {
     Ok(i32::from(missing > 0))
 }
 
-fn options(base: &str, budget: &BudgetArgs, review: &ReviewArgs) -> audit::Options {
+fn options(base: &str, budget: &BudgetArgs) -> audit::Options {
     audit::Options {
         base: base.to_string(),
         max_notes: budget.max_notes,
         max_chars: budget.max_chars,
-        review_limit: review.review_max,
     }
 }
 
-fn audit_cmd(base: &str, budget: &BudgetArgs, review: &ReviewArgs, json: bool) -> Result<i32> {
+fn audit_cmd(base: &str, budget: &BudgetArgs, json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let _lock = if root == wt::main_root()? {
         Some(LandingLock::acquire(&wt::trunk_name(&root))?)
     } else {
         None
     };
-    let reviewer = review::build(review.review.as_deref(), review.review_cmd.as_deref());
-    let out = audit::run(&root, &options(base, budget, review), reviewer.as_ref())?;
+    let out = audit::run(&root, &options(base, budget))?;
 
     if json {
         let value = serde_json::json!({
             "created": out.created.iter().map(|n| &n.meta.id).collect::<Vec<_>>(),
             "checked": out.stats,
-            "needs_review": out.review.iter().map(|n| serde_json::json!({
+            "drifted": out.drifted.iter().map(|n| serde_json::json!({
                 "id": n.meta.id, "path": n.path(), "anchor": n.meta.anchor,
             })).collect::<Vec<_>>(),
             "evicted": out.evicted.iter().map(|(n, why)| serde_json::json!({
                 "id": n.meta.id, "reason": why,
-            })).collect::<Vec<_>>(),
-            "reviewer": out.reviewer,
-            "verdicts": out.reviewed.iter().map(|(n, v, new)| serde_json::json!({
-                "id": n.meta.id, "verdict": v,
-                "replacement": new.as_ref().map(|x| x.meta.id.clone()),
             })).collect::<Vec<_>>(),
         });
         println!("{}", serde_json::to_string_pretty(&value)?);
@@ -897,7 +867,6 @@ fn done(
     cd: bool,
     squash: bool,
     budget: &BudgetArgs,
-    review: &ReviewArgs,
 ) -> Result<i32> {
     let lane_path = git::repo_root()?;
     let root = wt::main_root()?;
@@ -949,12 +918,7 @@ fn done(
     git(&["rebase", &trunk], Some(&lane_path))?;
     writeln!(info, "rebased onto {trunk}")?;
 
-    let reviewer = review::build(review.review.as_deref(), review.review_cmd.as_deref());
-    let out = audit::run(
-        &lane_path,
-        &options(&trunk, budget, review),
-        reviewer.as_ref(),
-    )?;
+    let out = audit::run(&lane_path, &options(&trunk, budget))?;
     audit::report(&out, info)?;
 
     // Fold this lane's per-branch files into the trunk's, so nothing accumulates.

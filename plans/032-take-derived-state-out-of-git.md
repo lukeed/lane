@@ -239,10 +239,20 @@ that log holds a landing record for the lane's branch, else `open`. A week passe
 preparing a lane and its pull request merging; `ls` is where the user goes to remember the
 lane exists, so it has to say so unprompted.
 
-`lane sweep` removes every landed lane. It inherits `wt::remove`'s `-d` semantics, which
-already refuse a branch holding commits trunk does not have — that refusal is the thing the
-ecosystem's `git branch -vv | awk '/gone]/' | xargs git branch -D` throws away, and it stays.
-Skip dirty lanes and name them. Nothing implicit: `new`, `done` and `audit` never sweep.
+`lane sweep` removes every landed lane. Skip dirty lanes and name them. Nothing implicit:
+`new`, `done` and `audit` never sweep.
+
+**`wt::remove`'s `-d` cannot be the safety check, which this plan originally assumed.**
+`-d` is ancestor-only, so it refuses every squash and rebase merge — the two cases sweep
+exists for. Worse, `wt::remove` deletes the worktree before it tries the branch, so a late
+refusal has already thrown the work away. Sweep needs its own gate, run first:
+`merge-base --is-ancestor`, then a comparison of the branch's cumulative diff against trunk
+by patch-id. That answers all three merge buttons, and only then is `wt::remove` called with
+force. The refusal the ecosystem's `git branch -vv | awk '/gone]/' | xargs git branch -D`
+throws away is kept, and made to work where `-d` does not.
+
+An empty probe needs its own branch: when the branch is already an ancestor the synthesised
+commit has no diff, no patch-id, and `git cherry` calls it unmerged.
 
 When trunk has no landing record and `origin/<trunk>` is ahead, say so and stop rather than
 fetching. Lane has never touched a remote and this is not the place to start.
@@ -310,17 +320,20 @@ the `AGENTS.md` protocol text, and `www/src`.
 
 ## Done criteria
 
-- [ ] `.lane/` holds only `memory/`, `attic/`, `log.jsonl`, `trees/`
-- [ ] `rg 'state\.json|NoteState|roll_up|gc_state|discard_branch_files' crates/` → no hits
-- [ ] A `holds` survives a landing, and survives a fresh clone
-- [ ] 027's case still reports drift on trunk after `lane done`
-- [ ] Two lanes prepared from the same base merge in either order with no conflict
-- [ ] `lane done --no-merge` leaves trunk unmoved and the lane in place
-- [ ] `lane ls` shows `landed` after a squash merge; `lane sweep` removes it
-- [ ] `lane sweep` refuses a dirty lane and one with commits trunk lacks
-- [ ] `lane new <existing-branch>` works
-- [ ] `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
+- [x] `.lane/` holds only `memory/`, `attic/`, `log.jsonl`, `trees/`
+- [x] `rg 'state\.json|NoteState|roll_up|gc_state|discard_branch_files' crates/` → no hits
+- [x] A `holds` survives a landing, and survives a fresh clone
+- [x] 027's case still reports drift on trunk after `lane done`
+- [x] Two lanes prepared from the same base merge in either order with no conflict
+- [x] `lane done --no-merge` leaves trunk unmoved and the lane in place
+- [x] `lane ls` shows `landed` after a squash merge; `lane sweep` removes it
+- [x] `lane sweep` refuses a dirty lane and one with commits trunk lacks
+- [x] `lane new <existing-branch>` works
+- [x] `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
       `./test_lane.sh` all clean
+
+Measured: `cargo test` 86 → 84 (six state-file tests deleted, four written);
+`./test_lane.sh` 120 → 142.
 
 ## STOP conditions
 
@@ -358,5 +371,8 @@ the `AGENTS.md` protocol text, and `www/src`.
 - **Detecting a merge by patch-id.** `git cherry` covers a rebase merge and a single-commit
   squash, and fails on a two-commit squash; the commit-tree probe that does work is
   archaeology lane does not need when it can write down a marker that survives the rewrite.
+  *Partly reversed in step 7*: the marker stays the detector, but the probe earns its place
+  as the safety gate, because "did this land" and "is anything on this branch missing from
+  trunk" are different questions and only the second one needs to look at the work.
 - **Deleting the landing lock.** It no longer protects state, but it still serializes trunk's
   ref and the memory commit between two local lanes. Out of scope.

@@ -1,5 +1,6 @@
 //! Command surface. Every command returns an exit code; failures bubble as errors.
 
+use crate::args::{self, Budget, Installable, Parsed};
 use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
@@ -8,140 +9,11 @@ use crate::syntax::{Resolution, Source};
 use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
-use clap::{Args, Parser, Subcommand};
 use rustix::fs::{FlockOperation, flock};
 use std::fs::{File, OpenOptions};
 use std::io::{IsTerminal, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-
-const MAX_NOTES: usize = 5;
-const MAX_CHARS: usize = 1200;
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "lane",
-    version,
-    about = "copy-on-write worktrees with memory that survives them"
-)]
-pub struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Args, Debug, Clone)]
-struct BudgetArgs {
-    #[arg(long, default_value_t = MAX_NOTES)]
-    max_notes: usize,
-    #[arg(long, default_value_t = MAX_CHARS)]
-    max_chars: usize,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    /// scaffold memory + merge rules, probe reflink
-    Init,
-    /// create a CoW lane
-    New {
-        name: String,
-        #[arg(long)]
-        base: Option<String>,
-        /// carry uncommitted work into the lane
-        #[arg(long)]
-        dirty: bool,
-        /// print path last, for shell fn
-        #[arg(long)]
-        cd: bool,
-    },
-    /// list lanes
-    Ls,
-    /// print a lane's path
-    Path { name: String },
-    /// record a finding
-    Note {
-        text: String,
-        #[arg(short, long)]
-        path: String,
-        #[arg(short, long, default_value = "@file")]
-        anchor: String,
-        #[arg(long)]
-        supersedes: Option<String>,
-    },
-    /// install lane's agent integrations
-    Install {
-        #[command(subcommand)]
-        what: Installable,
-    },
-    /// remove lane's agent integrations
-    Uninstall {
-        #[command(subcommand)]
-        what: Installable,
-    },
-    #[command(hide = true)]
-    Capture { rev: String },
-    /// show context for a path
-    Why {
-        path: Option<String>,
-        #[arg(short, long)]
-        anchor: Option<String>,
-    },
-    /// re-vouch for a drifted note
-    Holds { id: String },
-    /// staleness report
-    Check {
-        #[arg(long)]
-        json: bool,
-    },
-    /// promote, re-anchor, rank, evict
-    Audit {
-        #[arg(long, default_value = "")]
-        base: String,
-        #[command(flatten)]
-        budget: BudgetArgs,
-        #[arg(long)]
-        json: bool,
-    },
-    /// rebase, audit, fast-forward, remove
-    Done {
-        #[arg(long)]
-        trunk: Option<String>,
-        #[arg(long)]
-        keep: bool,
-        #[arg(long)]
-        cd: bool,
-        /// squash lane commits into one landing commit
-        #[arg(long, conflicts_with = "no_merge")]
-        squash: bool,
-        /// stop after the memory commit, for a pull request to carry
-        #[arg(long)]
-        no_merge: bool,
-        #[command(flatten)]
-        budget: BudgetArgs,
-    },
-    /// remove lanes whose branch has landed in trunk
-    Sweep {
-        /// list what would go, remove nothing
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// discard a lane without landing it
-    Rm {
-        name: String,
-        /// discard commits trunk does not have
-        #[arg(long)]
-        force: bool,
-    },
-    /// print shell integration
-    Shellenv,
-}
-
-#[derive(Subcommand, Debug)]
-enum Installable {
-    /// commit-message capture hooks
-    Hooks,
-    /// the lane skill, teaching an agent the daily loop
-    Skill,
-}
 
 /// Takes the stream it will be written to; under --cd that is stderr, not stdout.
 fn bold(text: &str, tty: bool) -> String {
@@ -153,49 +25,62 @@ fn bold(text: &str, tty: bool) -> String {
 }
 
 pub fn run() -> Result<i32> {
-    match Cli::parse().command {
-        Command::Init => init(),
-        Command::New {
-            name,
-            base,
-            dirty,
-            cd,
-        } => new(&name, base.as_deref(), dirty, cd),
-        Command::Ls => ls(),
-        Command::Path { name } => path(&name),
-        Command::Note {
-            text,
-            path,
-            anchor,
-            supersedes,
-        } => note(&text, &path, &anchor, supersedes.as_deref()),
-        Command::Install { what } => match what {
+    // A usage error is the reader's, not the program's: it exits 2, the way a
+    // command line has always distinguished "you typed it wrong" from "it failed".
+    let parsed = match args::parse(std::env::args_os().skip(1).collect()) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            eprintln!("error: {err:#}");
+            return Ok(2);
+        }
+    };
+
+    match parsed {
+        Parsed::Help(topic) => {
+            println!("{}", topic.text());
+            Ok(0)
+        }
+        Parsed::Version => {
+            println!("lane {}", args::VERSION);
+            Ok(0)
+        }
+        Parsed::Init => init(),
+        Parsed::New(args) => new(&args.name, args.base.as_deref(), args.dirty, args.cd),
+        Parsed::Ls => ls(),
+        Parsed::Path { name } => path(&name),
+        Parsed::Note(args) => note(
+            &args.text,
+            &args.path,
+            &args.anchor,
+            args.supersedes.as_deref(),
+        ),
+        Parsed::Install(what) => match what {
             Installable::Hooks => hooks_install(),
             Installable::Skill => skill_install(),
         },
-        Command::Uninstall { what } => match what {
+        Parsed::Uninstall(what) => match what {
             Installable::Hooks => hooks_uninstall(),
             Installable::Skill => skill_uninstall(),
         },
-        Command::Capture { rev } => {
+        Parsed::Capture { rev } => {
             capture::capture(&rev);
             Ok(0)
         }
-        Command::Why { path, anchor } => why(path.as_deref(), anchor.as_deref()),
-        Command::Holds { id } => holds(&id),
-        Command::Check { json } => check(json),
-        Command::Audit { base, budget, json } => audit_cmd(&base, &budget, json),
-        Command::Done {
-            trunk,
-            keep,
-            cd,
-            squash,
-            no_merge,
-            budget,
-        } => done(trunk.as_deref(), keep, cd, squash, no_merge, &budget),
-        Command::Sweep { dry_run } => sweep(dry_run),
-        Command::Rm { name, force } => rm(&name, force),
-        Command::Shellenv => shellenv(),
+        Parsed::Why(args) => why(args.path.as_deref(), args.anchor.as_deref()),
+        Parsed::Holds { id } => holds(&id),
+        Parsed::Check { json } => check(json),
+        Parsed::Audit(args) => audit_cmd(&args.base, &args.budget, args.json),
+        Parsed::Done(args) => done(
+            args.trunk.as_deref(),
+            args.keep,
+            args.cd,
+            args.squash,
+            args.no_merge,
+            &args.budget,
+        ),
+        Parsed::Sweep { dry_run } => sweep(dry_run),
+        Parsed::Rm(args) => rm(&args.name, args.force),
+        Parsed::Shellenv => shellenv(),
     }
 }
 
@@ -935,7 +820,7 @@ fn mark(tier: &str) -> &'static str {
     }
 }
 
-fn options(base: &str, budget: &BudgetArgs) -> audit::Options {
+fn options(base: &str, budget: &Budget) -> audit::Options {
     audit::Options {
         base: base.to_string(),
         max_notes: budget.max_notes,
@@ -943,7 +828,7 @@ fn options(base: &str, budget: &BudgetArgs) -> audit::Options {
     }
 }
 
-fn audit_cmd(base: &str, budget: &BudgetArgs, json: bool) -> Result<i32> {
+fn audit_cmd(base: &str, budget: &Budget, json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let _lock = if root == wt::main_root()? {
         Some(LandingLock::acquire(&wt::trunk_name(&root))?)
@@ -981,7 +866,7 @@ fn done(
     cd: bool,
     squash: bool,
     no_merge: bool,
-    budget: &BudgetArgs,
+    budget: &Budget,
 ) -> Result<i32> {
     let lane_path = git::repo_root()?;
     let root = wt::main_root()?;
@@ -1135,29 +1020,6 @@ mod tests {
 
         flock(&first, FlockOperation::NonBlockingLockExclusive).unwrap();
         assert!(flock(&second, FlockOperation::NonBlockingLockExclusive).is_err());
-    }
-
-    #[test]
-    fn install_and_uninstall_take_hooks_or_skill() {
-        let cli = Cli::try_parse_from(["lane", "install", "skill"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Command::Install {
-                what: Installable::Skill
-            }
-        ));
-        let cli = Cli::try_parse_from(["lane", "uninstall", "hooks"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Command::Uninstall {
-                what: Installable::Hooks
-            }
-        ));
-    }
-
-    #[test]
-    fn the_old_hooks_install_spelling_no_longer_parses() {
-        assert!(Cli::try_parse_from(["lane", "hooks", "install"]).is_err());
     }
 
     #[test]

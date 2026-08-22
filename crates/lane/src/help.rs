@@ -113,8 +113,6 @@ impl Help {
 // padded top and bottom.
 
 const ROOT: &str = "
-  copy-on-write worktrees with memory that survives them
-
   Usage
     $ lane <command> [options]
 
@@ -148,9 +146,8 @@ const ROOT: &str = "
 
 const INIT: &str = "
   Description
-    Scaffold .lane/, register the union merge rule for the append-only record,
-    write the AGENTS.md protocol, and report whether this filesystem can
-    reflink. Safe to re-run: an edited protocol is refused, not overwritten.
+    Scaffold .lane/, the merge rule, and the AGENTS.md protocol, and report
+    whether this filesystem can reflink. Safe to re-run.
 
   Usage
     $ lane init
@@ -161,10 +158,8 @@ const INIT: &str = "
 
 const NEW: &str = "
   Description
-    Create a lane: a worktree under .lane/trees/ and the branch it is on.
-    Everything git ignores is cloned by reference rather than copied, so a
-    build cache or node_modules costs no disk. Where the filesystem cannot
-    reflink, a plain worktree is left instead and the reason is printed.
+    Create a worktree under .lane/trees/ and the branch it is on. Everything
+    git ignores is cloned by reference, so a build cache costs no disk.
 
   Usage
     $ lane new <name> [options]
@@ -183,8 +178,8 @@ const NEW: &str = "
 
 const LS: &str = "
   Description
-    List every lane in this repository: its name, the branch it carries,
-    whether its worktree is clean, and how many notes it has yet to land.
+    Every lane's name, the branch it carries, whether it is clean, and how
+    many notes it has yet to land.
 
   Usage
     $ lane ls
@@ -195,8 +190,7 @@ const LS: &str = "
 
 const PATH: &str = "
   Description
-    Print one lane's worktree path. The shell function built by `lane shellenv`
-    calls this to implement `lane cd`.
+    Print one lane's worktree path.
 
   Usage
     $ lane path <name>
@@ -207,10 +201,8 @@ const PATH: &str = "
 
 const NOTE: &str = "
   Description
-    Record one finding about one anchor. The note is written once and never
-    rewritten, so two lanes can hold notes about the same anchor and a merge
-    has nothing to resolve. An anchor is `fn verify`, `#script`, `## Heading`,
-    or `@file` for the whole file.
+    Record one finding about one anchor. An anchor is `fn verify`, `#script`,
+    `## Heading`, or `@file` for the whole file.
 
   Usage
     $ lane note -p <path> [options] <text>
@@ -229,9 +221,8 @@ const NOTE: &str = "
 
 const INSTALL: &str = "
   Description
-    Install one of lane's agent integrations. `hooks` adds the commit-message
-    capture hooks that turn a `Why:` trailer into a pending note. `skill`
-    writes the lane skill, which teaches an agent the daily loop.
+    Install an agent integration. `hooks` captures a commit's `Why:` trailer
+    as a pending note; `skill` teaches an agent the daily loop.
 
   Usage
     $ lane install <hooks|skill>
@@ -246,8 +237,8 @@ const INSTALL: &str = "
 
 const UNINSTALL: &str = "
   Description
-    Remove one of lane's agent integrations. Only lane's own delimited block is
-    spliced out, so anything else in the file survives.
+    Remove an agent integration. Only lane's own delimited block is spliced
+    out, so the rest of the file survives.
 
   Usage
     $ lane uninstall <hooks|skill>
@@ -258,9 +249,8 @@ const UNINSTALL: &str = "
 
 const WHY: &str = "
   Description
-    Print what earlier lanes learned about a path: every note held for it, with
-    the anchor it is about and the id you need to re-vouch for it. With no
-    path, report the whole store.
+    Print what earlier lanes learned about a path, each note with the id you
+    need to re-vouch for it. With no path, report the whole store.
 
   Usage
     $ lane why [path] [options]
@@ -276,10 +266,8 @@ const WHY: &str = "
 
 const HOLDS: &str = "
   Description
-    Re-vouch for a note that drifted: the span it describes changed, and you
-    have read it and say it is still true. Any unambiguous prefix of the id
-    works. The alternatives are `lane note --supersedes <id>` when the sentence
-    must change, and deleting the note file when the constraint is gone.
+    Re-vouch for a drifted note: its span changed and you say it is still
+    true. Any unambiguous prefix of the id works.
 
   Usage
     $ lane holds <id>
@@ -290,8 +278,7 @@ const HOLDS: &str = "
 
 const CHECK: &str = "
   Description
-    List every note that is not fresh, each with the id you need next. A note
-    stays listed until you hold it, supersede it, or delete it.
+    Every note that is not fresh, each with the id you need next.
 
   Usage
     $ lane check [options]
@@ -303,10 +290,8 @@ const CHECK: &str = "
 
 const AUDIT: &str = "
   Description
-    Resolve pending notes against the working tree, follow renames, re-anchor
-    what moved, rank each (path, anchor) against its budget, and evict the
-    remainder to the attic with a reason. `lane done` runs this for you; run it
-    by hand to see what a landing would do.
+    Resolve pending notes against the working tree, re-anchor what moved, and
+    evict past the budget to the attic. `lane done` runs this for you.
 
   Usage
     $ lane audit [options]
@@ -321,10 +306,8 @@ const AUDIT: &str = "
 
 const DONE: &str = "
   Description
-    Land a lane: rebase onto the trunk, audit memory against the post-rebase
-    tree, commit the memory it changed, fast-forward the trunk, and remove the
-    worktree. A lock held for the whole landing makes it exclusive, so two
-    lanes landing at once serialize rather than race.
+    Land a lane: rebase onto the trunk, audit memory, fast-forward, and remove
+    the worktree. Landings are locked, so two at once serialize.
 
   Usage
     $ lane done [options]
@@ -361,9 +344,8 @@ const SWEEP: &str = "
 
 const RM: &str = "
   Description
-    Discard a lane without landing it. Its per-branch state and record go with
-    it. A lane holding commits the trunk does not have is refused unless
-    --force says to throw them away.
+    Discard a lane without landing it, with its per-branch state and record.
+    Commits the trunk does not have are refused unless --force.
 
   Usage
     $ lane rm <name> [options]
@@ -375,9 +357,8 @@ const RM: &str = "
 
 const SHELLENV: &str = "
   Description
-    Print the shell function that makes `lane new` and `lane done` leave you in
-    the right directory, and adds `lane cd <name>`. Add it to .zshrc or
-    .bashrc once per machine.
+    Print the shell function that leaves you in the right directory after
+    `lane new` and `lane done`, and adds `lane cd <name>`.
 
   Usage
     $ eval \"$(lane shellenv)\"

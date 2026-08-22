@@ -168,9 +168,11 @@ removed fix-login
 ```
 
 The marker is tree content, not a commit, so a squash or a rebase merge cannot hide it —
-`git branch -d` refuses both even when the trees are identical. Sweep still checks that
-nothing on the branch is missing from trunk, so work committed to the lane after the
-pull request merged is never discarded.
+`git branch -d` refuses both even when the trees are identical. It names the lane rather
+than the branch, because `fix` twice in a week is normal and the second one has landed
+nothing. Sweep still checks that nothing on the branch is missing from trunk, so work
+committed to the lane after the pull request merged is never discarded, and it removes
+nothing you are standing in.
 
 ## Install
 

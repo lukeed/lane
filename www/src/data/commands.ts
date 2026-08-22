@@ -126,7 +126,7 @@ export let commands: Command[] = [
 	{
 		name: "sweep",
 		usage: "lane sweep [--dry-run]",
-		summary: "removes every lane whose branch has landed in trunk, seen through a squash or rebase merge, skipping any that is dirty or holds work trunk does not have.",
+		summary: "removes every lane that has landed in trunk, seen through a squash or rebase merge, skipping any that is dirty, holds work trunk does not have, or is the directory you are in.",
 		options: [
 			{ flag: "--dry-run", arg: null, about: "list what would go, remove nothing." },
 		],

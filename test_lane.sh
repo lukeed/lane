@@ -691,6 +691,34 @@ is "sweep refuses work trunk does not have" \
 is "and leaves the lane in place" \
    "$([ -d .lane/trees/after ] && echo yes || echo no)" "yes"
 
+echo "== 36. a landing marks the lane, not the name =="
+setup
+"$LANE" new fix > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/fix" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "first time round" > /dev/null \
+  && "$LANE" done > /dev/null 2>&1 )
+is "the marker carries a lane id" \
+   "$(jq -r 'select(.kind=="landing") | .lane | length' .lane/log.jsonl)" "26"
+# `fix` twice in a week is normal, and the second one has landed nothing.
+"$LANE" new fix > /dev/null 2>&1
+is "a reused name is not landed" "$("$LANE" ls | grep -c 'fix .*open')" "1"
+is "sweep leaves it alone" "$("$LANE" sweep 2>&1 | grep -c 'no landed lanes')" "1"
+is "and it is still on disk" "$([ -d .lane/trees/fix ] && echo yes || echo no)" "yes"
+
+echo "== 37. nothing removes the directory you are standing in =="
+setup
+"$LANE" new here > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/here" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "n" > /dev/null \
+  && "$LANE" done --no-merge > /dev/null 2>&1 )
+git merge -q --squash here && git commit -qm "squash here" > /dev/null
+is "sweep refuses from inside the lane" \
+   "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" sweep 2>&1 | grep -c 'cd out first')" "1"
+is "rm refuses from inside the lane" \
+   "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" rm here --force 2>&1 | grep -c 'cd out first')" "1"
+is "the lane is untouched" "$([ -d .lane/trees/here ] && echo yes || echo no)" "yes"
+is "and sweep still works from the root" "$("$LANE" sweep 2>&1 | grep -c 'removed here')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

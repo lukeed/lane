@@ -332,8 +332,31 @@ the `AGENTS.md` protocol text, and `www/src`.
 - [x] `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
       `./test_lane.sh` all clean
 
-Measured: `cargo test` 86 → 84 (six state-file tests deleted, four written);
-`./test_lane.sh` 120 → 142.
+Measured: `cargo test` 86 → 85 (six state-file tests deleted, five written);
+`./test_lane.sh` 120 → 150.
+
+## Found in review, after the steps above
+
+Three bugs the step-level verifications missed, all in `sweep`'s neighbourhood. Each has a
+regression in `test_lane.sh`.
+
+1. **The marker named the branch, and branch names are reused.** `fix` twice in a week is
+   normal; the second lane matched the first one's marker, reported `landed`, and swept
+   clean because a lane with no commits is vacuously contained in trunk. Fixed by stamping
+   a ULID per lane at `lane new` into `$GIT_DIR/lane/id` — per-worktree, never committed,
+   the same resolution `pending.jsonl` uses — and keying the marker on it. A lane with no
+   id is never swept: `sweep` is destructive, so an unrecognised lane fails safe.
+2. **`sweep` and `rm` deleted the directory the caller was standing in.** `done` guards
+   this by chdir'ing to the root first; the other two had no reason to and so did not.
+   That is plan 006's failure — a shell left in a path that no longer exists. The guard
+   belongs in `wt::remove`, which all three go through.
+3. **A confirmation record with no fingerprint silenced a note forever.** `check` reads an
+   empty baseline as a first fingerprint and returns fresh, so one truncated log line would
+   mark a note permanently current. `confirmations` now skips records carrying no
+   fingerprint, falling back to the note's own.
+
+Also verified by hand, not covered by a step: `lane new <existing-branch> --dirty` carries
+exactly one modified file, which is the invariant section 3 asserts for a new branch.
 
 ## STOP conditions
 

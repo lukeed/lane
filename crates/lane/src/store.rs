@@ -15,6 +15,7 @@ pub const NOTES: &str = "memory";
 pub const ATTIC: &str = "attic";
 pub const LOG: &str = "log.jsonl";
 pub const PENDING: &str = "lane/pending.jsonl";
+pub const LANE_ID: &str = "lane/id";
 
 /// Log record kinds. `holds` and `rebaseline` both move a baseline and are distinguished
 /// so a machine's automatic re-anchor never reads as a person's vouch.
@@ -35,6 +36,41 @@ pub fn pending_path(worktree: &Path) -> PathBuf {
     } else {
         PathBuf::from(resolved)
     }
+}
+
+/// A lane's own identity, stamped at creation and never committed.
+///
+/// Per-worktree, so it dies with the lane. A landing marker names the branch, and branch
+/// names are reused — `fix` twice in a week is normal — so the name alone would make a
+/// fresh lane look like the landed one it was named after.
+pub fn lane_id(worktree: &Path) -> String {
+    let path = git::try_git(
+        &["rev-parse", "--path-format=absolute", "--git-path", LANE_ID],
+        Some(worktree),
+    );
+    if path.is_empty() {
+        return String::new();
+    }
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .trim()
+        .into()
+}
+
+pub fn stamp_lane_id(worktree: &Path) -> Result<()> {
+    let path = git::try_git(
+        &["rev-parse", "--path-format=absolute", "--git-path", LANE_ID],
+        Some(worktree),
+    );
+    if path.is_empty() {
+        return Ok(());
+    }
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{}\n", ulid()))?;
+    Ok(())
 }
 
 /// The whole file. Its span has no declaration line, so its first line is an
@@ -147,6 +183,12 @@ pub fn confirmations(root: &Path) -> HashMap<String, Confirmation> {
             norm: field(&entry, "norm"),
             at: field(&entry, "at"),
         };
+        // A record with no fingerprint vouches for nothing. `check` reads an empty baseline
+        // as a first fingerprint and reports fresh, so a truncated line would silence a
+        // note forever; fall back to the creation fingerprint instead.
+        if fresh.sig.is_empty() && fresh.body_hash.is_empty() {
+            continue;
+        }
         match out.get(&id) {
             Some(have) if have.at > fresh.at => {}
             _ => {
@@ -164,8 +206,8 @@ pub fn landings(log: &str) -> HashSet<String> {
     log.lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .filter(|entry| field(entry, "kind") == LANDING)
-        .map(|entry| field(&entry, "branch"))
-        .filter(|branch| !branch.is_empty())
+        .map(|entry| field(&entry, "lane"))
+        .filter(|lane| !lane.is_empty())
         .collect()
 }
 
@@ -711,6 +753,17 @@ mod tests {
     }
 
     #[test]
+    fn a_fingerprintless_record_vouches_for_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        append_log(
+            root.path(),
+            &serde_json::json!({"at": "2026-06-01T00:00:00Z", "kind": HOLDS, "id": "01M0A"}),
+        )
+        .unwrap();
+        assert!(!confirmations(root.path()).contains_key("01M0A"));
+    }
+
+    #[test]
     fn confirmations_take_the_newest_record() {
         let root = tempfile::tempdir().unwrap();
         confirm(root.path(), "01M0A", "2026-01-01T00:00:00Z", "old", "", "");
@@ -730,16 +783,22 @@ mod tests {
     }
 
     #[test]
-    fn a_landing_marker_names_the_branch_that_merged() {
+    fn a_landing_marker_names_the_lane_not_the_branch() {
         let log = concat!(
-            r#"{"kind":"evict","branch":"noise"}"#,
+            r#"{"kind":"evict","branch":"fix","lane":"01M0NOISE"}"#,
             "\n",
-            r#"{"kind":"landing","branch":"fix-login"}"#,
+            r#"{"kind":"landing","branch":"fix","lane":"01M0FIRST"}"#,
+            "\n",
+            r#"{"kind":"landing","branch":"other"}"#,
             "\n",
         );
         let landed = landings(log);
-        assert!(landed.contains("fix-login"));
-        assert!(!landed.contains("noise"));
+        assert!(landed.contains("01M0FIRST"));
+        // Branch names are reused; a second lane called `fix` has landed nothing.
+        assert!(!landed.contains("fix"));
+        assert!(!landed.contains("01M0NOISE"));
+        // A marker with no lane id matches nothing rather than everything.
+        assert!(!landed.contains(""));
     }
 
     #[test]

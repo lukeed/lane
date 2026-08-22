@@ -663,7 +663,7 @@ fn ls() -> Result<i32> {
     }
     // A week can pass between preparing a lane and its pull request merging, so `ls` has
     // to say the lane is collectable without being asked.
-    let landed = landed_branches(&root);
+    let landed = landed_lanes(&root);
     for lane in lanes {
         let name = lane
             .path
@@ -675,7 +675,7 @@ fn ls() -> Result<i32> {
         } else {
             "clean"
         };
-        let state = if landed.contains(&lane.branch) {
+        let state = if landed.contains(&store::lane_id(&lane.path)) {
             "landed"
         } else {
             "open"
@@ -690,8 +690,8 @@ fn ls() -> Result<i32> {
 }
 
 /// Trunk's copy of the log, read from the ref so it is what merged rather than what is
-/// checked out. A branch landed exactly when its marker reached that copy.
-fn landed_branches(root: &Path) -> std::collections::HashSet<String> {
+/// checked out. A lane landed exactly when its marker reached that copy.
+fn landed_lanes(root: &Path) -> std::collections::HashSet<String> {
     let trunk = wt::trunk_name(root);
     let log = try_git(
         &["show", &format!("{trunk}:{LANE_DIR}/{}", store::LOG)],
@@ -703,13 +703,15 @@ fn landed_branches(root: &Path) -> std::collections::HashSet<String> {
 fn sweep(dry_run: bool) -> Result<i32> {
     let root = wt::main_root()?;
     let trunk = wt::trunk_name(&root);
-    let landed = landed_branches(&root);
+    let landed = landed_lanes(&root);
     let lanes = wt::list_lanes(&root);
 
     let mut removed = 0;
     let mut skipped = 0;
     for lane in lanes {
-        if !landed.contains(&lane.branch) {
+        // Identity, not name. A lane with no id was not made by `lane new`, and sweep is
+        // destructive, so an unrecognised lane is left alone rather than guessed at.
+        if !landed.contains(&store::lane_id(&lane.path)) {
             continue;
         }
         let name = lane
@@ -1032,10 +1034,14 @@ fn done(
 
     // The marker that survives every merge strategy. Its presence in trunk's copy of the
     // log is what tells `lane sweep` this branch landed.
+    let lane_id = store::lane_id(&lane_path);
+    if lane_id.is_empty() {
+        eprintln!("warning: lane has no id; `lane sweep` will not recognise this landing");
+    }
     store::append_log(
         &lane_path,
         &serde_json::json!({
-            "at": now_iso(), "kind": store::LANDING, "branch": branch,
+            "at": now_iso(), "kind": store::LANDING, "branch": branch, "lane": lane_id,
         }),
     )?;
 

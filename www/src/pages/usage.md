@@ -174,8 +174,10 @@ two lanes on one machine.
 The lane stays on disk until the pull request merges. `lane ls` marks it `landed` once
 trunk carries its landing record; `lane sweep` removes it. The marker is tree content
 rather than a commit, so neither a squash nor a rebase merge can hide it — `git branch -d`
-refuses both even when the trees are identical. Sweep still checks that nothing on the
-branch is missing from trunk, so work committed after the merge is never discarded.
+refuses both even when the trees are identical. It names the lane rather than the branch,
+because `fix` twice in a week is normal and the second one has landed nothing. Sweep still
+checks that nothing on the branch is missing from trunk, so work committed after the merge
+is never discarded, and it removes nothing you are standing in.
 
 ## What happens to notes over time
 

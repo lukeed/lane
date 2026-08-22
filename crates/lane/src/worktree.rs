@@ -359,6 +359,8 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
         }
     };
 
+    crate::store::stamp_lane_id(&dest)?;
+
     Ok(Created {
         path: dest,
         stats,
@@ -373,6 +375,19 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
 pub fn remove(name: &str, force: bool) -> Result<bool> {
     let root = main_root()?;
     let dest = lanes_dir(&root).join(name);
+
+    // Deleting the directory the caller is standing in leaves their shell in a path that no
+    // longer exists, which is the failure plan 006 exists to prevent. `done` chdirs to the
+    // root before it gets here; `rm` and `sweep` have no reason to, so refuse instead.
+    let inside = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| cwd.canonicalize().ok())
+        .zip(dest.canonicalize().ok())
+        .is_some_and(|(cwd, dest)| cwd.starts_with(dest));
+    if inside {
+        bail!("cannot remove lane {name} from inside it; cd out first");
+    }
+
     let dest_str = dest.to_string_lossy().to_string();
 
     let mut args = vec!["worktree", "remove"];

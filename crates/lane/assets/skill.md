@@ -20,6 +20,10 @@ lane done              # rebase, audit memory, fast-forward trunk, delete the la
 `lane new` prints the path. Work there, not in the parent tree. `lane done` rebases, so
 commit or stash tracked changes first; untracked files are fine.
 
+Where trunk is protected, `lane done --no-merge` stops after the memory commit and leaves
+the merge to the pull request. Push the branch, and once it merges run `lane sweep` to
+remove the lane. `lane ls` marks a lane `landed` when trunk carries its landing record.
+
 ## Read before you edit
 
 ```bash
@@ -34,7 +38,9 @@ still true — the words are what matter, not the hash.
 Before `lane done`, run `lane check`. It lists every note that is not fresh, each with
 the id you need next. Read the note and its current span, then take exactly one action:
 
-- `lane holds <id>` when the note is still true.
+- `lane holds <id>` when the note is still true. This appends a record to
+  `.lane/log.jsonl`, so commit it — a confirmation you do not commit is one nobody else
+  gets.
 - `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is
   still right but the sentence is wrong.
 

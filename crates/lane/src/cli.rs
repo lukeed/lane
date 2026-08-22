@@ -702,6 +702,7 @@ fn landed_branches(root: &Path) -> std::collections::HashSet<String> {
 
 fn sweep(dry_run: bool) -> Result<i32> {
     let root = wt::main_root()?;
+    let trunk = wt::trunk_name(&root);
     let landed = landed_branches(&root);
     let lanes = wt::list_lanes(&root);
 
@@ -721,28 +722,27 @@ fn sweep(dry_run: bool) -> Result<i32> {
             skipped += 1;
             continue;
         }
+        // Checked before anything is removed: `wt::remove` drops the worktree even when it
+        // keeps the branch, so a late refusal would already have thrown the work away.
+        if !wt::contained_in(&root, &trunk, &lane.branch) {
+            eprintln!("skipped {name}: has work {trunk} does not");
+            skipped += 1;
+            continue;
+        }
         if dry_run {
             println!("would remove {name}");
             removed += 1;
             continue;
         }
-        // `-d`, never `-D`: a lane holding commits trunk does not have is not swept, even
-        // when its branch landed. Discarding them stays something you ask for.
-        if wt::remove(&name, false)? {
-            println!("removed {name}");
-            removed += 1;
-        } else {
-            eprintln!(
-                "skipped {name}: has commits {} does not",
-                wt::trunk_name(&root)
-            );
-            skipped += 1;
-        }
+        // Forced, and only here: the landing marker plus the containment probe are stronger
+        // evidence than `git branch -d`, which refuses every squash and rebase merge.
+        wt::remove(&name, true)?;
+        println!("removed {name}");
+        removed += 1;
     }
 
     if removed == 0 && skipped == 0 {
         println!("no landed lanes");
-        let trunk = wt::trunk_name(&root);
         let behind = try_git(
             &["rev-list", "--count", &format!("{trunk}..origin/{trunk}")],
             Some(&root),

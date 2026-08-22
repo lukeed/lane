@@ -10,6 +10,8 @@ lane ls
 lane note -p src/auth.rs -a "fn verify" "..."
 lane why src/auth.rs                 read what earlier lanes learned
 lane done                            rebase, audit memory, fast-forward, remove
+lane done --no-merge                 stop at the commit, for a pull request to carry
+lane sweep                           remove lanes whose branch has landed
 ```
 
 Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`,
@@ -53,27 +55,30 @@ git config --add lane.exclude packages/legacy/node_modules
 
 ## Memory
 
-`.lane/` holds lane's memory, per-branch records, and worktrees:
+`.lane/` holds lane's memory, its record, and worktrees:
 
 ```
 .lane/
   memory/<path>/<ulid>-<slug>.md the note; written once, never rewritten
   attic/<path>/<ulid>-<slug>.md  the same file, retired, byte-identical
-  branch/<name>/state.json       per-branch cache: fingerprints
-  branch/<name>/log.jsonl        per-branch record: verdicts and evictions
+  log.jsonl                      the record: evictions, holds, landings
   trees/<name>/                  the lane worktree
 ```
 
-A note file is written once and never modified, so two branches can never edit
-the same bytes and a merge has nothing to resolve. State files are written by
-more than one branch, but a lock held for the duration of `lane done`
-serializes those writes, so a landing is exclusive. `lane done` folds a lane's
-state and log into the trunk's, so nothing accumulates.
+Nothing derived is committed. A note file is written once and never modified, and
+the log is only ever appended to, so two branches can never edit the same bytes
+and a merge has nothing to resolve.
+
+A note's baseline — the shape of the code it describes — comes from its own
+frontmatter, written at creation, and is moved only by a `holds` record. Both are
+committed, so every clone compares against the same thing and a confirmation
+survives a merge you did not make. The current fingerprint is recomputed every run
+and stored nowhere.
 
 `memory/` is reserved. Everything under it mirrors your paths, which is why a repo may
 have its own `attic/` without colliding with ours.
 
-The only `merge=union` rule is for `branch/*/log.jsonl`, the one genuinely append-only
+The only `merge=union` rule is for `log.jsonl`, the one genuinely append-only
 file — which is what union merge is actually for. Notes need no rule because
 they never change; a conflict on one means two people disagreed about `pinned`,
 and that should be loud.
@@ -135,6 +140,37 @@ Notes stay as pending JSON until audit. `lane done` rebases first, *then*
 resolves and fingerprints spans against the post-rebase tree. Nothing is ever
 anchored to a commit the rebase is about to rewrite, so `notes.rewriteRef` is
 unnecessary and squash semantics never come up.
+
+## Pull requests
+
+`lane done` lands the lane itself: it fast-forwards trunk and removes the worktree.
+Where trunk is protected, `lane done --no-merge` stops one step earlier — rebase,
+audit, commit — and leaves the merge to wherever the pull request is merged.
+
+```bash
+lane done --no-merge
+git push -u origin fix-login
+```
+
+Turn on **"Require branches to be up to date before merging."** The audit fingerprints
+spans against the post-rebase tree, so a pull request merged on a stale base describes
+a tree nobody has. That setting is what serializes two clones, the way the landing lock
+serializes two lanes on one machine.
+
+Then the lane sits on disk until the pull request merges, which may be a week. `lane ls`
+marks it `landed` once trunk carries its landing record, and `lane sweep` removes it:
+
+```
+$ lane ls
+fix-login    fix-login    landed   clean   0 pending note(s)
+$ lane sweep
+removed fix-login
+```
+
+The marker is tree content, not a commit, so a squash or a rebase merge cannot hide it —
+`git branch -d` refuses both even when the trees are identical. Sweep still checks that
+nothing on the branch is missing from trunk, so work committed to the lane after the
+pull request merged is never discarded.
 
 ## Install
 

@@ -48,9 +48,9 @@ export let commands: Command[] = [
 	{
 		name: "ls",
 		usage: "lane ls",
-		summary: "lists every lane with its branch, dirty state, and pending note count.",
+		summary: "lists every lane with its branch, whether it has landed, dirty state, and pending note count.",
 		options: [],
-		example: "$ lane ls\nagent-a    agent-a    clean   3 pending note(s)\nagent-b    agent-b    dirty   1 pending note(s)",
+		example: "$ lane ls\nagent-a    agent-a    open     clean   3 pending note(s)\nagent-b    agent-b    landed   dirty   1 pending note(s)",
 	},
 	{
 		name: "path",
@@ -109,17 +109,28 @@ export let commands: Command[] = [
 	},
 	{
 		name: "done",
-		usage: "lane done [--trunk <ref>] [--keep] [--squash]",
+		usage: "lane done [--trunk <ref>] [--keep] [--ff | --squash | --no-merge]",
 		summary: "rebases the lane onto trunk, audits memory, commits it, fast-forwards trunk, and removes the lane.",
 		options: [
 			{ flag: "--trunk", arg: "<ref>", about: "branch to rebase onto and advance; defaults to the repo's trunk." },
 			{ flag: "--keep", arg: null, about: "keep the lane worktree and branch after landing." },
+			{ flag: "--ff", arg: null, about: "fast-forward trunk to the lane; the default." },
 			{ flag: "--squash", arg: null, about: "squash the lane's commits into one landing commit." },
+			{ flag: "--no-merge", arg: null, about: "stop after the memory commit, leaving the merge to a pull request." },
 			{ flag: "--cd", arg: null, about: "print the main root path last on stdout, for the shell function." },
 			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 		],
 		example: "$ lane done\nrebased onto main\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 contract-changed, 0 missing\ncommitted memory update\nfast-forwarded main\nremoved lane fix-login",
+	},
+	{
+		name: "sweep",
+		usage: "lane sweep [--dry-run]",
+		summary: "removes every lane whose branch has landed in trunk, seen through a squash or rebase merge, skipping any that is dirty or holds work trunk does not have.",
+		options: [
+			{ flag: "--dry-run", arg: null, about: "list what would go, remove nothing." },
+		],
+		example: "$ lane sweep\nremoved fix-login\nskipped rate-limit: uncommitted changes",
 	},
 	{
 		name: "rm",

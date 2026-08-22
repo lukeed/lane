@@ -452,6 +452,43 @@ pub fn blocking_changes(root: &Path, trunk: &str, branch: &str) -> Vec<String> {
     .collect()
 }
 
+/// Is everything on `branch` already represented in `trunk`?
+///
+/// Three answers for GitHub's three merge buttons. A merge commit leaves the branch an
+/// ancestor. Anything else rewrites the SHAs, so `git branch -d` refuses even when the
+/// trees are identical; comparing the branch's cumulative diff against trunk by patch-id
+/// is what sees through a rebase or a squash.
+pub fn contained_in(root: &Path, trunk: &str, branch: &str) -> bool {
+    if git_ok(&["merge-base", "--is-ancestor", branch, trunk], Some(root)) {
+        return true;
+    }
+    let Ok(base) = git(&["merge-base", trunk, branch], Some(root)) else {
+        return false;
+    };
+    let Ok(tree) = git(&["rev-parse", &format!("{branch}^{{tree}}")], Some(root)) else {
+        return false;
+    };
+    // An empty probe has no patch-id to match, so `cherry` would call it unmerged.
+    if git(&["rev-parse", &format!("{base}^{{tree}}")], Some(root)).is_ok_and(|b| b == tree) {
+        return true;
+    }
+    let Ok(probe) = git(
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &base,
+            "-m",
+            "lane: containment probe",
+        ],
+        Some(root),
+    ) else {
+        return false;
+    };
+    let cherry = try_git(&["cherry", trunk, &probe], Some(root));
+    !cherry.is_empty() && cherry.lines().all(|line| line.starts_with('-'))
+}
+
 /// Advance trunk to branch: merge when trunk is checked out, update-ref when it is not.
 pub fn fast_forward(root: &Path, trunk: &str, branch: &str) -> Result<()> {
     let head = git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(root))?;

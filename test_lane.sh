@@ -155,7 +155,7 @@ is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' '
 echo "== 12. init scaffolding and the per-anchor budget =="
 setup
 is "gitattributes has one union rule, for the log" \
-   "$(grep -c 'branch/\*/log.jsonl merge=union' .gitattributes)" "1"
+   "$(grep -c '^\.lane/log\.jsonl merge=union$' .gitattributes)" "1"
 is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
 is "init does not touch .gitignore" "$(grep -c 'pending.jsonl' .gitignore)" "0"
 
@@ -254,7 +254,7 @@ is "done reports the move" "$(grep -c '^  moved   ' /tmp/lanemv.out)" "1"
 is "trunk has the note on the new path" \
    "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
 
-echo "== 17. notes are immutable; state and log are per-branch and roll up =="
+echo "== 17. notes are immutable and nothing derived is committed =="
 setup
 "$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
 "$LANE" audit > /dev/null
@@ -265,11 +265,11 @@ sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|
 "$LANE" audit > /dev/null
 is "a drifted note file is not rewritten" "$(cksum < "$N")" "$BEFORE"
 is "the note carries no path field" "$(grep -c '^path:' "$N")" "0"
-is "the fingerprint lives in state" \
-   "$(find .lane/branch -name 'state.json' | wc -l | tr -d ' ')" "1"
-is "state records the drift" \
-   "$(python3 -c 'import json,glob;d=json.load(open(glob.glob(".lane/branch/*/state.json")[0]));print(list(d.values())[0]["status"])')" \
-   "content-changed"
+is "the baseline is the note's own frontmatter" "$(grep -c '^body_hash:' "$N")" "1"
+is "nothing derived is written" \
+   "$([ -e .lane/branch ] && echo yes || echo no)" "no"
+is "an audit that finds drift writes no record" \
+   "$([ -e .lane/log.jsonl ] && echo yes || echo no)" "no"
 
 mkdir -p attic && echo "user content" > attic/f.txt
 git add -A && git commit -qm user-attic
@@ -284,10 +284,11 @@ git add -A && git commit -qm memory
   && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
   && "$LANE" done > /dev/null 2>&1 )
 cd "$TMP/repo"
-is "done rolls the lane's state into trunk's" \
-   "$(find .lane/branch -name 'state.json' | wc -l | tr -d ' ')" "1"
-is "the lane's own state file is gone" \
-   "$([ -f .lane/branch/land/state.json ] && echo yes || echo no)" "no"
+is "done lands one log and nothing per-branch" \
+   "$(find .lane -maxdepth 1 -name 'log.jsonl' | wc -l | tr -d ' '):$([ -e .lane/branch ] && echo yes || echo no)" \
+   "1:no"
+is "the landing is marked in trunk's log" \
+   "$(jq -c 'select(.kind=="landing" and .branch=="land")' .lane/log.jsonl | wc -l | tr -d ' ')" "1"
 
 echo "== 18. anchors we cannot resolve are kept, not discarded =="
 setup
@@ -567,7 +568,8 @@ git add -A .lane && git commit -qm memory > /dev/null
   && mv t src/auth.rs && git add -A && git commit -qm "change the span" > /dev/null \
   && "$LANE" audit > /dev/null )
 is "a lane preserves the baseline it compared against" \
-   "$(python3 -c "import json;print(int(any(v.get('body_hash') for v in json.load(open('$TMP/repo/.lane/trees/carry/.lane/branch/carry/state.json')).values())))")" "1"
+   "$(cd "$TMP/repo/.lane/trees/carry" && "$LANE" check --json \
+      | python3 -c "import json,sys; n=json.load(sys.stdin)[0]; print(int(n['tier']=='content-changed'))")" "1"
 ( cd "$TMP/repo/.lane/trees/carry" && "$LANE" done > /dev/null 2>&1 )
 is "and the drift survives the landing" \
    "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
@@ -598,6 +600,96 @@ git add -A .lane && git commit -qm holds
 cd "$TMP/repo"
 is "fresh state and change survive done" \
    "$("$LANE" check | awk '/^fresh/{print $2}'):$(grep -c '&& true' src/auth.rs)" "1:1"
+
+echo "== 32. a prepared lane merges elsewhere, then sweeps =="
+setup
+"$LANE" new feat > /dev/null 2>&1
+BEFORE=$(git rev-parse main)
+( cd "$TMP/repo/.lane/trees/feat" \
+  && sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& fresh()/' src/auth.rs \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "the freshness check is not optional" > /dev/null \
+  && git add -A && git commit -qm work > /dev/null \
+  && "$LANE" done --no-merge > /tmp/prep.out 2>&1 )
+cd "$TMP/repo"
+is "prepare leaves trunk where it was" "$(git rev-parse main)" "$BEFORE"
+is "prepare keeps the lane" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "yes"
+is "prepare says so" "$(grep -c 'main not moved' /tmp/prep.out)" "1"
+is "the lane is not landed yet" "$("$LANE" ls | grep -c 'feat .*open')" "1"
+
+# The merge happens where lane is not: squash, the button that hides every SHA.
+git merge -q --squash feat && git commit -qm "squash feat" > /dev/null
+is "ls sees the landing through a squash" "$("$LANE" ls | grep -c 'feat .*landed')" "1"
+is "the note came with it" \
+   "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "1"
+
+echo "x" >> .lane/trees/feat/src/auth.rs
+is "sweep skips a dirty lane" "$("$LANE" sweep 2>&1 | grep -c 'skipped feat')" "1"
+git -C .lane/trees/feat checkout -- src/auth.rs
+is "sweep removes it once clean" "$("$LANE" sweep 2>&1 | grep -c 'removed feat')" "1"
+is "and the lane is gone" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "no"
+
+echo "== 33. two lanes prepared from one base merge in either order =="
+setup
+"$LANE" new a > /dev/null 2>&1
+"$LANE" new b > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/a" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "a: callers rely on false-on-expiry" > /dev/null \
+  && "$LANE" done --no-merge > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/b" \
+  && "$LANE" note -p src/auth.rs -a "fn refresh" "b: rotation is not idempotent" > /dev/null \
+  && "$LANE" done --no-merge > /dev/null 2>&1 )
+cd "$TMP/repo"
+# Neither rebased onto the other: this is what two open pull requests look like.
+git merge -q --no-edit a > /dev/null 2>&1
+MERGED_B=$(git merge --no-edit b > /tmp/merge-b.out 2>&1; echo $?)
+is "the second merges without conflict" "$MERGED_B" "0"
+is "both notes survive" \
+   "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
+is "both landings are recorded" \
+   "$(jq -c 'select(.kind=="landing")' .lane/log.jsonl | wc -l | tr -d ' ')" "2"
+is "sweep collects both" "$("$LANE" sweep 2>&1 | grep -c '^removed')" "2"
+
+echo "== 34. a lane can adopt a branch that already exists =="
+setup
+git branch review-me
+"$LANE" new review-me > /dev/null 2>&1
+is "the lane is on the existing branch" \
+   "$(git -C .lane/trees/review-me rev-parse --abbrev-ref HEAD)" "review-me"
+is "no second branch was made" "$(git branch --list 'review-me*' | wc -l | tr -d ' ')" "1"
+"$LANE" rm review-me --force > /dev/null 2>&1
+git branch -D review-me > /dev/null 2>&1
+git branch taken
+is "--base is refused for an existing branch" \
+   "$("$LANE" new taken --base main 2>&1 | grep -c '^error:')" "1"
+
+echo "== 35. a rebase merge is seen, and unprepared work is not swept =="
+setup
+"$LANE" new rb > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/rb" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "rb: the note" > /dev/null \
+  && "$LANE" done --no-merge > /dev/null 2>&1 )
+# A rebase merge replays onto a trunk that moved, so every SHA differs and `-d` refuses.
+echo "// unrelated" >> src/auth.rs && git add -A && git commit -qm "trunk moved"
+git cherry-pick "$(git merge-base main rb)..rb" > /dev/null 2>&1
+is "the branch is no longer an ancestor" \
+   "$(git merge-base --is-ancestor rb main && echo yes || echo no)" "no"
+is "git itself refuses the branch" \
+   "$(git branch -d rb > /dev/null 2>&1 && echo deleted || echo refused)" "refused"
+is "sweep sees through the replay" "$("$LANE" sweep 2>&1 | grep -c 'removed rb')" "1"
+
+setup
+"$LANE" new after > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/after" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "prepared" > /dev/null \
+  && "$LANE" done --no-merge > /dev/null 2>&1 )
+git merge -q --squash after && git commit -qm "squash after" > /dev/null
+# Work that arrived after the pull request merged never reached trunk.
+( cd "$TMP/repo/.lane/trees/after" \
+  && echo "// later" >> src/auth.rs && git add -A && git commit -qm later > /dev/null )
+is "sweep refuses work trunk does not have" \
+   "$("$LANE" sweep 2>&1 | grep -c 'skipped after: has work main does not')" "1"
+is "and leaves the lane in place" \
+   "$([ -d .lane/trees/after ] && echo yes || echo no)" "yes"
 
 echo
 echo "passed: $pass   failed: $fail"

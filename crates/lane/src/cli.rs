@@ -8,134 +8,146 @@ use crate::syntax::{Resolution, Source};
 use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
-use clap::{Args, Parser, Subcommand};
 use rustix::fs::{FlockOperation, flock};
 use std::fs::{File, OpenOptions};
 use std::io::{IsTerminal, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-const MAX_NOTES: usize = 5;
-const MAX_CHARS: usize = 1200;
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "lane",
+#[derive(usage::Cli, Debug)]
+#[usage(
+    bin = "lane",
     version,
-    about = "copy-on-write worktrees with memory that survives them"
+    about = "copy-on-write worktrees with memory that survives them",
+    unknown_flags = "error"
 )]
 pub struct Cli {
-    #[command(subcommand)]
+    #[usage(subcommand)]
     command: Command,
 }
 
-#[derive(Args, Debug, Clone)]
+#[derive(usage::Args, Debug, Clone)]
 struct BudgetArgs {
-    #[arg(long, default_value_t = MAX_NOTES)]
+    #[usage(long, default = "5")]
     max_notes: usize,
-    #[arg(long, default_value_t = MAX_CHARS)]
+    #[usage(long, default = "1200")]
     max_chars: usize,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(usage::Subcommands, Debug)]
 enum Command {
     /// scaffold memory + merge rules, probe reflink
+    #[usage(display_order = 1)]
     Init,
     /// create a CoW lane
+    #[usage(display_order = 2)]
     New {
         name: String,
-        #[arg(long)]
+        #[usage(long)]
         base: Option<String>,
         /// carry uncommitted work into the lane
-        #[arg(long)]
+        #[usage(long)]
         dirty: bool,
         /// print path last, for shell fn
-        #[arg(long)]
+        #[usage(long)]
         cd: bool,
     },
     /// list lanes
+    #[usage(display_order = 3)]
     Ls,
     /// print a lane's path
+    #[usage(display_order = 4)]
     Path { name: String },
     /// record a finding
+    #[usage(display_order = 5)]
     Note {
         text: String,
-        #[arg(short, long)]
+        #[usage(short, long)]
         path: String,
-        #[arg(short, long, default_value = "@file")]
+        #[usage(short, long, default = "@file")]
         anchor: String,
-        #[arg(long)]
+        #[usage(long)]
         supersedes: Option<String>,
     },
     /// install lane's agent integrations
+    #[usage(display_order = 6)]
     Install {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         what: Installable,
     },
     /// remove lane's agent integrations
+    #[usage(display_order = 7)]
     Uninstall {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         what: Installable,
     },
-    #[command(hide = true)]
+    #[usage(hide)]
     Capture { rev: String },
     /// show context for a path
+    #[usage(display_order = 8)]
     Why {
         path: Option<String>,
-        #[arg(short, long)]
+        #[usage(short, long)]
         anchor: Option<String>,
     },
     /// re-vouch for a drifted note
+    #[usage(display_order = 9)]
     Holds { id: String },
     /// staleness report
+    #[usage(display_order = 10)]
     Check {
-        #[arg(long)]
+        #[usage(long)]
         json: bool,
     },
     /// promote, re-anchor, rank, evict
+    #[usage(display_order = 11)]
     Audit {
-        #[arg(long, default_value = "")]
+        #[usage(long, default = "")]
         base: String,
-        #[command(flatten)]
+        #[usage(flatten)]
         budget: BudgetArgs,
-        #[arg(long)]
+        #[usage(long)]
         json: bool,
     },
     /// rebase, audit, fast-forward, remove
+    #[usage(display_order = 12)]
     Done {
-        #[arg(long)]
+        #[usage(long)]
         trunk: Option<String>,
-        #[arg(long)]
+        #[usage(long)]
         keep: bool,
-        #[arg(long)]
+        #[usage(long)]
         cd: bool,
         /// squash lane commits into one landing commit
-        #[arg(long, conflicts_with = "no_merge")]
+        #[usage(long, conflicts_with = "no_merge")]
         squash: bool,
         /// stop after the memory commit, for a pull request to carry
-        #[arg(long)]
+        #[usage(long)]
         no_merge: bool,
-        #[command(flatten)]
+        #[usage(flatten)]
         budget: BudgetArgs,
     },
     /// remove lanes whose branch has landed in trunk
+    #[usage(display_order = 13)]
     Sweep {
         /// list what would go, remove nothing
-        #[arg(long)]
+        #[usage(long)]
         dry_run: bool,
     },
     /// discard a lane without landing it
+    #[usage(display_order = 14)]
     Rm {
         name: String,
         /// discard commits trunk does not have
-        #[arg(long)]
+        #[usage(long)]
         force: bool,
     },
     /// print shell integration
+    #[usage(display_order = 15)]
     Shellenv,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(usage::Subcommands, Debug)]
 enum Installable {
     /// commit-message capture hooks
     Hooks,
@@ -1120,6 +1132,7 @@ fn shellenv() -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
 
     #[test]
     fn flock_excludes_a_second_open_file_description() {
@@ -1139,14 +1152,14 @@ mod tests {
 
     #[test]
     fn install_and_uninstall_take_hooks_or_skill() {
-        let cli = Cli::try_parse_from(["lane", "install", "skill"]).unwrap();
+        let cli = Cli::try_parse_from(&["lane", "install", "skill"].map(OsStr::new)).unwrap();
         assert!(matches!(
             cli.command,
             Command::Install {
                 what: Installable::Skill
             }
         ));
-        let cli = Cli::try_parse_from(["lane", "uninstall", "hooks"]).unwrap();
+        let cli = Cli::try_parse_from(&["lane", "uninstall", "hooks"].map(OsStr::new)).unwrap();
         assert!(matches!(
             cli.command,
             Command::Uninstall {
@@ -1157,7 +1170,7 @@ mod tests {
 
     #[test]
     fn the_old_hooks_install_spelling_no_longer_parses() {
-        assert!(Cli::try_parse_from(["lane", "hooks", "install"]).is_err());
+        assert!(Cli::try_parse_from(&["lane", "hooks", "install"].map(OsStr::new)).is_err());
     }
 
     #[test]

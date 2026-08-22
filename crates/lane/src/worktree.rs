@@ -224,9 +224,31 @@ fn clone_entry(root: &Path, dest: &Path, entry: &str) -> Result<cow::CloneStats>
     )?)
 }
 
+fn branch_args<'a>(adopt: bool, name: &'a str, dest: &'a str, base: &'a str) -> Vec<&'a str> {
+    if adopt {
+        vec![dest, name]
+    } else {
+        vec!["-b", name, dest, base]
+    }
+}
+
 /// By default git checks out tracked files and ignored entries are cloned by reference.
 pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     let root = main_root()?;
+    // An existing branch is adopted, not recreated: a fetched pull request needs a lane
+    // to be reviewed or landed in, and a lane swept early needs one to come back to.
+    let adopt = git_ok(
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{name}"),
+        ],
+        Some(&root),
+    );
+    if adopt && base.is_some() {
+        bail!("branch {name} already exists; --base applies only to a new branch");
+    }
     let base = base
         .map(str::to_string)
         .unwrap_or_else(|| trunk_name(&root));
@@ -267,7 +289,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             if relative_paths {
                 args.push("--relative-paths");
             }
-            args.extend(["-b", name, &dest_str, &base]);
+            args.extend(branch_args(adopt, name, &dest_str, &base));
             git(&args, Some(&root))?;
             let skip = |rel: &str, _is_dir: bool| {
                 rel == ".git"
@@ -276,8 +298,9 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
                     || rel.starts_with(".lane/trees/")
             };
             let stats = cow::clone_tree(&root, &dest, &skip)?;
-            // Repopulate the index from the base tree without rewriting a single file.
-            git(&["reset", "--mixed", "--quiet", &base], Some(&dest))?;
+            // Repopulate the index from the checked-out tree without rewriting a single
+            // file. HEAD, not base: an adopted branch is already at its own tip.
+            git(&["reset", "--mixed", "--quiet", "HEAD"], Some(&dest))?;
             try_git(&["update-index", "--refresh"], Some(&dest));
             let carried = try_git(&["status", "--porcelain"], Some(&dest))
                 .lines()
@@ -306,7 +329,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             if relative_paths {
                 args.push("--relative-paths");
             }
-            args.extend(["-b", name, &dest_str, &base]);
+            args.extend(branch_args(adopt, name, &dest_str, &base));
             git(&args, Some(&root))?;
             let mut stats = cow::CloneStats::default();
             for entry in ignored {

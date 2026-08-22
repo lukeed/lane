@@ -3,7 +3,6 @@
 use crate::git;
 use crate::note::Note;
 use crate::store::{self, BODY, FRESH, MISSING, SIG, TIERS};
-use crate::util::now_iso;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
@@ -26,48 +25,6 @@ pub struct Outcome {
     pub evicted: Vec<(Note, String)>,
 }
 
-fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool {
-    let unresolved = res.tier == BODY || res.tier == SIG;
-    let previous = state.get(id).cloned().unwrap_or_default();
-    let (sig, body_hash, raw_hash) = if unresolved {
-        // Seeing drift is not enough to vouch for the new fingerprint.
-        res.base.clone()
-    } else {
-        (res.sig.clone(), res.body_hash.clone(), res.raw_hash.clone())
-    };
-    let unchanged = previous.sig == sig
-        && previous.body_hash == body_hash
-        && previous.raw_hash == raw_hash
-        && previous.status == res.tier
-        && previous.norm == crate::syntax::NORM_VERSION;
-    state.insert(
-        id.to_string(),
-        store::NoteState {
-            sig,
-            body_hash,
-            raw_hash,
-            status: res.tier.into(),
-            // Only advances when something moved, so a no-op audit writes nothing.
-            checked: if unchanged {
-                previous.checked
-            } else {
-                now_iso()
-            },
-            norm: crate::syntax::NORM_VERSION.into(),
-        },
-    );
-    unresolved
-}
-
-pub fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
-    entry.sig = res.sig.clone();
-    entry.body_hash = res.body_hash.clone();
-    entry.raw_hash = res.raw_hash.clone();
-    entry.status = FRESH.into();
-    entry.checked = now_iso();
-    entry.norm = crate::syntax::NORM_VERSION.into();
-}
-
 pub fn holds(root: &Path, id: &str) -> Result<String> {
     let note = store::resolve_id(root, id)?;
     let id = note.meta.id.clone();
@@ -80,16 +37,13 @@ pub fn holds(root: &Path, id: &str) -> Result<String> {
         );
     }
 
-    let mut state = store::own_state(root);
-    refresh_holds(state.entry(id.to_string()).or_default(), &res);
-    store::save_state(root, &state)?;
-    store::append_log(
+    store::append_confirmation(
         root,
-        &serde_json::json!({
-            "at": now_iso(), "kind": "holds", "id": id,
-            "path": note.path(), "anchor": note.meta.anchor,
-            "branch": git::current_branch(),
-        }),
+        store::HOLDS,
+        &note,
+        &res.sig,
+        &res.body_hash,
+        &res.raw_hash,
     )?;
     Ok(id)
 }
@@ -97,17 +51,12 @@ pub fn holds(root: &Path, id: &str) -> Result<String> {
 fn eviction_key(
     note: &Note,
     touched: &HashSet<String>,
-    state: &store::State,
+    tiers: &HashMap<String, &'static str>,
 ) -> (u8, u8, u8, String) {
     (
         u8::from(!note.meta.pinned),
         u8::from(!touched.contains(&note.path())),
-        store::tier_rank(
-            state
-                .get(&note.meta.id)
-                .map(|entry| entry.status.as_str())
-                .unwrap_or(FRESH),
-        ),
+        store::tier_rank(tiers.get(&note.meta.id).copied().unwrap_or(FRESH)),
         note.meta.id.clone(),
     )
 }
@@ -140,17 +89,31 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     let mut checker = store::Checker::new(root);
     let mut stats: HashMap<&'static str, usize> = TIERS.iter().map(|t| (*t, 0)).collect();
     let mut drifted: Vec<Note> = Vec::new();
-    // Start from this branch's own file so `lane why`'s read counts survive the audit.
-    let mut state = store::own_state(root);
+    let mut tiers: HashMap<String, &'static str> = HashMap::new();
     let mut rebaselined = 0usize;
 
     for note in notes.iter_mut() {
         let res = checker.check(note);
         *stats.entry(res.tier).or_insert(0) += 1;
+        tiers.insert(note.meta.id.clone(), res.tier);
         if res.rebaselined {
             rebaselined += 1;
         }
-        if record_state(&mut state, &note.meta.id, &res) {
+        // Frontmatter cannot be rewritten, so a normalization change is adopted by
+        // recording it. Marked `rebaseline`, never `holds`: nobody vouched for this.
+        if res.adopted {
+            store::append_confirmation(
+                root,
+                store::REBASELINE,
+                note,
+                &res.sig,
+                &res.body_hash,
+                &res.raw_hash,
+            )?;
+        }
+        // Seeing drift is not enough to vouch for the new fingerprint, and there is
+        // nowhere to vouch it into: the baseline stays whatever was last confirmed.
+        if res.tier == BODY || res.tier == SIG {
             drifted.push(note.clone());
         }
     }
@@ -168,9 +131,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     for group in by_anchor.values_mut() {
         let mut live = Vec::new();
         for mut note in group.drain(..) {
-            let missing = state
-                .get(&note.meta.id)
-                .is_some_and(|st| st.status == MISSING);
+            let missing = tiers.get(&note.meta.id) == Some(&MISSING);
             if missing && !note.meta.pinned {
                 store::evict(root, &mut note, "anchor missing")?;
                 evicted.push((note, "anchor missing".into()));
@@ -180,7 +141,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
         }
 
         live.sort_by(|a, b| {
-            eviction_key(a, &touched, &state).cmp(&eviction_key(b, &touched, &state))
+            eviction_key(a, &touched, &tiers).cmp(&eviction_key(b, &touched, &tiers))
         });
 
         let (mut kept, mut chars) = (0usize, 0usize);
@@ -195,15 +156,6 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
             chars += note.body.len();
         }
     }
-
-    // Drop cache entries for notes that are no longer live, then write once.
-    let live: std::collections::HashSet<String> = store::load_notes(root, None)
-        .iter()
-        .map(|n| n.meta.id.clone())
-        .collect();
-    state.retain(|id, _| live.contains(id));
-    store::save_state(root, &state)?;
-    store::gc_state(root);
 
     Ok(Outcome {
         created,
@@ -254,35 +206,7 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use crate::note::Meta;
-    use crate::store::Check;
     use crate::syntax::Source;
-
-    fn check(tier: &'static str, suffix: &str) -> Check {
-        Check {
-            tier,
-            sig: format!("sig-{suffix}"),
-            body_hash: format!("body-{suffix}"),
-            raw_hash: format!("raw-{suffix}"),
-            base: (
-                format!("sig-{suffix}"),
-                format!("body-{suffix}"),
-                format!("raw-{suffix}"),
-            ),
-            span: None,
-            rebaselined: false,
-        }
-    }
-
-    fn old_state() -> store::NoteState {
-        store::NoteState {
-            sig: "sig-old".into(),
-            body_hash: "body-old".into(),
-            raw_hash: "raw-old".into(),
-            status: FRESH.into(),
-            checked: "2026-01-01T00:00:00Z".into(),
-            norm: crate::syntax::NORM_VERSION.into(),
-        }
-    }
 
     fn note_fixture(root: &Path, source: &str) -> Note {
         let rel = "src/auth.rs";
@@ -308,115 +232,93 @@ mod tests {
         crate::note::parse(&file).unwrap()
     }
 
-    #[test]
-    fn unresolved_drift_preserves_the_merged_baseline() {
-        let mut state = store::State::new();
-        let mut current = check(BODY, "new");
-        current.base = (
-            "sig-merged".into(),
-            "body-merged".into(),
-            "raw-merged".into(),
-        );
+    fn edit(root: &Path, body: &str) {
+        std::fs::write(root.join("src/auth.rs"), body).unwrap();
+    }
 
-        assert!(record_state(&mut state, "01M0A", &current));
-
-        let saved = state["01M0A"].clone();
-        assert_eq!(saved.sig, "sig-merged");
-        assert_eq!(saved.body_hash, "body-merged");
-        assert_eq!(saved.raw_hash, "raw-merged");
-        assert_eq!(saved.status, BODY);
+    fn log_kinds(root: &Path) -> Vec<String> {
+        std::fs::read_to_string(store::log_path(root))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .map(|e| e["kind"].as_str().unwrap_or_default().to_string())
+            .collect()
     }
 
     #[test]
-    fn holds_refreshes_the_vouched_fingerprint() {
-        let old = old_state();
-        let mut state = HashMap::from([("01M0A".into(), old.clone())]);
-        let current = check(BODY, "new");
-        record_state(&mut state, "01M0A", &current);
-        refresh_holds(state.get_mut("01M0A").unwrap(), &current);
-
-        let saved = state["01M0A"].clone();
-        assert_ne!(saved.body_hash, old.body_hash);
-        assert_eq!(saved.status, FRESH);
-    }
-
-    #[test]
-    fn holds_refreshes_all_hashes_and_sets_fresh() {
+    fn unresolved_drift_never_adopts_the_shape_it_reported() {
         let root = tempfile::tempdir().unwrap();
-        let note = note_fixture(
-            root.path(),
-            "pub fn verify() {\n    println!(\"old\");\n}\n",
-        );
-        std::fs::write(
-            root.path().join("src/auth.rs"),
-            "pub fn verify() {\n    println!(\"new\");\n}\n",
-        )
-        .unwrap();
-        let current = store::Checker::new(root.path()).check(&note);
-        assert_eq!(current.tier, BODY);
+        let note = note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
+        edit(root.path(), "pub fn verify() {\n    new();\n}\n");
+
+        let first = store::Checker::new(root.path()).check(&note);
+        let second = store::Checker::new(root.path()).check(&note);
+
+        assert_eq!(first.tier, BODY);
+        assert_eq!(second.tier, BODY, "drift must stay flagged until resolved");
+        assert_eq!(second.base, first.base, "the baseline must not move");
+        assert!(log_kinds(root.path()).is_empty(), "a check writes nothing");
+    }
+
+    #[test]
+    fn holds_records_the_fingerprint_it_vouched_for() {
+        let root = tempfile::tempdir().unwrap();
+        let note = note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
+        edit(root.path(), "pub fn verify() {\n    new();\n}\n");
+        let drifted = store::Checker::new(root.path()).check(&note);
+        assert_eq!(drifted.tier, BODY);
 
         holds(root.path(), &note.meta.id).unwrap();
 
-        let saved = store::load_state(root.path())[&note.meta.id].clone();
-        assert_eq!(saved.sig, current.sig);
-        assert_eq!(saved.body_hash, current.body_hash);
-        assert_eq!(saved.raw_hash, current.raw_hash);
-        assert_eq!(saved.status, FRESH);
+        let confirmed = store::confirmations(root.path())[&note.meta.id].clone();
+        assert_eq!(confirmed.sig, drifted.sig);
+        assert_eq!(confirmed.body_hash, drifted.body_hash);
+        assert_eq!(confirmed.raw_hash, drifted.raw_hash);
+        assert_eq!(log_kinds(root.path()), vec![store::HOLDS]);
         assert_eq!(store::Checker::new(root.path()).check(&note).tier, FRESH);
     }
 
     #[test]
-    fn holds_refuses_missing_anchor_without_changing_state() {
+    fn a_holds_outlives_the_branch_that_made_it() {
+        let root = tempfile::tempdir().unwrap();
+        let note = note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
+        edit(root.path(), "pub fn verify() {\n    new();\n}\n");
+        holds(root.path(), &note.meta.id).unwrap();
+
+        // The log is the whole record: nothing per-branch is left to garbage-collect.
+        assert!(!root.path().join(store::LANE_DIR).join("branch").exists());
+        assert_eq!(store::Checker::new(root.path()).check(&note).tier, FRESH);
+    }
+
+    #[test]
+    fn holds_refuses_a_missing_anchor_and_records_nothing() {
         let root = tempfile::tempdir().unwrap();
         let note = note_fixture(root.path(), "pub fn verify() { old(); }\n");
-        let mut state = store::State::from([(note.meta.id.clone(), old_state())]);
-        store::save_state(root.path(), &state).unwrap();
-        let before = serde_json::to_value(&state).unwrap();
-        std::fs::write(
-            root.path().join("src/auth.rs"),
-            "pub const ENABLED: bool = true;\n",
-        )
-        .unwrap();
+        edit(root.path(), "pub const ENABLED: bool = true;\n");
 
         let error = holds(root.path(), &note.meta.id).unwrap_err();
 
-        state = store::own_state(root.path());
         assert!(error.to_string().contains(MISSING));
-        assert_eq!(serde_json::to_value(state).unwrap(), before);
+        assert!(log_kinds(root.path()).is_empty());
     }
 
     #[test]
-    fn a_fresh_note_updates_its_fingerprint() {
-        let mut state = store::State::new();
-        let current = check(FRESH, "current");
+    fn a_fresh_audit_writes_no_record() {
+        let root = tempfile::tempdir().unwrap();
+        note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
 
-        assert!(!record_state(&mut state, "01M0A", &current));
-
-        let saved = state["01M0A"].clone();
-        assert_eq!(saved.sig, current.sig);
-        assert_eq!(saved.body_hash, current.body_hash);
-        assert_eq!(saved.raw_hash, current.raw_hash);
-        assert_eq!(saved.status, FRESH);
-    }
-
-    #[test]
-    fn unchanged_state_keeps_its_checked_time() {
-        let current = check(FRESH, "current");
-        let mut state = HashMap::from([(
-            "01M0A".into(),
-            store::NoteState {
-                sig: current.sig.clone(),
-                body_hash: current.body_hash.clone(),
-                raw_hash: current.raw_hash.clone(),
-                status: FRESH.into(),
-                checked: "2026-01-01T00:00:00Z".into(),
-                norm: crate::syntax::NORM_VERSION.into(),
+        let out = run(
+            root.path(),
+            &Options {
+                base: String::new(),
+                max_notes: 5,
+                max_chars: 1200,
             },
-        )]);
-        let checked = state["01M0A"].checked.clone();
+        )
+        .unwrap();
 
-        assert!(!record_state(&mut state, "01M0A", &current));
-        assert_eq!(state["01M0A"].checked, checked);
+        assert_eq!(out.stats[FRESH], 1);
+        assert!(log_kinds(root.path()).is_empty());
     }
 
     #[test]
@@ -435,9 +337,9 @@ mod tests {
             },
             "newer",
         );
-        let state = store::State::new();
+        let tiers = HashMap::new();
         let touched = HashSet::new();
 
-        assert!(eviction_key(&older, &touched, &state) < eviction_key(&newer, &touched, &state));
+        assert!(eviction_key(&older, &touched, &tiers) < eviction_key(&newer, &touched, &tiers));
     }
 }

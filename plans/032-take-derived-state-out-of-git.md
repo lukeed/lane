@@ -104,8 +104,10 @@ crates/lane/src/worktree.rs:270    worktree add always passes -b
 .gitattributes                     .lane/branch/*/log.jsonl merge=union
 ```
 
-This repository's own store: 26 state entries, all `fresh`; 14 log lines, of which **zero**
-are `holds`. So the migration loses nothing and is a file move plus two deletions.
+This repository's own store: 26 state entries, all `fresh`; 14 log lines, of which zero are
+`kind: "holds"` — but **ten** are `kind: "verdict"`, the deleted reviewer's vocabulary, and
+six of those say `verdict: "holds"`. See step 9: the migration is not the no-op that a
+`kind` count suggests.
 
 ## Commands you will need
 
@@ -267,11 +269,32 @@ git mv .lane/branch/main/log.jsonl .lane/log.jsonl
 git rm -r --cached .lane/branch && rm -rf .lane/branch
 ```
 
-Twenty-six state entries, all `fresh`, no `holds` among them: nothing to lift. Backfill
-`branch` on the fourteen existing log lines so they satisfy step 1's invariant.
+Backfill `branch` on the fourteen existing log lines so they satisfy step 1's invariant.
+
+**This step's STOP condition fired, and the answer is to proceed.** Ten of the twenty-six
+state entries hold a `body_hash` and `raw_hash` that have advanced past the note's creation
+fingerprint, `sig` identical in every case. They split two ways:
+
+- **Six have a matching `verdict: "holds"` record** in the log — the reviewer plan 031
+  deleted, vouching for spans in `cli.rs#PROTOCOL`, `worktree.rs#fn create`,
+  `scenes.rs#@file`, `test_lane.sh#@file`, `AGENTS.md#@file` and `skill.md#@file`.
+- **Four have no record at all**: `cli.rs#write_protocol`, `cli.rs#POST_COMMIT_BLOCK`, and
+  both notes on `audit.rs#run`. These are residue from the behaviour plan 024 fixed — an
+  audit that "rewrites every note's fingerprint before review, so drift is reported once and
+  never again", which is a note in this very store.
+
+Lift neither. The four are the output of a bug and were never confirmed by anyone. The six
+are a model's judgment, and carrying them into a `holds` record — the shape a person's vouch
+takes — would restore through migration exactly the authority plan 031 removed, unmarked and
+indistinguishable from a human decision. That is reason 2 of plan 031, re-created.
+
+The consequence is visible and intended: ten notes surface as drifted on the first
+`lane check` after this lands. They are drifted. The old state file was hiding it, and
+resolving them with `lane holds`, `lane note --supersedes` or deletion is the loop plan 031
+was written to make possible.
 
 **Verify**: `jq -c 'select(.branch==null)' .lane/log.jsonl` → empty. `lane check` reports the
-same tiers as it did before the migration.
+ten notes above and no others beyond what this branch's own edits drifted.
 
 ### Step 10: Cover it, then say it
 
@@ -301,9 +324,10 @@ the `AGENTS.md` protocol text, and `www/src`.
 
 ## STOP conditions
 
-- A `holds` record cannot reproduce the baseline `state.json` held, for any note in this
-  repository. It should — both store the same four fields. If it cannot, state was carrying
-  something underived that this plan has not found, and that thing belongs in the note.
+- ~~A `holds` record cannot reproduce the baseline `state.json` held, for any note in this
+  repository.~~ **Fired.** Ten of twenty-six cannot, because they were never vouched by a
+  person: six came from the deleted reviewer and four from a fixed bug. State was carrying
+  something underived, and the answer is to drop it rather than launder it. See step 9.
 - Union merge on a single `log.jsonl` produces a conflict when two branches append. It
   should not; that is the one thing union merge exists for. If it does, report the sequence
   before falling back to a per-branch split.

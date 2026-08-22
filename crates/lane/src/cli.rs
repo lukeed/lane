@@ -5,7 +5,7 @@ use crate::capture;
 use crate::git::{self, git, try_git};
 use crate::store::{self, BODY, FRESH, LANE_DIR, MISSING, SIG, UNVERIFIABLE};
 use crate::syntax::{Resolution, Source};
-use crate::util::{now_iso, slug};
+use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
@@ -109,11 +109,23 @@ enum Command {
         keep: bool,
         #[arg(long)]
         cd: bool,
+        /// fast-forward trunk to the lane; the default
+        #[arg(long, conflicts_with_all = ["squash", "no_merge"])]
+        ff: bool,
         /// squash lane commits into one landing commit
-        #[arg(long)]
+        #[arg(long, conflicts_with = "no_merge")]
         squash: bool,
+        /// stop after the memory commit, for a pull request to carry
+        #[arg(long)]
+        no_merge: bool,
         #[command(flatten)]
         budget: BudgetArgs,
+    },
+    /// remove lanes whose branch has landed in trunk
+    Sweep {
+        /// list what would go, remove nothing
+        #[arg(long)]
+        dry_run: bool,
     },
     /// discard a lane without landing it
     Rm {
@@ -180,9 +192,12 @@ pub fn run() -> Result<i32> {
             trunk,
             keep,
             cd,
+            ff: _,
             squash,
+            no_merge,
             budget,
-        } => done(trunk.as_deref(), keep, cd, squash, &budget),
+        } => done(trunk.as_deref(), keep, cd, squash, no_merge, &budget),
+        Command::Sweep { dry_run } => sweep(dry_run),
         Command::Rm { name, force } => rm(&name, force),
         Command::Shellenv => shellenv(),
     }
@@ -593,10 +608,7 @@ fn init() -> Result<i32> {
     let attrs = root.join(".gitattributes");
     // The log is the one genuinely append-only file, which is what union merge is for.
     // Notes never conflict because they are never modified.
-    append_line(
-        &attrs,
-        &format!("{LANE_DIR}/branch/*/log.jsonl merge=union"),
-    )?;
+    append_line(&attrs, &format!("{LANE_DIR}/{} merge=union", store::LOG))?;
 
     let agents = root.join("AGENTS.md");
     if write_protocol(&agents)? != 0 {
@@ -649,6 +661,9 @@ fn ls() -> Result<i32> {
         println!("no lanes");
         return Ok(0);
     }
+    // A week can pass between preparing a lane and its pull request merging, so `ls` has
+    // to say the lane is collectable without being asked.
+    let landed = landed_branches(&root);
     for lane in lanes {
         let name = lane
             .path
@@ -660,13 +675,83 @@ fn ls() -> Result<i32> {
         } else {
             "clean"
         };
+        let state = if landed.contains(&lane.branch) {
+            "landed"
+        } else {
+            "open"
+        };
         println!(
-            "{name:<20} {:<24} {dirty:<6} {} pending note(s)",
+            "{name:<20} {:<24} {state:<7} {dirty:<6} {} pending note(s)",
             lane.branch,
             store::pending_count(&lane.path)
         );
     }
     Ok(0)
+}
+
+/// Trunk's copy of the log, read from the ref so it is what merged rather than what is
+/// checked out. A branch landed exactly when its marker reached that copy.
+fn landed_branches(root: &Path) -> std::collections::HashSet<String> {
+    let trunk = wt::trunk_name(root);
+    let log = try_git(
+        &["show", &format!("{trunk}:{LANE_DIR}/{}", store::LOG)],
+        Some(root),
+    );
+    store::landings(&log)
+}
+
+fn sweep(dry_run: bool) -> Result<i32> {
+    let root = wt::main_root()?;
+    let landed = landed_branches(&root);
+    let lanes = wt::list_lanes(&root);
+
+    let mut removed = 0;
+    let mut skipped = 0;
+    for lane in lanes {
+        if !landed.contains(&lane.branch) {
+            continue;
+        }
+        let name = lane
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if wt::is_dirty(&lane.path) {
+            eprintln!("skipped {name}: uncommitted changes");
+            skipped += 1;
+            continue;
+        }
+        if dry_run {
+            println!("would remove {name}");
+            removed += 1;
+            continue;
+        }
+        // `-d`, never `-D`: a lane holding commits trunk does not have is not swept, even
+        // when its branch landed. Discarding them stays something you ask for.
+        if wt::remove(&name, false)? {
+            println!("removed {name}");
+            removed += 1;
+        } else {
+            eprintln!(
+                "skipped {name}: has commits {} does not",
+                wt::trunk_name(&root)
+            );
+            skipped += 1;
+        }
+    }
+
+    if removed == 0 && skipped == 0 {
+        println!("no landed lanes");
+        let trunk = wt::trunk_name(&root);
+        let behind = try_git(
+            &["rev-list", "--count", &format!("{trunk}..origin/{trunk}")],
+            Some(&root),
+        );
+        if behind.parse::<u32>().unwrap_or(0) > 0 {
+            println!("  origin/{trunk} is {behind} commit(s) ahead; fetch and merge it first");
+        }
+    }
+    Ok(i32::from(skipped > 0))
 }
 
 fn path(name: &str) -> Result<i32> {
@@ -890,11 +975,14 @@ fn audit_cmd(base: &str, budget: &BudgetArgs, json: bool) -> Result<i32> {
 /// rebase -> audit -> commit memory -> fast-forward trunk -> remove lane.
 ///
 /// Audit runs AFTER the rebase so spans resolve against the post-rebase tree.
+/// Under `--no-merge` it stops at the commit, and the merge happens wherever the pull
+/// request is merged; `lane sweep` cleans up afterwards.
 fn done(
     trunk: Option<&str>,
     keep: bool,
     cd: bool,
     squash: bool,
+    no_merge: bool,
     budget: &BudgetArgs,
 ) -> Result<i32> {
     let lane_path = git::repo_root()?;
@@ -915,24 +1003,16 @@ fn done(
         return Ok(1);
     }
 
-    let blocked = wt::blocking_changes(&root, &trunk, &branch);
+    let blocked = if no_merge {
+        Vec::new()
+    } else {
+        wt::blocking_changes(&root, &trunk, &branch)
+    };
     if !blocked.is_empty() {
         eprintln!(
             "error: {} has uncommitted changes to {}; commit or stash there first",
             trunk,
             blocked.join(", ")
-        );
-        return Ok(1);
-    }
-
-    let trunk_state = format!(
-        "{LANE_DIR}/{}/{}/state.json",
-        store::BRANCH,
-        slug(&trunk, 60)
-    );
-    if !try_git(&["status", "--porcelain", "--", &trunk_state], Some(&root)).is_empty() {
-        eprintln!(
-            "error: {trunk} has uncommitted changes to {trunk_state}; commit or stash it first"
         );
         return Ok(1);
     }
@@ -950,8 +1030,14 @@ fn done(
     let out = audit::run(&lane_path, &options(&trunk, budget))?;
     audit::report(&out, info)?;
 
-    // Fold this lane's per-branch files into the trunk's, so nothing accumulates.
-    store::roll_up(&lane_path, &branch, &trunk)?;
+    // The marker that survives every merge strategy. Its presence in trunk's copy of the
+    // log is what tells `lane sweep` this branch landed.
+    store::append_log(
+        &lane_path,
+        &serde_json::json!({
+            "at": now_iso(), "kind": store::LANDING, "branch": branch,
+        }),
+    )?;
 
     let changed = try_git(
         &["status", "--porcelain", "--", LANE_DIR, "AGENTS.md"],
@@ -964,6 +1050,16 @@ fn done(
             Some(&lane_path),
         )?;
         writeln!(info, "committed memory update")?;
+    }
+
+    if no_merge {
+        writeln!(info, "prepared {branch}; {trunk} not moved")?;
+        writeln!(info, "  git push -u origin {branch}")?;
+        writeln!(info, "  lane sweep    once the pull request has merged")?;
+        if cd {
+            println!("{}", lane_path.display());
+        }
+        return Ok(0);
     }
 
     if squash {
@@ -994,10 +1090,6 @@ fn done(
 }
 
 fn rm(name: &str, force: bool) -> Result<i32> {
-    // The work is discarded, so its state and its record go with it.
-    if let Ok(root) = wt::main_root() {
-        store::discard_branch_files(&root, name);
-    }
     if wt::remove(name, force)? {
         println!("removed lane {name}");
         return Ok(0);

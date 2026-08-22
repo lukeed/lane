@@ -61,6 +61,14 @@ let tiers = [
 					tree pointing at it. Beside it is what you type to get there.
 				</p>
 				<Workflow />
+				<p class="note">
+					Where trunk is protected, <b>lane done --no-merge</b> stops one step earlier &mdash;
+					rebase, audit, commit &mdash; and leaves the merge to the pull request. The lane waits
+					on disk; <b>lane ls</b> marks it <b>landed</b> once trunk carries its landing record, and
+					{' '}
+					<b>lane sweep</b> removes it. That record is tree content rather than a commit, so
+					neither a squash nor a rebase merge can hide it.
+				</p>
 			</div>
 		</section>
 

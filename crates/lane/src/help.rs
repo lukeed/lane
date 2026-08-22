@@ -183,7 +183,8 @@ const NEW: &str = "
 
 const LS: &str = "
   Description
-    List every lane in this repository with the branch it carries.
+    List every lane in this repository: its name, the branch it carries,
+    whether its worktree is clean, and how many notes it has yet to land.
 
   Usage
     $ lane ls

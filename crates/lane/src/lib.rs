@@ -1,8 +1,10 @@
+pub mod args;
 pub mod audit;
 pub mod capture;
 pub mod cli;
 pub mod cow;
 pub mod git;
+pub mod help;
 pub mod note;
 pub mod store;
 pub mod syntax;

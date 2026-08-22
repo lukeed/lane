@@ -1,10 +1,9 @@
-//! Promote, re-anchor, review, rank, evict.
+//! Promote, re-anchor, rank, evict.
 
 use crate::git;
-use crate::note::{Meta, Note};
-use crate::review::{Item, Reviewer};
+use crate::note::Note;
 use crate::store::{self, BODY, FRESH, MISSING, SIG, TIERS};
-use crate::util::{now_iso, slug, ulid};
+use crate::util::now_iso;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
@@ -14,7 +13,6 @@ pub struct Options {
     pub base: String,
     pub max_notes: usize,
     pub max_chars: usize,
-    pub review_limit: usize,
 }
 
 pub struct Outcome {
@@ -24,10 +22,8 @@ pub struct Outcome {
     /// Notes whose baseline predated a normalization change and could not be compared.
     pub rebaselined: usize,
     pub stats: HashMap<&'static str, usize>,
-    pub review: Vec<Note>,
+    pub drifted: Vec<Note>,
     pub evicted: Vec<(Note, String)>,
-    pub reviewed: Vec<(Note, String, Option<Note>)>,
-    pub reviewer: String,
 }
 
 fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool {
@@ -63,13 +59,39 @@ fn record_state(state: &mut store::State, id: &str, res: &store::Check) -> bool 
     unresolved
 }
 
-fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
+pub fn refresh_holds(entry: &mut store::NoteState, res: &store::Check) {
     entry.sig = res.sig.clone();
     entry.body_hash = res.body_hash.clone();
     entry.raw_hash = res.raw_hash.clone();
     entry.status = FRESH.into();
     entry.checked = now_iso();
     entry.norm = crate::syntax::NORM_VERSION.into();
+}
+
+pub fn holds(root: &Path, id: &str) -> Result<String> {
+    let note = store::resolve_id(root, id)?;
+    let id = note.meta.id.clone();
+    let mut checker = store::Checker::new(root);
+    let res = checker.check(&note);
+    if res.span.is_none() {
+        anyhow::bail!(
+            "cannot hold note {id}: anchor does not resolve ({})",
+            res.tier
+        );
+    }
+
+    let mut state = store::own_state(root);
+    refresh_holds(state.entry(id.to_string()).or_default(), &res);
+    store::save_state(root, &state)?;
+    store::append_log(
+        root,
+        &serde_json::json!({
+            "at": now_iso(), "kind": "holds", "id": id,
+            "path": note.path(), "anchor": note.meta.anchor,
+            "branch": git::current_branch(),
+        }),
+    )?;
+    Ok(id)
 }
 
 fn eviction_key(
@@ -90,7 +112,7 @@ fn eviction_key(
     )
 }
 
-pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outcome> {
+pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     let created = store::promote_pending(root)?;
     let touched: HashSet<String> = if opts.base.is_empty() {
         HashSet::new()
@@ -133,30 +155,7 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
         }
     }
 
-    let reviewed = apply_review(
-        root,
-        &mut drifted,
-        reviewer,
-        &mut checker,
-        &mut state,
-        opts.review_limit,
-    )?;
-    if !reviewed.is_empty() {
-        // Supersede added files and contradicted removed them.
-        notes = store::load_notes(root, None);
-    }
-
-    let mut evicted: Vec<(Note, String)> = reviewed
-        .iter()
-        .filter(|(_, why, _)| why == "contradicted")
-        .map(|(n, why, _)| (n.clone(), why.clone()))
-        .collect();
-    evicted.extend(
-        reviewed
-            .iter()
-            .filter(|(_, why, _)| why == "superseded")
-            .map(|(n, _, _)| (n.clone(), "superseded".to_string())),
-    );
+    let mut evicted = Vec::new();
 
     let mut by_anchor: BTreeMap<(String, String), Vec<Note>> = BTreeMap::new();
     for note in notes {
@@ -211,123 +210,16 @@ pub fn run(root: &Path, opts: &Options, reviewer: &dyn Reviewer) -> Result<Outco
         moved,
         stats,
         rebaselined,
-        review: drifted,
+        drifted,
         evicted,
-        reviewed,
-        reviewer: reviewer.name(),
     })
-}
-
-/// Supersede writes a NEW note rather than editing the old one: mutation would break the
-/// union-merge invariant that lets parallel lanes write memory without conflicting.
-fn apply_review(
-    root: &Path,
-    drifted: &mut [Note],
-    reviewer: &dyn Reviewer,
-    checker: &mut store::Checker,
-    state: &mut store::State,
-    limit: usize,
-) -> Result<Vec<(Note, String, Option<Note>)>> {
-    if drifted.is_empty() || !reviewer.enabled() {
-        return Ok(Vec::new());
-    }
-    let mut items = Vec::new();
-    for note in drifted.iter().take(limit) {
-        let span = checker.span_text(note);
-        if span.is_empty() {
-            continue;
-        }
-        items.push(Item {
-            id: note.meta.id.clone(),
-            path: note.path(),
-            anchor: note.meta.anchor.clone(),
-            note: note.body.trim().to_string(),
-            span,
-        });
-    }
-    if items.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let verdicts = reviewer.review(&items);
-    let mut applied = Vec::new();
-
-    for note in drifted.iter_mut() {
-        let Some(v) = verdicts.get(&note.meta.id) else {
-            continue;
-        };
-        // The verdict is a decision worth keeping: a model call paid for once.
-        store::append_log(
-            root,
-            &serde_json::json!({
-                "at": now_iso(), "kind": "verdict", "id": note.meta.id,
-                "path": note.path(), "anchor": note.meta.anchor,
-                "verdict": v.verdict, "reason": v.reason,
-            }),
-        )?;
-
-        match v.verdict.as_str() {
-            "superseded" if !v.rewrite.is_empty() => {
-                let meta = Meta {
-                    id: ulid(),
-                    anchor: note.meta.anchor.clone(),
-                    created: now_iso(),
-                    branch: git::current_branch(),
-                    norm: crate::syntax::NORM_VERSION.into(),
-                    sig: note.meta.sig.clone(),
-                    body_hash: note.meta.body_hash.clone(),
-                    raw_hash: note.meta.raw_hash.clone(),
-                    lines: note.meta.lines.clone(),
-                    supersedes: note.meta.id.clone(),
-                    pinned: false,
-                };
-                let file = store::note_dir(root, &note.path()).join(format!(
-                    "{}-{}.md",
-                    meta.id,
-                    slug(&v.rewrite, 28)
-                ));
-                let mut fresh = Note::new(meta, v.rewrite.clone());
-                fresh.write(&file)?;
-                fresh.file = Some(file);
-                if let Some(entry) = state.get(&note.meta.id).cloned() {
-                    state.insert(fresh.meta.id.clone(), entry);
-                }
-                let reason = format!("superseded by {}", fresh.meta.id);
-                store::evict(root, note, &reason)?;
-                state.remove(&note.meta.id);
-                applied.push((note.clone(), "superseded".into(), Some(fresh)));
-            }
-            "contradicted" => {
-                // A confidently wrong note is worse than none; the attic keeps it reversible.
-                let reason = if v.reason.is_empty() {
-                    "code disagrees".to_string()
-                } else {
-                    v.reason.clone()
-                };
-                store::evict(root, note, &format!("contradicted: {reason}"))?;
-                state.remove(&note.meta.id);
-                applied.push((note.clone(), "contradicted".into(), None));
-            }
-            other => {
-                if other == "holds"
-                    && let Some(entry) = state.get_mut(&note.meta.id)
-                {
-                    let res = checker.check(note);
-                    refresh_holds(entry, &res);
-                }
-                applied.push((note.clone(), other.to_string(), None));
-            }
-        }
-    }
-    Ok(applied)
 }
 
 pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
     let n = |tier: &str| out.stats.get(tier).copied().unwrap_or(0);
-    // Counted before the reviewer ran: what the hash check found, not what was done about it.
     writeln!(
         w,
-        "memory: +{} new; checked {}: {} fresh, {} body-drift, {} signature-changed, {} missing",
+        "memory: +{} new; checked {}: {} fresh, {} content-changed, {} contract-changed, {} missing",
         out.created.len(),
         out.stats.values().sum::<usize>(),
         n(FRESH),
@@ -348,29 +240,8 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
         writeln!(w, "  moved   {old} -> {new}  ({count} note(s))")?;
     }
 
-    if out.reviewed.is_empty() {
-        for note in &out.review {
-            writeln!(w, "  review  {}#{}", note.path(), note.meta.anchor)?;
-        }
-    } else {
-        writeln!(
-            w,
-            "  reviewed {} drifted note(s) via {}",
-            out.reviewed.len(),
-            out.reviewer
-        )?;
-        for (note, verdict, replacement) in &out.reviewed {
-            let extra = replacement
-                .as_ref()
-                .map(|n| format!(" -> {}", &n.meta.id[..10.min(n.meta.id.len())]))
-                .unwrap_or_default();
-            writeln!(
-                w,
-                "  {verdict:<13} {}#{}{extra}",
-                note.path(),
-                note.meta.anchor
-            )?;
-        }
+    for note in &out.drifted {
+        writeln!(w, "  drift   {}#{}", note.path(), note.meta.anchor)?;
     }
 
     for (note, why) in &out.evicted {
@@ -382,7 +253,9 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::note::Meta;
     use crate::store::Check;
+    use crate::syntax::Source;
 
     fn check(tier: &'static str, suffix: &str) -> Check {
         Check {
@@ -409,6 +282,30 @@ mod tests {
             checked: "2026-01-01T00:00:00Z".into(),
             norm: crate::syntax::NORM_VERSION.into(),
         }
+    }
+
+    fn note_fixture(root: &Path, source: &str) -> Note {
+        let rel = "src/auth.rs";
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join(rel), source).unwrap();
+        let parsed = Source::new(source, rel);
+        let span = parsed.resolve("fn verify").unwrap();
+        let (sig, body_hash, raw_hash) = parsed.hashes(span, "fn verify");
+        let note = Note::new(
+            Meta {
+                id: "01M0A".into(),
+                anchor: "fn verify".into(),
+                norm: crate::syntax::NORM_VERSION.into(),
+                sig,
+                body_hash,
+                raw_hash,
+                ..Default::default()
+            },
+            "must stay constant-time",
+        );
+        let file = store::note_dir(root, rel).join("01M0A-note.md");
+        note.write(&file).unwrap();
+        crate::note::parse(&file).unwrap()
     }
 
     #[test]
@@ -441,6 +338,51 @@ mod tests {
         let saved = state["01M0A"].clone();
         assert_ne!(saved.body_hash, old.body_hash);
         assert_eq!(saved.status, FRESH);
+    }
+
+    #[test]
+    fn holds_refreshes_all_hashes_and_sets_fresh() {
+        let root = tempfile::tempdir().unwrap();
+        let note = note_fixture(
+            root.path(),
+            "pub fn verify() {\n    println!(\"old\");\n}\n",
+        );
+        std::fs::write(
+            root.path().join("src/auth.rs"),
+            "pub fn verify() {\n    println!(\"new\");\n}\n",
+        )
+        .unwrap();
+        let current = store::Checker::new(root.path()).check(&note);
+        assert_eq!(current.tier, BODY);
+
+        holds(root.path(), &note.meta.id).unwrap();
+
+        let saved = store::load_state(root.path())[&note.meta.id].clone();
+        assert_eq!(saved.sig, current.sig);
+        assert_eq!(saved.body_hash, current.body_hash);
+        assert_eq!(saved.raw_hash, current.raw_hash);
+        assert_eq!(saved.status, FRESH);
+        assert_eq!(store::Checker::new(root.path()).check(&note).tier, FRESH);
+    }
+
+    #[test]
+    fn holds_refuses_missing_anchor_without_changing_state() {
+        let root = tempfile::tempdir().unwrap();
+        let note = note_fixture(root.path(), "pub fn verify() { old(); }\n");
+        let mut state = store::State::from([(note.meta.id.clone(), old_state())]);
+        store::save_state(root.path(), &state).unwrap();
+        let before = serde_json::to_value(&state).unwrap();
+        std::fs::write(
+            root.path().join("src/auth.rs"),
+            "pub const ENABLED: bool = true;\n",
+        )
+        .unwrap();
+
+        let error = holds(root.path(), &note.meta.id).unwrap_err();
+
+        state = store::own_state(root.path());
+        assert!(error.to_string().contains(MISSING));
+        assert_eq!(serde_json::to_value(state).unwrap(), before);
     }
 
     #[test]

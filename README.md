@@ -84,15 +84,16 @@ that anchor's span only:
 | tier | meaning | action |
 |---|---|---|
 | `fresh` | span unchanged | none |
-| `body-drift` | implementation moved, contract held | stays flagged until resolved |
-| `signature-changed` | the described thing changed shape | review |
+| `content-changed` | implementation moved, contract held | stays flagged until resolved |
+| `contract-changed` | the described thing changed shape | resolve |
 | `anchor-missing` | symbol gone | evict to `attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
 genuinely gone.
 
-A drifted note stays flagged until a reviewer resolves it or a human rewrites it, so
+A drifted note stays flagged until you run `lane holds <id>`, replace it with
+`lane note --supersedes <id>`, or delete its note file and commit. Until then,
 `lane check` keeps reporting it.
 
 Anchors are `fn verify`, `#script`, `## Heading`, `@file`, resolved by
@@ -202,13 +203,13 @@ none of those have been run by the author. Where `probe()` says no, the test
 skips and the fallback copy is expected to cost full price. `filefrag -v` on a
 cloned file shows `shared` extents on Linux.
 
-## Review
+## Resolving drift
 
-Drifted notes go to a model during `done` — the one judgment here that a hash
-cannot make. Verdicts: `holds` refreshes the fingerprint, `superseded` writes a
-**new** note and attics the old one (mutation would break union merge),
-`contradicted` quarantines, `unsure` leaves it flagged. Off unless
-`ANTHROPIC_API_KEY` or `LANE_REVIEW_CMD` is set; only drifted notes are sent.
+`lane check` lists every note that is not fresh, each with the id you need next.
+Use `lane holds <id>` when it remains true, `lane note -p <path> -a <anchor>
+--supersedes <id> "<rewrite>"` when its sentence must change, or delete the note
+file and commit when the constraint is gone. Any unambiguous prefix of an id
+works. `--json` adds each note's body and current span. Lane never calls a model.
 See [lane.lukeed.com/usage](https://lane.lukeed.com/usage).
 
 ## Still stubbed

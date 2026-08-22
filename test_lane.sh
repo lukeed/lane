@@ -5,7 +5,6 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-FAKE="$ROOT/tests/fake-reviewer"
 cargo build --quiet --manifest-path "$ROOT/crates/lane/Cargo.toml" || exit 1
 TARGET=$(cargo metadata --no-deps --format-version 1 --manifest-path "$ROOT/crates/lane/Cargo.toml" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
@@ -108,7 +107,7 @@ sedi 's|  let undoStack = \[\];|  let undoStack = [];\n  let cursor = 0;|' src/E
 "$LANE" check --json > /tmp/c.json
 is "#script drifts" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/c.json"));print([x["tier"] for x in d if x["anchor"]=="#script"][0])')" \
-   "body-drift"
+   "content-changed"
 is "#style unaffected" \
    "$(python3 -c 'import json;d=json.load(open("/tmp/c.json"));print([x["tier"] for x in d if x["anchor"]=="#style"][0])')" \
    "fresh"
@@ -132,58 +131,6 @@ sedi 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
 "$LANE" note -p src/auth.rs -a "fn refresh" "rotation is idempotent upstream" > /dev/null
 "$LANE" audit > /dev/null
 is "evicted to attic" "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
-
-echo "== 8. model-in-the-loop review =="
-setup
-cat > src/sync.rs <<'EOF'
-pub fn reconnect(session: &Session) -> Result<()> {
-    let lock = session.lock()?;
-    dial(lock)
-}
-
-pub fn send(msg: Msg) -> Result<()> {
-    transmit(msg)
-}
-EOF
-git add -A && git commit -qm sync
-"$LANE" note -p src/auth.rs -a "fn verify" "must be constant-time; early return leaks length" > /dev/null
-"$LANE" note -p src/sync.rs -a "fn reconnect" "caller must not hold the session lock" > /dev/null
-"$LANE" note -p src/sync.rs -a "fn send" "never retries; upstream is not idempotent" > /dev/null
-"$LANE" audit > /dev/null
-
-# drift all three spans
-sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
-sedi 's|    let lock = session.lock()?;|    let lock = session.assume_locked();|' src/sync.rs
-sedi 's|    transmit(msg)|    backoff_retry(\|\| transmit(msg))|' src/sync.rs
-
-"$LANE" audit --review cmd --review-cmd "$FAKE" --json > /tmp/r.json
-V=/tmp/r.json
-is "reviewer reported" "$(python3 -c 'import json;print(json.load(open("/tmp/r.json"))["reviewer"].split("(")[0])')" "cmd"
-is "three verdicts returned" "$(python3 -c 'import json;print(len(json.load(open("/tmp/r.json"))["verdicts"]))')" "3"
-is "holds keeps note fresh" \
-   "$("$LANE" check --json | python3 -c 'import json,sys;d=json.load(sys.stdin);print([x["tier"] for x in d if x["anchor"]=="fn verify"][0])')" \
-   "fresh"
-is "superseded wrote a replacement note" \
-   "$(grep -rl 'session lock is now taken by the caller' .lane --include='*.md' | grep -vc attic)" "1"
-is "replacement records supersedes" \
-   "$(grep -rh 'supersedes:' .lane/memory/src/sync.rs/*.md | wc -l | tr -d ' ')" "1"
-is "superseded original in attic" \
-   "$(grep -rl 'caller must not hold' .lane/attic | wc -l | tr -d ' ')" "1"
-is "contradicted note quarantined" \
-   "$(grep -rl 'never retries' .lane/attic | wc -l | tr -d ' ')" "1"
-is "contradicted removed from live store" \
-   "$(grep -rl 'never retries' .lane --include='*.md' | grep -vc attic)" "0"
-is "the log records the reason" \
-   "$(grep -rh 'contradicted' .lane/branch/*/log.jsonl | wc -l | tr -d ' ')" "2"
-
-echo "== 9. review is off by default (no key, no cmd) =="
-env -u ANTHROPIC_API_KEY -u LANE_REVIEW_CMD "$LANE" audit --json > /tmp/n.json
-is "defaults to no reviewer" "$(python3 -c 'import json;print(json.load(open("/tmp/n.json"))["reviewer"])')" "none"
-
-echo "== 10. malformed model output is survivable =="
-is "garbage response yields no verdicts" \
-   "$("$LANE" audit --review cmd --review-cmd "echo 'sorry, I cannot'" --json | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["verdicts"]))')" \
-   "0"
 
 echo "== 11. rm will not discard commits trunk does not have =="
 setup
@@ -322,7 +269,7 @@ is "the fingerprint lives in state" \
    "$(find .lane/branch -name 'state.json' | wc -l | tr -d ' ')" "1"
 is "state records the drift" \
    "$(python3 -c 'import json,glob;d=json.load(open(glob.glob(".lane/branch/*/state.json")[0]));print(list(d.values())[0]["status"])')" \
-   "body-drift"
+   "content-changed"
 
 mkdir -p attic && echo "user content" > attic/f.txt
 git add -A && git commit -qm user-attic
@@ -497,7 +444,7 @@ is "it has frontmatter naming the skill" \
 is "it teaches the Why trailer form" \
    "$(grep -c '^Why: src/auth.rs#fn verify' .agents/skills/lane/SKILL.md)" "1"
 is "it teaches lane note with a path" \
-   "$(grep -c 'lane note -p ' .agents/skills/lane/SKILL.md)" "1"
+   "$(grep -Fc 'lane note -p src/auth.rs -a "fn verify" "must stay constant-time"' .agents/skills/lane/SKILL.md)" "1"
 "$LANE" install skill > /tmp/skill2.out 2>&1
 is "installing twice is a no-op" "$?" "0"
 echo "edited by hand" >> .agents/skills/lane/SKILL.md
@@ -571,30 +518,17 @@ setup
 "$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
-"$LANE" audit --review none > /dev/null
-is "drift survives an audit with no reviewer" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
-"$LANE" audit --review none > /dev/null
-is "and is re-reported by the next audit" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
-"$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
-is "a holds verdict clears it and keeps the note" \
-   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)), end=":")'; grep -rl 'constant-time' .lane/memory --include='*.md' | wc -l | tr -d ' ')" "0:1"
-
-# A reviewer running is not a resolution when it cannot vouch for the note.
-setup
-"$LANE" note -p src/auth.rs -a "fn refresh" "callers depend on the rotated token" > /dev/null
 "$LANE" audit > /dev/null
-sedi 's/rotate(token)/rotate(token.trim())/' src/auth.rs
-"$LANE" audit --review cmd --review-cmd "$FAKE" > /dev/null
-is "an unsure verdict leaves it flagged" \
-  "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "body-drift" for x in json.load(sys.stdin)))')" "1"
-
+is "drift survives an audit" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "content-changed" for x in json.load(sys.stdin)))')" "1"
+"$LANE" audit > /dev/null
+is "and is re-reported by the next audit" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(sum(x["tier"] == "content-changed" for x in json.load(sys.stdin)))')" "1"
 echo "== 28. landings are serialized and marked =="
 setup
 "$LANE" new solo > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/solo" && echo "work" > src/new.rs && git add -A && git commit -qm "add work" )
-( cd "$TMP/repo/.lane/trees/solo" && "$LANE" done --review none > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/solo" && "$LANE" done > /dev/null 2>&1 )
 is "trunk ends with the sync marker" \
   "$(git log -1 --format=%s | grep -c '^lane: sync solo memory$')" "1"
 is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
@@ -603,7 +537,7 @@ is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
 ( cd "$TMP/repo/.lane/trees/sq" && echo "a" > src/a.rs && git add -A && git commit -qm "one" \
   && echo "b" > src/b.rs && git add -A && git commit -qm "two" )
 BEFORE=$(git rev-list --count HEAD)
-( cd "$TMP/repo/.lane/trees/sq" && "$LANE" done --squash --review none > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/sq" && "$LANE" done --squash > /dev/null 2>&1 )
 is "squash lands exactly one commit" \
   "$(( $(git rev-list --count HEAD) - BEFORE ))" "1"
 is "and names it merged" \
@@ -619,7 +553,7 @@ git add -A .lane && git commit -qm "memory" > /dev/null
 is "lane why leaves the tree clean" "$(git status --porcelain)" ""
 "$LANE" why src/auth.rs > /dev/null
 is "and is still clean when read twice" "$(git status --porcelain)" ""
-"$LANE" audit --review none > /dev/null
+"$LANE" audit > /dev/null
 is "an audit that changes nothing writes nothing" "$(git status --porcelain)" ""
 
 echo "== 30. drift survives a landing =="
@@ -631,14 +565,39 @@ git add -A .lane && git commit -qm memory > /dev/null
 ( cd "$TMP/repo/.lane/trees/carry" \
   && sed 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs > t \
   && mv t src/auth.rs && git add -A && git commit -qm "change the span" > /dev/null \
-  && "$LANE" audit --review none > /dev/null )
+  && "$LANE" audit > /dev/null )
 is "a lane preserves the baseline it compared against" \
    "$(python3 -c "import json;print(int(any(v.get('body_hash') for v in json.load(open('$TMP/repo/.lane/trees/carry/.lane/branch/carry/state.json')).values())))")" "1"
-( cd "$TMP/repo/.lane/trees/carry" && "$LANE" done --review none > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/carry" && "$LANE" done > /dev/null 2>&1 )
 is "and the drift survives the landing" \
-   "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+   "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
 is "and is still reported by a later audit" \
-   "$("$LANE" audit --review none > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='body-drift'))")" "1"
+   "$("$LANE" audit > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
+
+echo "== 31. holds survives a landing =="
+setup
+"$LANE" new holds > /dev/null 2>&1
+cd "$TMP/repo/.lane/trees/holds"
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+git add -A .lane && git commit -qm memory
+sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
+git add src/auth.rs && git commit -qm drift
+"$LANE" check --json > /tmp/holds-before.json
+ID=$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["id"])')
+is "note starts drifted" \
+   "$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["tier"])')" "content-changed"
+"$LANE" holds "$ID" > /tmp/holds.out 2>&1
+is "holds succeeds" "$?" "0"
+is "holds makes the note fresh" \
+   "$("$LANE" check --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["tier"])')" "fresh"
+is "holds clears body drift" \
+   "$("$LANE" check | awk '/^content-changed/{print $2}')" "0"
+git add -A .lane && git commit -qm holds
+( "$LANE" done > /tmp/holds-done.out 2>&1 )
+cd "$TMP/repo"
+is "fresh state and change survive done" \
+   "$("$LANE" check | awk '/^fresh/{print $2}'):$(grep -c '&& true' src/auth.rs)" "1:1"
 
 echo
 echo "passed: $pass   failed: $fail"

@@ -153,19 +153,26 @@ files listed in Step 7.
 The most common resolution has no command. Add one.
 
 Promote `refresh_holds` out of `audit.rs`'s private section, and add a subcommand that
-takes a note id (the ULID `lane check --json` and `lane why` both print). It re-checks
-the note, writes the current `sig`/`body_hash`/`raw_hash`/`norm` onto its state entry,
-sets the tier to `FRESH`, and appends a `kind: "holds"` record to `log.jsonl` carrying the
-id, path, anchor and branch — the same shape the verdict record used, so history stays
-uniform across the change.
+takes a note id. It re-checks the note, writes the current `sig`/`body_hash`/`raw_hash`/
+`norm` onto its state entry, sets the tier to `FRESH`, and appends a `kind: "holds"`
+record to `log.jsonl` carrying the id, path, anchor and branch — the same shape the
+verdict record used, so history stays uniform across the change.
+
+**An id argument means any unambiguous prefix**, resolved through one helper that
+`--supersedes` shares. `lane why` prints ten characters of a ULID, not twenty-six, so
+exact matching would mean the id a reader can see is not the id the verb accepts. An
+ambiguous prefix is an error that lists what it matched; `lane holds` echoes the whole
+resolved id, and `lane note --supersedes` stores the whole id on the pending record so
+promotion is never handed a prefix that has since grown ambiguous.
 
 **It must refuse when the anchor does not resolve.** Vouching for a span that is not there
 is a lie the store would then carry as fact. Exit non-zero with a message naming the tier.
 
-**Verify**: in a scratch repo, edit a noted function body, `lane check` → `body-drift 1`;
-`lane holds <id>`; `lane check` → `fresh` for that note and `body-drift 0`. Then delete
-the function and `lane holds <id>` → non-zero, and `lane check` still reports
-`anchor-missing 1`.
+**Verify**: in a scratch repo, edit a noted function body, `lane check` → `content-changed 1`
+and a row naming the note; paste the ten characters it printed into `lane holds`;
+`lane check` → `fresh` for that note and `content-changed 0`. Then delete the function and
+`lane holds <id>` → non-zero, and `lane check` still reports `anchor-missing 1`. Also
+check that a prefix matching two notes is refused and names both.
 
 ### Step 2: `lane note --supersedes <id>` — write a replacement
 
@@ -192,7 +199,13 @@ span) to non-`fresh` records only. Fresh notes are the bulk and nobody acts on t
 drifted ones are the working set, and a caller that has to open four files to see what
 moved will not bother.
 
-Keep the existing keys. The human table output does not change.
+Keep the existing keys.
+
+**The human output grows a list too.** Counts alone say something drifted and not which
+note, which is a dead end when the next thing you type needs an id. After the tier
+counts, print one row per non-fresh note — mark, ten characters of id, `path#anchor` —
+under a `[tier]` subheader, because what you do about a note depends on which tier it is
+in. `--json` must not be the only way a person can get an id.
 
 **Verify**: `lane check --json` on a repo with one drifted and several fresh notes →
 every record has `note`, exactly the non-fresh ones have `span`, and the span text matches
@@ -242,7 +255,7 @@ context; it is not a manual.
 `USAGE.md` and `explainer.md` are no longer at the root — `e9f5435` moved them under
 `www/`, where Step 7 owns them. Only two files are left here.
 
-- `README.md:88` — the `signature-changed` row says `review`. It is now `resolve`.
+- `README.md:88` — the `contract-changed` row says `review`. It is now `resolve`.
 - `README.md:95` — "until a reviewer resolves it or a human rewrites it" → name the three
   commands.
 - `README.md:205-211` — replace the whole `## Review` section with `## Resolving drift`,

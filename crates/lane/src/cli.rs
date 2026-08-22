@@ -3,7 +3,6 @@
 use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
-use crate::review;
 use crate::store::{self, BODY, FRESH, LANE_DIR, MISSING, SIG, UNVERIFIABLE};
 use crate::syntax::{Resolution, Source};
 use crate::util::{now_iso, slug};
@@ -28,18 +27,6 @@ const MAX_CHARS: usize = 1200;
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
-}
-
-#[derive(Args, Debug, Clone)]
-struct ReviewArgs {
-    /// drift reviewer (default: auto)
-    #[arg(long, value_parser = ["auto", "none", "cmd", "anthropic"])]
-    review: Option<String>,
-    /// command receiving JSON on stdin, e.g. 'claude -p'
-    #[arg(long)]
-    review_cmd: Option<String>,
-    #[arg(long, default_value_t = 20)]
-    review_max: usize,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -77,6 +64,8 @@ enum Command {
         path: String,
         #[arg(short, long, default_value = "@file")]
         anchor: String,
+        #[arg(long)]
+        supersedes: Option<String>,
     },
     /// install lane's agent integrations
     Install {
@@ -96,6 +85,8 @@ enum Command {
         #[arg(short, long)]
         anchor: Option<String>,
     },
+    /// re-vouch for a drifted note
+    Holds { id: String },
     /// staleness report
     Check {
         #[arg(long)]
@@ -107,8 +98,6 @@ enum Command {
         base: String,
         #[command(flatten)]
         budget: BudgetArgs,
-        #[command(flatten)]
-        review: ReviewArgs,
         #[arg(long)]
         json: bool,
     },
@@ -125,8 +114,6 @@ enum Command {
         squash: bool,
         #[command(flatten)]
         budget: BudgetArgs,
-        #[command(flatten)]
-        review: ReviewArgs,
     },
     /// discard a lane without landing it
     Rm {
@@ -167,7 +154,12 @@ pub fn run() -> Result<i32> {
         } => new(&name, base.as_deref(), dirty, cd),
         Command::Ls => ls(),
         Command::Path { name } => path(&name),
-        Command::Note { text, path, anchor } => note(&text, &path, &anchor),
+        Command::Note {
+            text,
+            path,
+            anchor,
+            supersedes,
+        } => note(&text, &path, &anchor, supersedes.as_deref()),
         Command::Install { what } => match what {
             Installable::Hooks => hooks_install(),
             Installable::Skill => skill_install(),
@@ -181,21 +173,16 @@ pub fn run() -> Result<i32> {
             Ok(0)
         }
         Command::Why { path, anchor } => why(path.as_deref(), anchor.as_deref()),
+        Command::Holds { id } => holds(&id),
         Command::Check { json } => check(json),
-        Command::Audit {
-            base,
-            budget,
-            review,
-            json,
-        } => audit_cmd(&base, &budget, &review, json),
+        Command::Audit { base, budget, json } => audit_cmd(&base, &budget, json),
         Command::Done {
             trunk,
             keep,
             cd,
             squash,
             budget,
-            review,
-        } => done(trunk.as_deref(), keep, cd, squash, &budget, &review),
+        } => done(trunk.as_deref(), keep, cd, squash, &budget),
         Command::Rm { name, force } => rm(&name, force),
         Command::Shellenv => shellenv(),
     }
@@ -691,8 +678,14 @@ fn path(name: &str) -> Result<i32> {
     Ok(0)
 }
 
-fn note(text: &str, path: &str, anchor: &str) -> Result<i32> {
+fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Result<i32> {
     let root = git::repo_root()?;
+    // Resolved here, so the queue carries a whole id and promotion cannot be
+    // handed a prefix that has since grown ambiguous.
+    let supersedes = match supersedes {
+        Some(id) => store::resolve_id(&root, id)?.meta.id,
+        None => String::new(),
+    };
     let rel = store::rel_to_repo(&root, path)?;
     if !root.join(&rel).exists() {
         // Otherwise the note is promoted, found missing, and atticked in the same audit.
@@ -717,6 +710,7 @@ fn note(text: &str, path: &str, anchor: &str) -> Result<i32> {
             anchor: anchor.to_string(),
             branch: git::current_branch(),
             at: now_iso(),
+            supersedes: supersedes.clone(),
         },
     )?;
     println!("noted -> {rel}#{anchor}");
@@ -752,13 +746,7 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
         group.sort_by(|a, b| a.meta.id.cmp(&b.meta.id));
         for note in group {
             let tier = checker.check(&note).tier;
-            let mark = match tier {
-                BODY => "~",
-                SIG => "!",
-                MISSING => "x",
-                UNVERIFIABLE => "?",
-                _ => " ",
-            };
+            let mark = mark(tier);
             let tail = if tier == FRESH {
                 String::new()
             } else {
@@ -783,70 +771,113 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
     Ok(0)
 }
 
+fn holds(id: &str) -> Result<i32> {
+    // The whole id, not the prefix you typed, so you can see which note you held.
+    println!("holds -> {}", audit::holds(&git::repo_root()?, id)?);
+    Ok(0)
+}
+
+fn check_json_rows(
+    rows: &[(store::Check, &crate::note::Note)],
+    checker: &mut store::Checker,
+) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|(res, note)| {
+            let mut row = serde_json::json!({
+                "id": note.meta.id, "path": note.path(),
+                "anchor": note.meta.anchor, "tier": res.tier,
+                "note": note.body.trim(),
+            });
+            if res.tier != FRESH {
+                row["span"] = serde_json::json!(checker.span_text(note));
+            }
+            row
+        })
+        .collect()
+}
+
 fn check(json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let notes = store::load_notes(&root, None);
     let mut checker = store::Checker::new(&root);
-    let rows: Vec<(&str, _)> = notes.iter().map(|n| (checker.check(n).tier, n)).collect();
+    let rows: Vec<_> = notes
+        .iter()
+        .map(|note| (checker.check(note), note))
+        .collect();
 
     if json {
-        let out: Vec<_> = rows
-            .iter()
-            .map(|(tier, n)| {
-                serde_json::json!({
-                    "id": n.meta.id, "path": n.path(),
-                    "anchor": n.meta.anchor, "tier": tier,
-                })
-            })
-            .collect();
+        let out = check_json_rows(&rows, &mut checker);
         println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(0);
     }
 
     let mut missing = 0;
     for tier in store::TIERS {
-        let count = rows.iter().filter(|(t, _)| *t == tier).count();
+        let count = rows.iter().filter(|(res, _)| res.tier == tier).count();
         if tier == MISSING {
             missing = count;
         }
         println!("{tier:<18} {count}");
     }
+
+    // A count says something drifted and not which note, which is a dead end when
+    // the next thing you type needs an id. Grouped, because what you do about a
+    // note depends on which tier it is in.
+    for tier in store::TIERS.iter().filter(|tier| **tier != FRESH) {
+        let mut group = rows.iter().filter(|(res, _)| res.tier == *tier).peekable();
+        if group.peek().is_none() {
+            continue;
+        }
+        println!("\n[{tier}]");
+        for (_, note) in group {
+            println!(
+                "{} {}  {}#{}",
+                mark(tier),
+                &note.meta.id[..10.min(note.meta.id.len())],
+                note.path(),
+                note.meta.anchor
+            );
+        }
+    }
     Ok(i32::from(missing > 0))
 }
 
-fn options(base: &str, budget: &BudgetArgs, review: &ReviewArgs) -> audit::Options {
+fn mark(tier: &str) -> &'static str {
+    match tier {
+        BODY => "~",
+        SIG => "!",
+        MISSING => "x",
+        UNVERIFIABLE => "?",
+        _ => " ",
+    }
+}
+
+fn options(base: &str, budget: &BudgetArgs) -> audit::Options {
     audit::Options {
         base: base.to_string(),
         max_notes: budget.max_notes,
         max_chars: budget.max_chars,
-        review_limit: review.review_max,
     }
 }
 
-fn audit_cmd(base: &str, budget: &BudgetArgs, review: &ReviewArgs, json: bool) -> Result<i32> {
+fn audit_cmd(base: &str, budget: &BudgetArgs, json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let _lock = if root == wt::main_root()? {
         Some(LandingLock::acquire(&wt::trunk_name(&root))?)
     } else {
         None
     };
-    let reviewer = review::build(review.review.as_deref(), review.review_cmd.as_deref());
-    let out = audit::run(&root, &options(base, budget, review), reviewer.as_ref())?;
+    let out = audit::run(&root, &options(base, budget))?;
 
     if json {
         let value = serde_json::json!({
             "created": out.created.iter().map(|n| &n.meta.id).collect::<Vec<_>>(),
             "checked": out.stats,
-            "needs_review": out.review.iter().map(|n| serde_json::json!({
+            "drifted": out.drifted.iter().map(|n| serde_json::json!({
                 "id": n.meta.id, "path": n.path(), "anchor": n.meta.anchor,
             })).collect::<Vec<_>>(),
             "evicted": out.evicted.iter().map(|(n, why)| serde_json::json!({
                 "id": n.meta.id, "reason": why,
-            })).collect::<Vec<_>>(),
-            "reviewer": out.reviewer,
-            "verdicts": out.reviewed.iter().map(|(n, v, new)| serde_json::json!({
-                "id": n.meta.id, "verdict": v,
-                "replacement": new.as_ref().map(|x| x.meta.id.clone()),
             })).collect::<Vec<_>>(),
         });
         println!("{}", serde_json::to_string_pretty(&value)?);
@@ -865,7 +896,6 @@ fn done(
     cd: bool,
     squash: bool,
     budget: &BudgetArgs,
-    review: &ReviewArgs,
 ) -> Result<i32> {
     let lane_path = git::repo_root()?;
     let root = wt::main_root()?;
@@ -917,12 +947,7 @@ fn done(
     git(&["rebase", &trunk], Some(&lane_path))?;
     writeln!(info, "rebased onto {trunk}")?;
 
-    let reviewer = review::build(review.review.as_deref(), review.review_cmd.as_deref());
-    let out = audit::run(
-        &lane_path,
-        &options(&trunk, budget, review),
-        reviewer.as_ref(),
-    )?;
+    let out = audit::run(&lane_path, &options(&trunk, budget))?;
     audit::report(&out, info)?;
 
     // Fold this lane's per-branch files into the trunk's, so nothing accumulates.
@@ -1164,5 +1189,55 @@ mod tests {
             protocol_action(Some(&existing)),
             ProtocolAction::Refuse
         ));
+    }
+
+    #[test]
+    fn check_json_includes_only_drifted_spans() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(
+            root.path().join("src/drift.rs"),
+            "pub fn drift() {\n    println!(\"old\");\n}\n",
+        )
+        .unwrap();
+        std::fs::write(root.path().join("src/fresh.rs"), "pub fn fresh() {}\n").unwrap();
+        for (path, anchor, text) in [
+            ("src/drift.rs", "fn drift", "drift note"),
+            ("src/fresh.rs", "fn fresh", "fresh note"),
+        ] {
+            store::append_pending(
+                root.path(),
+                &store::PendingNote {
+                    text: text.into(),
+                    path: path.into(),
+                    anchor: anchor.into(),
+                    branch: "main".into(),
+                    at: "2026-08-21T00:00:00Z".into(),
+                    supersedes: String::new(),
+                },
+            )
+            .unwrap();
+        }
+        store::promote_pending(root.path()).unwrap();
+        std::fs::write(
+            root.path().join("src/drift.rs"),
+            "pub fn drift() {\n    println!(\"new\");\n}\n",
+        )
+        .unwrap();
+
+        let notes = store::load_notes(root.path(), None);
+        let mut checker = store::Checker::new(root.path());
+        let rows: Vec<_> = notes
+            .iter()
+            .map(|note| (checker.check(note), note))
+            .collect();
+        let json = check_json_rows(&rows, &mut checker);
+        let drifted = json.iter().find(|row| row["tier"] == BODY).unwrap();
+        let fresh = json.iter().find(|row| row["tier"] == FRESH).unwrap();
+
+        assert_eq!(drifted["note"], "drift note");
+        assert!(drifted["span"].as_str().unwrap().contains("\"new\""));
+        assert_eq!(fresh["note"], "fresh note");
+        assert!(fresh.get("span").is_none());
     }
 }

@@ -30,9 +30,17 @@ pub fn pending_path(worktree: &Path) -> PathBuf {
     }
 }
 
+/// The whole file. Its span has no declaration line, so its first line is an
+/// import or a shebang and means nothing on its own.
+pub const WHOLE_FILE: &str = "@file";
+
 pub const FRESH: &str = "fresh";
-pub const BODY: &str = "body-drift";
-pub const SIG: &str = "signature-changed";
+// The tier for a changed body_hash. The constant keeps the name of the hash it
+// comes from; the string is what a reader sees.
+pub const BODY: &str = "content-changed";
+// The tier for a changed declaration line. Only anchors that have one can
+// reach it; see WHOLE_FILE.
+pub const SIG: &str = "contract-changed";
 pub const MISSING: &str = "anchor-missing";
 pub const UNVERIFIABLE: &str = "unverifiable";
 
@@ -199,6 +207,8 @@ pub struct PendingNote {
     pub anchor: String,
     pub branch: String,
     pub at: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub supersedes: String,
 }
 
 /// Pending notes are resolved and fingerprinted here, never at write time, so a rebase
@@ -210,10 +220,18 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
     }
     let text = std::fs::read_to_string(&pending)?;
     let mut created = Vec::new();
-    let mut seen: HashSet<(String, String, String)> = load_notes(root, None)
+    let mut seen: HashSet<(String, String, String, String)> = load_notes(root, None)
         .into_iter()
-        .map(|note| (note.path(), note.meta.anchor, note.body.trim().to_string()))
+        .map(|note| {
+            (
+                note.path(),
+                note.meta.anchor,
+                note.body.trim().to_string(),
+                note.meta.supersedes,
+            )
+        })
         .collect();
+    let mut state = own_state(root);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: PendingNote = match serde_json::from_str(line) {
@@ -227,6 +245,7 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             rec.path.clone(),
             rec.anchor.clone(),
             rec.text.trim().to_string(),
+            rec.supersedes.clone(),
         );
         if seen.contains(&key) {
             continue;
@@ -237,6 +256,7 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             created: rec.at,
             branch: rec.branch,
             norm: crate::syntax::NORM_VERSION.into(),
+            supersedes: rec.supersedes.clone(),
             ..Default::default()
         };
         if let Ok(body_text) = std::fs::read_to_string(root.join(&rec.path)) {
@@ -252,17 +272,62 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
         let file =
             note_dir(root, &rec.path).join(format!("{}-{}.md", meta.id, slug(&rec.text, 28)));
         let mut note = Note::new(meta, rec.text);
+        let mut predecessor = if rec.supersedes.is_empty() {
+            None
+        } else {
+            Some(
+                load_notes(root, None)
+                    .into_iter()
+                    .find(|old| old.meta.id == rec.supersedes)
+                    .ok_or_else(|| anyhow::anyhow!("live note {} not found", rec.supersedes))?,
+            )
+        };
         note.write(&file)?;
         note.file = Some(file);
+        if let Some(old) = predecessor.as_mut() {
+            supersede(root, old, &note, &mut state)?;
+        }
         created.push(note);
         seen.insert(key);
     }
 
+    save_state(root, &state)?;
     std::fs::remove_file(&pending)?;
     Ok(created)
 }
 
-/// Never delete: the audit is the only writer here without a reviewer, so it stays inspectable.
+/// An id, or any unambiguous prefix of one. `lane why` prints ten characters of a
+/// ULID, so what a reader can see has to be what the verbs accept.
+pub fn resolve_id(root: &Path, id: &str) -> Result<Note> {
+    let mut hits: Vec<Note> = load_notes(root, None)
+        .into_iter()
+        .filter(|note| note.meta.id.starts_with(id))
+        .collect();
+    match hits.len() {
+        0 => anyhow::bail!("live note {id} not found"),
+        1 => Ok(hits.remove(0)),
+        n => {
+            let shown: Vec<String> = hits
+                .iter()
+                .take(5)
+                .map(|note| format!("{} {}#{}", note.meta.id, note.path(), note.meta.anchor))
+                .collect();
+            anyhow::bail!("{id} matches {n} notes:\n  {}", shown.join("\n  "))
+        }
+    }
+}
+
+pub fn supersede(root: &Path, old: &mut Note, fresh: &Note, state: &mut State) -> Result<()> {
+    if let Some(entry) = state.get(&old.meta.id).cloned() {
+        state.insert(fresh.meta.id.clone(), entry);
+    }
+    let reason = format!("superseded by {}", fresh.meta.id);
+    evict(root, old, &reason)?;
+    state.remove(&old.meta.id);
+    Ok(())
+}
+
+/// Never delete: audit moves notes to the attic so every retirement stays inspectable.
 pub fn evict(root: &Path, note: &mut Note, reason: &str) -> Result<()> {
     let Some(file) = note.file.clone() else {
         return Ok(());
@@ -411,9 +476,13 @@ impl Checker {
             };
         }
 
-        let tier = if sig != base.sig {
+        // SIG means the declaration line moved. @file has no declaration, so its
+        // first line is an import or a shebang: promoting a change there above a
+        // rewrite of everything under it would rank the file exactly backwards.
+        let declared = note.meta.anchor != WHOLE_FILE;
+        let tier = if declared && sig != base.sig {
             SIG
-        } else if body_hash != base.body_hash {
+        } else if body_hash != base.body_hash || sig != base.sig {
             BODY
         } else {
             FRESH
@@ -622,6 +691,67 @@ mod tests {
     }
 
     #[test]
+    fn a_whole_file_note_never_reports_a_contract_change() {
+        let root = tempfile::tempdir().unwrap();
+        let src = "use std::io;\n\nfn verify(t: &str) -> bool {\n    eq(t)\n}\n";
+        std::fs::write(root.path().join("lib.rs"), src).unwrap();
+        let live = crate::syntax::Source::new(src, "lib.rs");
+        let span = live.resolve(WHOLE_FILE).unwrap();
+        let (sig, body_hash, raw_hash) = live.hashes(span, WHOLE_FILE);
+        seed_note(
+            root.path(),
+            "lib.rs",
+            "01M0A",
+            "keep this file dependency-free",
+        );
+        write_state(
+            root.path(),
+            &crate::git::current_branch(),
+            "01M0A",
+            NoteState {
+                sig,
+                body_hash,
+                raw_hash,
+                norm: crate::syntax::NORM_VERSION.into(),
+                ..Default::default()
+            },
+        );
+
+        // line one of a file is an import; changing it is not a contract change
+        std::fs::write(
+            root.path().join("lib.rs"),
+            "use std::fmt;\n\nfn verify(t: &str) -> bool {\n    eq(t)\n}\n",
+        )
+        .unwrap();
+        let note = load_notes(root.path(), None).into_iter().next().unwrap();
+        assert_eq!(Checker::new(root.path()).check(&note).tier, BODY);
+    }
+
+    #[test]
+    fn resolve_id_takes_a_prefix_and_refuses_an_ambiguous_one() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0AKEEP", "keep");
+        seed_note(root.path(), "src/b.rs", "01M0BDROP", "drop");
+
+        // what `lane check` and `lane why` print is a prefix, so it has to work
+        assert_eq!(
+            resolve_id(root.path(), "01M0AK").unwrap().meta.id,
+            "01M0AKEEP"
+        );
+        assert_eq!(
+            resolve_id(root.path(), "01M0AKEEP").unwrap().meta.id,
+            "01M0AKEEP"
+        );
+
+        let ambiguous = resolve_id(root.path(), "01M0").unwrap_err().to_string();
+        assert!(ambiguous.contains("matches 2 notes"), "{ambiguous}");
+        assert!(ambiguous.contains("01M0AKEEP"), "{ambiguous}");
+
+        let unknown = resolve_id(root.path(), "ZZZ").unwrap_err().to_string();
+        assert!(unknown.contains("not found"), "{unknown}");
+    }
+
+    #[test]
     fn writing_identical_state_does_not_touch_the_file() {
         let root = tempfile::tempdir().unwrap();
         let path = state_file_for(root.path(), "main");
@@ -812,7 +942,7 @@ mod tests {
     #[test]
     fn a_first_fingerprint_is_not_drift() {
         // A note made when the language had no grammar has no baseline; adding one later
-        // must not report every such note as signature-changed.
+        // must not report every such note as contract-changed.
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(root.path().join("src")).unwrap();
         std::fs::write(root.path().join("src/a.rs"), "pub fn v() {}\n").unwrap();
@@ -931,6 +1061,7 @@ mod tests {
             anchor: "fn verify".into(),
             branch: "main".into(),
             at: "2026-08-19T00:00:00Z".into(),
+            supersedes: String::new(),
         };
 
         append_pending(root.path(), &pending).unwrap();
@@ -938,5 +1069,39 @@ mod tests {
         append_pending(root.path(), &pending).unwrap();
         assert!(promote_pending(root.path()).unwrap().is_empty());
         assert_eq!(load_notes(root.path(), Some("src/auth.rs")).len(), 1);
+    }
+
+    #[test]
+    fn pending_supersede_links_and_attics_its_predecessor() {
+        let root = tempfile::tempdir().unwrap();
+        let old = fixture(root.path(), "pub fn v() {}\n");
+        let branch = git::current_branch();
+        write_state(root.path(), &branch, &old.meta.id, NoteState::default());
+        append_pending(
+            root.path(),
+            &PendingNote {
+                text: "replacement note".into(),
+                path: "src/a.rs".into(),
+                anchor: "@file".into(),
+                branch,
+                at: "2026-08-21T00:00:00Z".into(),
+                supersedes: old.meta.id.clone(),
+            },
+        )
+        .unwrap();
+
+        let created = promote_pending(root.path()).unwrap();
+
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].meta.supersedes, old.meta.id);
+        assert_eq!(load_notes(root.path(), Some("src/a.rs")).len(), 1);
+        assert!(
+            attic_dir(root.path(), "src/a.rs")
+                .join("01M0A-a-note.md")
+                .is_file()
+        );
+        let state = own_state(root.path());
+        assert!(state.contains_key(&created[0].meta.id));
+        assert!(!state.contains_key(&old.meta.id));
     }
 }

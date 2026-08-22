@@ -54,7 +54,6 @@ tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 ulid = "3.0.0"
-ureq = { version = "3.4.0", default-features = false, features = ["json", "rustls"] }
 walkdir = "2.5.0"
 
 [lints]

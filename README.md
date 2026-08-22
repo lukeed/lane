@@ -85,7 +85,7 @@ that anchor's span only:
 |---|---|---|
 | `fresh` | span unchanged | none |
 | `content-changed` | implementation moved, contract held | stays flagged until resolved |
-| `signature-changed` | the described thing changed shape | resolve |
+| `contract-changed` | the described thing changed shape | resolve |
 | `anchor-missing` | symbol gone | evict to `attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename

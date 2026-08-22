@@ -30,11 +30,17 @@ pub fn pending_path(worktree: &Path) -> PathBuf {
     }
 }
 
+/// The whole file. Its span has no declaration line, so its first line is an
+/// import or a shebang and means nothing on its own.
+pub const WHOLE_FILE: &str = "@file";
+
 pub const FRESH: &str = "fresh";
 // The tier for a changed body_hash. The constant keeps the name of the hash it
 // comes from; the string is what a reader sees.
 pub const BODY: &str = "content-changed";
-pub const SIG: &str = "signature-changed";
+// The tier for a changed declaration line. Only anchors that have one can
+// reach it; see WHOLE_FILE.
+pub const SIG: &str = "contract-changed";
 pub const MISSING: &str = "anchor-missing";
 pub const UNVERIFIABLE: &str = "unverifiable";
 
@@ -470,9 +476,13 @@ impl Checker {
             };
         }
 
-        let tier = if sig != base.sig {
+        // SIG means the declaration line moved. @file has no declaration, so its
+        // first line is an import or a shebang: promoting a change there above a
+        // rewrite of everything under it would rank the file exactly backwards.
+        let declared = note.meta.anchor != WHOLE_FILE;
+        let tier = if declared && sig != base.sig {
             SIG
-        } else if body_hash != base.body_hash {
+        } else if body_hash != base.body_hash || sig != base.sig {
             BODY
         } else {
             FRESH
@@ -678,6 +688,43 @@ mod tests {
         let mut existing = read_state_file(&path);
         existing.insert(id.to_string(), entry);
         write_state_file(&path, &existing).unwrap();
+    }
+
+    #[test]
+    fn a_whole_file_note_never_reports_a_contract_change() {
+        let root = tempfile::tempdir().unwrap();
+        let src = "use std::io;\n\nfn verify(t: &str) -> bool {\n    eq(t)\n}\n";
+        std::fs::write(root.path().join("lib.rs"), src).unwrap();
+        let live = crate::syntax::Source::new(src, "lib.rs");
+        let span = live.resolve(WHOLE_FILE).unwrap();
+        let (sig, body_hash, raw_hash) = live.hashes(span, WHOLE_FILE);
+        seed_note(
+            root.path(),
+            "lib.rs",
+            "01M0A",
+            "keep this file dependency-free",
+        );
+        write_state(
+            root.path(),
+            &crate::git::current_branch(),
+            "01M0A",
+            NoteState {
+                sig,
+                body_hash,
+                raw_hash,
+                norm: crate::syntax::NORM_VERSION.into(),
+                ..Default::default()
+            },
+        );
+
+        // line one of a file is an import; changing it is not a contract change
+        std::fs::write(
+            root.path().join("lib.rs"),
+            "use std::fmt;\n\nfn verify(t: &str) -> bool {\n    eq(t)\n}\n",
+        )
+        .unwrap();
+        let note = load_notes(root.path(), None).into_iter().next().unwrap();
+        assert_eq!(Checker::new(root.path()).check(&note).tier, BODY);
     }
 
     #[test]
@@ -895,7 +942,7 @@ mod tests {
     #[test]
     fn a_first_fingerprint_is_not_drift() {
         // A note made when the language had no grammar has no baseline; adding one later
-        // must not report every such note as signature-changed.
+        // must not report every such note as contract-changed.
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(root.path().join("src")).unwrap();
         std::fs::write(root.path().join("src/a.rs"), "pub fn v() {}\n").unwrap();

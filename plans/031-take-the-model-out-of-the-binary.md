@@ -255,7 +255,7 @@ context; it is not a manual.
 `USAGE.md` and `explainer.md` are no longer at the root — `e9f5435` moved them under
 `www/`, where Step 7 owns them. Only two files are left here.
 
-- `README.md:88` — the `signature-changed` row says `review`. It is now `resolve`.
+- `README.md:88` — the `contract-changed` row says `review`. It is now `resolve`.
 - `README.md:95` — "until a reviewer resolves it or a human rewrites it" → name the three
   commands.
 - `README.md:205-211` — replace the whole `## Review` section with `## Resolving drift`,

@@ -144,7 +144,7 @@ read one to find out it is wrong.
 ```bash
 $ lane done
   rebased onto main
-  memory: +2 new; checked 8: 7 fresh, 1 content-changed, 0 signature-changed, 0 missing
+  memory: +2 new; checked 8: 7 fresh, 1 content-changed, 0 contract-changed, 0 missing
   committed memory update
   fast-forwarded main
   removed lane fix-login
@@ -165,7 +165,7 @@ normalized so comments and whitespace don't count:
 |---|---|---|
 | `fresh` | unchanged | nothing, costs nothing |
 | `content-changed` | implementation moved | flagged until you resolve it |
-| `signature-changed` | the described thing changed shape | flagged until you resolve it |
+| `contract-changed` | the described thing changed shape | flagged until you resolve it |
 | `anchor-missing` | symbol gone | evicted to `.lane/attic/` |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
@@ -179,6 +179,13 @@ A drifted note stays flagged until you run `lane holds <id>`, replace it with
 Editing `#script` never stales a note on `#style`. Running a formatter stales
 nothing at all.
 
+The two drift tiers split a span at its declaration line: `fn verify(t: &str)`,
+`<script>`, `## Rate limiting`. Only an anchor that has one can report
+`contract-changed`. An `@file` note has no declaration — its first line is an
+import or a shebang — so every change to it is `content-changed`. A heading's
+declaration *is* its anchor, so changing it reports `anchor-missing`, not
+`contract-changed`.
+
 ### Resolving drift
 
 Before `lane done`, run `lane check`. It lists every note that is not fresh with
@@ -188,7 +195,7 @@ the id you need next:
 $ lane check
 fresh              7
 content-changed         1
-signature-changed  0
+contract-changed  0
 anchor-missing     0
 unverifiable       0
 

@@ -288,7 +288,7 @@ is "done lands one log and nothing per-branch" \
    "$(find .lane -maxdepth 1 -name 'log.jsonl' | wc -l | tr -d ' '):$([ -e .lane/branch ] && echo yes || echo no)" \
    "1:no"
 is "the landing is marked in trunk's log" \
-   "$(jq -c 'select(.kind=="landing" and .branch=="land")' .lane/log.jsonl | wc -l | tr -d ' ')" "1"
+   "$(python3 -c 'import json;print(sum(1 for l in open(".lane/log.jsonl") if json.loads(l)["kind"]=="landing" and json.loads(l)["branch"]=="land"))')" "1"
 
 echo "== 18. anchors we cannot resolve are kept, not discarded =="
 setup
@@ -646,7 +646,7 @@ is "the second merges without conflict" "$MERGED_B" "0"
 is "both notes survive" \
    "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
 is "both landings are recorded" \
-   "$(jq -c 'select(.kind=="landing")' .lane/log.jsonl | wc -l | tr -d ' ')" "2"
+   "$(python3 -c 'import json;print(sum(1 for l in open(".lane/log.jsonl") if json.loads(l)["kind"]=="landing"))')" "2"
 is "sweep collects both" "$("$LANE" sweep 2>&1 | grep -c '^removed')" "2"
 
 echo "== 34. a lane can adopt a branch that already exists =="
@@ -698,7 +698,7 @@ setup
   && "$LANE" note -p src/auth.rs -a "fn verify" "first time round" > /dev/null \
   && "$LANE" done > /dev/null 2>&1 )
 is "the marker carries a lane id" \
-   "$(jq -r 'select(.kind=="landing") | .lane | length' .lane/log.jsonl)" "26"
+   "$(python3 -c 'import json;print(*[len(json.loads(l)["lane"]) for l in open(".lane/log.jsonl") if json.loads(l)["kind"]=="landing"])')" "26"
 # `fix` twice in a week is normal, and the second one has landed nothing.
 "$LANE" new fix > /dev/null 2>&1
 is "a reused name is not landed" "$("$LANE" ls | grep -c 'fix .*open')" "1"

@@ -1,7 +1,7 @@
 //! Lane lifecycle: create, list, land, remove.
 
 use crate::cow;
-use crate::git::{git, git_ok, try_git};
+use crate::git::{git, git_ok, layout, try_git};
 use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
 use std::io::Write;
@@ -13,14 +13,7 @@ const TREES_PATH: &str = ".lane/trees";
 
 /// Root of the primary worktree, even when called from inside a lane.
 pub fn main_root() -> Result<PathBuf> {
-    let common = git(
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        None,
-    )?;
-    Ok(PathBuf::from(common)
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default())
+    Ok(layout(&std::env::current_dir()?)?.main_root)
 }
 
 pub fn trunk_name(root: &Path) -> String {

@@ -27,15 +27,9 @@ pub const EVICT: &str = "evict";
 /// Per-worktree: git resolves an uncommon path inside .git/worktrees/<name> for a lane,
 /// so a lane cannot inherit the queue its parent has not promoted yet.
 pub fn pending_path(worktree: &Path) -> PathBuf {
-    let resolved = git::try_git(
-        &["rev-parse", "--path-format=absolute", "--git-path", PENDING],
-        Some(worktree),
-    );
-    if resolved.is_empty() {
-        worktree.join(".git").join(PENDING)
-    } else {
-        PathBuf::from(resolved)
-    }
+    git::layout(worktree)
+        .map(|layout| layout.git_dir.join(PENDING))
+        .unwrap_or_else(|_| worktree.join(".git").join(PENDING))
 }
 
 /// A lane's own identity, stamped at creation and never committed.
@@ -44,28 +38,20 @@ pub fn pending_path(worktree: &Path) -> PathBuf {
 /// names are reused — `fix` twice in a week is normal — so the name alone would make a
 /// fresh lane look like the landed one it was named after.
 pub fn lane_id(worktree: &Path) -> String {
-    let path = git::try_git(
-        &["rev-parse", "--path-format=absolute", "--git-path", LANE_ID],
-        Some(worktree),
-    );
-    if path.is_empty() {
+    let Ok(layout) = git::layout(worktree) else {
         return String::new();
-    }
-    std::fs::read_to_string(path)
+    };
+    std::fs::read_to_string(layout.git_dir.join(LANE_ID))
         .unwrap_or_default()
         .trim()
         .into()
 }
 
 pub fn stamp_lane_id(worktree: &Path) -> Result<()> {
-    let path = git::try_git(
-        &["rev-parse", "--path-format=absolute", "--git-path", LANE_ID],
-        Some(worktree),
-    );
-    if path.is_empty() {
+    let Ok(layout) = git::layout(worktree) else {
         return Ok(());
-    }
-    let path = PathBuf::from(path);
+    };
+    let path = layout.git_dir.join(LANE_ID);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

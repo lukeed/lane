@@ -224,9 +224,31 @@ fn clone_entry(root: &Path, dest: &Path, entry: &str) -> Result<cow::CloneStats>
     )?)
 }
 
+fn branch_args<'a>(adopt: bool, name: &'a str, dest: &'a str, base: &'a str) -> Vec<&'a str> {
+    if adopt {
+        vec![dest, name]
+    } else {
+        vec!["-b", name, dest, base]
+    }
+}
+
 /// By default git checks out tracked files and ignored entries are cloned by reference.
 pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     let root = main_root()?;
+    // An existing branch is adopted, not recreated: a fetched pull request needs a lane
+    // to be reviewed or landed in, and a lane swept early needs one to come back to.
+    let adopt = git_ok(
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{name}"),
+        ],
+        Some(&root),
+    );
+    if adopt && base.is_some() {
+        bail!("branch {name} already exists; --base applies only to a new branch");
+    }
     let base = base
         .map(str::to_string)
         .unwrap_or_else(|| trunk_name(&root));
@@ -267,7 +289,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             if relative_paths {
                 args.push("--relative-paths");
             }
-            args.extend(["-b", name, &dest_str, &base]);
+            args.extend(branch_args(adopt, name, &dest_str, &base));
             git(&args, Some(&root))?;
             let skip = |rel: &str, _is_dir: bool| {
                 rel == ".git"
@@ -276,8 +298,9 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
                     || rel.starts_with(".lane/trees/")
             };
             let stats = cow::clone_tree(&root, &dest, &skip)?;
-            // Repopulate the index from the base tree without rewriting a single file.
-            git(&["reset", "--mixed", "--quiet", &base], Some(&dest))?;
+            // Repopulate the index from the checked-out tree without rewriting a single
+            // file. HEAD, not base: an adopted branch is already at its own tip.
+            git(&["reset", "--mixed", "--quiet", "HEAD"], Some(&dest))?;
             try_git(&["update-index", "--refresh"], Some(&dest));
             let carried = try_git(&["status", "--porcelain"], Some(&dest))
                 .lines()
@@ -306,7 +329,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             if relative_paths {
                 args.push("--relative-paths");
             }
-            args.extend(["-b", name, &dest_str, &base]);
+            args.extend(branch_args(adopt, name, &dest_str, &base));
             git(&args, Some(&root))?;
             let mut stats = cow::CloneStats::default();
             for entry in ignored {
@@ -336,6 +359,8 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
         }
     };
 
+    crate::store::stamp_lane_id(&dest)?;
+
     Ok(Created {
         path: dest,
         stats,
@@ -350,6 +375,19 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
 pub fn remove(name: &str, force: bool) -> Result<bool> {
     let root = main_root()?;
     let dest = lanes_dir(&root).join(name);
+
+    // Deleting the directory the caller is standing in leaves their shell in a path that no
+    // longer exists, which is the failure plan 006 exists to prevent. `done` chdirs to the
+    // root before it gets here; `rm` and `sweep` have no reason to, so refuse instead.
+    let inside = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| cwd.canonicalize().ok())
+        .zip(dest.canonicalize().ok())
+        .is_some_and(|(cwd, dest)| cwd.starts_with(dest));
+    if inside {
+        bail!("cannot remove lane {name} from inside it; cd out first");
+    }
+
     let dest_str = dest.to_string_lossy().to_string();
 
     let mut args = vec!["worktree", "remove"];
@@ -427,6 +465,43 @@ pub fn blocking_changes(root: &Path, trunk: &str, branch: &str) -> Vec<String> {
     .into_iter()
     .filter(|p| incoming.contains(p))
     .collect()
+}
+
+/// Is everything on `branch` already represented in `trunk`?
+///
+/// Three answers for GitHub's three merge buttons. A merge commit leaves the branch an
+/// ancestor. Anything else rewrites the SHAs, so `git branch -d` refuses even when the
+/// trees are identical; comparing the branch's cumulative diff against trunk by patch-id
+/// is what sees through a rebase or a squash.
+pub fn contained_in(root: &Path, trunk: &str, branch: &str) -> bool {
+    if git_ok(&["merge-base", "--is-ancestor", branch, trunk], Some(root)) {
+        return true;
+    }
+    let Ok(base) = git(&["merge-base", trunk, branch], Some(root)) else {
+        return false;
+    };
+    let Ok(tree) = git(&["rev-parse", &format!("{branch}^{{tree}}")], Some(root)) else {
+        return false;
+    };
+    // An empty probe has no patch-id to match, so `cherry` would call it unmerged.
+    if git(&["rev-parse", &format!("{base}^{{tree}}")], Some(root)).is_ok_and(|b| b == tree) {
+        return true;
+    }
+    let Ok(probe) = git(
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &base,
+            "-m",
+            "lane: containment probe",
+        ],
+        Some(root),
+    ) else {
+        return false;
+    };
+    let cherry = try_git(&["cherry", trunk, &probe], Some(root));
+    !cherry.is_empty() && cherry.lines().all(|line| line.starts_with('-'))
 }
 
 /// Advance trunk to branch: merge when trunk is checked out, update-ref when it is not.

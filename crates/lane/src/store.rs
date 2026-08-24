@@ -13,8 +13,16 @@ pub const LANE_DIR: &str = ".lane";
 /// Reserved: everything under it mirrors user paths, so a repo may have its own attic/.
 pub const NOTES: &str = "memory";
 pub const ATTIC: &str = "attic";
-pub const BRANCH: &str = "branch";
+pub const LOG: &str = "log.jsonl";
 pub const PENDING: &str = "lane/pending.jsonl";
+pub const LANE_ID: &str = "lane/id";
+
+/// Log record kinds. `holds` and `rebaseline` both move a baseline and are distinguished
+/// so a machine's automatic re-anchor never reads as a person's vouch.
+pub const HOLDS: &str = "holds";
+pub const REBASELINE: &str = "rebaseline";
+pub const LANDING: &str = "landing";
+pub const EVICT: &str = "evict";
 
 /// Per-worktree: git resolves an uncommon path inside .git/worktrees/<name> for a lane,
 /// so a lane cannot inherit the queue its parent has not promoted yet.
@@ -28,6 +36,41 @@ pub fn pending_path(worktree: &Path) -> PathBuf {
     } else {
         PathBuf::from(resolved)
     }
+}
+
+/// A lane's own identity, stamped at creation and never committed.
+///
+/// Per-worktree, so it dies with the lane. A landing marker names the branch, and branch
+/// names are reused — `fix` twice in a week is normal — so the name alone would make a
+/// fresh lane look like the landed one it was named after.
+pub fn lane_id(worktree: &Path) -> String {
+    let path = git::try_git(
+        &["rev-parse", "--path-format=absolute", "--git-path", LANE_ID],
+        Some(worktree),
+    );
+    if path.is_empty() {
+        return String::new();
+    }
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .trim()
+        .into()
+}
+
+pub fn stamp_lane_id(worktree: &Path) -> Result<()> {
+    let path = git::try_git(
+        &["rev-parse", "--path-format=absolute", "--git-path", LANE_ID],
+        Some(worktree),
+    );
+    if path.is_empty() {
+        return Ok(());
+    }
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{}\n", ulid()))?;
+    Ok(())
 }
 
 /// The whole file. Its span has no declaration line, so its first line is an
@@ -88,107 +131,96 @@ pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
         .collect()
 }
 
-/// Per-note derived state. Disposable: losing it costs one recompute, never a wrong answer.
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub struct NoteState {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+/// A re-confirmation of a note's baseline: the shape of the code that someone, or a
+/// normalization change, last vouched for. Committed, so it survives a merge and a clone.
+#[derive(Clone, Debug, Default)]
+pub struct Confirmation {
     pub sig: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub body_hash: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub raw_hash: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub status: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub checked: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub norm: String,
+    pub at: String,
 }
 
-pub type State = HashMap<String, NoteState>;
-
-fn branch_dir(root: &Path, branch: &str) -> PathBuf {
-    root.join(LANE_DIR).join(BRANCH).join(slug(branch, 60))
+pub fn log_path(root: &Path) -> PathBuf {
+    root.join(LANE_DIR).join(LOG)
 }
 
-fn state_file_for(root: &Path, branch: &str) -> PathBuf {
-    branch_dir(root, branch).join("state.json")
-}
-
-fn log_file_for(root: &Path, branch: &str) -> PathBuf {
-    branch_dir(root, branch).join("log.jsonl")
-}
-
-fn state_file(root: &Path) -> PathBuf {
-    state_file_for(root, &git::current_branch())
-}
-
-fn read_state_file(path: &Path) -> State {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
-}
-
-fn all_state(root: &Path) -> Vec<State> {
-    let dir = root.join(LANE_DIR).join(BRANCH);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+fn log_lines(root: &Path) -> Vec<serde_json::Value> {
+    let Ok(text) = std::fs::read_to_string(log_path(root)) else {
         return Vec::new();
     };
-    let mut files: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path().join("state.json"))
-        .filter(|p| p.is_file())
-        .collect();
-    files.sort();
-    files.iter().map(|p| read_state_file(p)).collect()
+    text.lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
 }
 
-/// Newest `checked` wins. Order-independent, and a wrong pick costs one recheck.
-pub fn load_state(root: &Path) -> State {
-    let mut merged = State::new();
-    for part in all_state(root) {
-        for (id, entry) in part {
-            match merged.get(&id) {
-                Some(have) if have.checked >= entry.checked => {}
-                _ => {
-                    merged.insert(id, entry);
-                }
+fn field(entry: &serde_json::Value, key: &str) -> String {
+    entry
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// The newest re-confirmation of each note. Union merge can interleave two branches'
+/// appends, so `at` orders them and file position breaks a tie.
+pub fn confirmations(root: &Path) -> HashMap<String, Confirmation> {
+    let mut out: HashMap<String, Confirmation> = HashMap::new();
+    for entry in log_lines(root) {
+        let kind = field(&entry, "kind");
+        if kind != HOLDS && kind != REBASELINE {
+            continue;
+        }
+        let id = field(&entry, "id");
+        if id.is_empty() {
+            continue;
+        }
+        let fresh = Confirmation {
+            sig: field(&entry, "sig"),
+            body_hash: field(&entry, "body_hash"),
+            raw_hash: field(&entry, "raw_hash"),
+            norm: field(&entry, "norm"),
+            at: field(&entry, "at"),
+        };
+        // A record with no fingerprint vouches for nothing. `check` reads an empty baseline
+        // as a first fingerprint and reports fresh, so a truncated line would silence a
+        // note forever; fall back to the creation fingerprint instead.
+        if fresh.sig.is_empty() && fresh.body_hash.is_empty() {
+            continue;
+        }
+        match out.get(&id) {
+            Some(have) if have.at > fresh.at => {}
+            _ => {
+                out.insert(id, fresh);
             }
         }
     }
-    merged
+    out
 }
 
-fn write_state_file(path: &Path, state: &State) -> Result<()> {
-    let mut sorted: Vec<(&String, &NoteState)> = state.iter().collect();
-    sorted.sort_by(|a, b| a.0.cmp(b.0));
-    let ordered: std::collections::BTreeMap<&String, &NoteState> = sorted.into_iter().collect();
-    let text = serde_json::to_string_pretty(&ordered)? + "\n";
-
-    if std::fs::read_to_string(path).is_ok_and(|old| old == text) {
-        return Ok(());
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-    use std::io::Write;
-    tmp.write_all(text.as_bytes())?;
-    tmp.persist(path).map_err(|e| e.error)?;
-    Ok(())
+/// Every landing writes one of these. Its presence in *trunk's* copy of the log is how a
+/// merged branch is recognised, whichever way the merge was made: it is tree content, not
+/// commit identity, so a squash cannot hide it the way it hides a SHA.
+pub fn landings(log: &str) -> HashSet<String> {
+    log.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|entry| field(entry, "kind") == LANDING)
+        .map(|entry| field(&entry, "lane"))
+        .filter(|lane| !lane.is_empty())
+        .collect()
 }
 
-/// Write this branch's file, and only if it changed.
-pub fn save_state(root: &Path, state: &State) -> Result<()> {
-    write_state_file(&state_file(root), state)
-}
-
-/// Append-only, one file per branch, so this is the one thing union merge is for.
+/// Append-only, one file, so this is the one thing union merge is for. Every record
+/// carries the branch that wrote it; nothing else records provenance now.
 pub fn append_log(root: &Path, entry: &serde_json::Value) -> Result<()> {
     use std::io::Write;
-    let path = log_file_for(root, &git::current_branch());
+    let mut entry = entry.clone();
+    if let Some(map) = entry.as_object_mut() {
+        map.entry("branch")
+            .or_insert_with(|| git::current_branch().into());
+    }
+    let path = log_path(root);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -198,6 +230,28 @@ pub fn append_log(root: &Path, entry: &serde_json::Value) -> Result<()> {
         .open(path)?;
     writeln!(file, "{entry}")?;
     Ok(())
+}
+
+/// A vouch, by a person or by a normalization change, recorded with the fingerprint it
+/// confirmed. Without those four fields the record says a note was vouched for but not
+/// for which shape of the code, which is the whole content of the decision.
+pub fn append_confirmation(
+    root: &Path,
+    kind: &str,
+    note: &Note,
+    sig: &str,
+    body_hash: &str,
+    raw_hash: &str,
+) -> Result<()> {
+    append_log(
+        root,
+        &serde_json::json!({
+            "at": now_iso(), "kind": kind, "id": note.meta.id,
+            "path": note.path(), "anchor": note.meta.anchor,
+            "sig": sig, "body_hash": body_hash, "raw_hash": raw_hash,
+            "norm": crate::syntax::NORM_VERSION,
+        }),
+    )
 }
 
 #[derive(Serialize, Deserialize)]
@@ -231,7 +285,6 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             )
         })
         .collect();
-    let mut state = own_state(root);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: PendingNote = match serde_json::from_str(line) {
@@ -285,13 +338,12 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
         note.write(&file)?;
         note.file = Some(file);
         if let Some(old) = predecessor.as_mut() {
-            supersede(root, old, &note, &mut state)?;
+            supersede(root, old, &note)?;
         }
         created.push(note);
         seen.insert(key);
     }
 
-    save_state(root, &state)?;
     std::fs::remove_file(&pending)?;
     Ok(created)
 }
@@ -317,14 +369,11 @@ pub fn resolve_id(root: &Path, id: &str) -> Result<Note> {
     }
 }
 
-pub fn supersede(root: &Path, old: &mut Note, fresh: &Note, state: &mut State) -> Result<()> {
-    if let Some(entry) = state.get(&old.meta.id).cloned() {
-        state.insert(fresh.meta.id.clone(), entry);
-    }
+/// The replacement carries its own creation fingerprint, so nothing is inherited: a
+/// confirmation of the old id vouched for the old sentence, not this one.
+pub fn supersede(root: &Path, old: &mut Note, fresh: &Note) -> Result<()> {
     let reason = format!("superseded by {}", fresh.meta.id);
-    evict(root, old, &reason)?;
-    state.remove(&old.meta.id);
-    Ok(())
+    evict(root, old, &reason)
 }
 
 /// Never delete: audit moves notes to the attic so every retirement stays inspectable.
@@ -343,7 +392,7 @@ pub fn evict(root: &Path, note: &mut Note, reason: &str) -> Result<()> {
     append_log(
         root,
         &serde_json::json!({
-            "at": now_iso(), "kind": "evict", "id": note.meta.id,
+            "at": now_iso(), "kind": EVICT, "id": note.meta.id,
             "path": note.path(), "anchor": note.meta.anchor, "reason": reason,
         }),
     )?;
@@ -361,13 +410,16 @@ pub struct Check {
     pub span: Option<Span>,
     /// The baseline was taken under a different normalization and could not be compared.
     pub rebaselined: bool,
+    /// The baseline's normalization differed, comparably or not, so this run adopts a new
+    /// one. Frontmatter is immutable, so without a record the note re-adopts forever.
+    pub adopted: bool,
 }
 
 /// Parses each file once and reuses it across every note anchored to it.
 pub struct Checker {
     root: PathBuf,
     cache: HashMap<String, Option<Source>>,
-    state: State,
+    confirmed: HashMap<String, Confirmation>,
 }
 
 impl Checker {
@@ -375,7 +427,7 @@ impl Checker {
         Checker {
             root: root.to_path_buf(),
             cache: HashMap::new(),
-            state: load_state(root),
+            confirmed: confirmations(root),
         }
     }
 
@@ -414,6 +466,7 @@ impl Checker {
             ),
             span: None,
             rebaselined: false,
+            adopted: false,
         };
         // Nothing is known about a note we could not read, so nothing may act on it.
         if note.unreadable {
@@ -421,13 +474,18 @@ impl Checker {
         }
 
         // The newest confirmation wins; the note's creation fingerprint is the fallback.
-        let base = self.state.get(&note.meta.id).cloned().unwrap_or(NoteState {
-            sig: note.meta.sig.clone(),
-            body_hash: note.meta.body_hash.clone(),
-            raw_hash: note.meta.raw_hash.clone(),
-            norm: note.meta.norm.clone(),
-            ..Default::default()
-        });
+        // Both are committed, so every machine compares against the same baseline.
+        let base = self
+            .confirmed
+            .get(&note.meta.id)
+            .cloned()
+            .unwrap_or(Confirmation {
+                sig: note.meta.sig.clone(),
+                body_hash: note.meta.body_hash.clone(),
+                raw_hash: note.meta.raw_hash.clone(),
+                norm: note.meta.norm.clone(),
+                at: String::new(),
+            });
 
         let (path, anchor) = (note.path(), note.meta.anchor.clone());
         let Some(src) = self.source(&path) else {
@@ -454,6 +512,7 @@ impl Checker {
                 ),
                 span: Some(span),
                 rebaselined: false,
+                adopted: false,
             };
         }
 
@@ -473,6 +532,7 @@ impl Checker {
                 ),
                 span: Some(span),
                 rebaselined: !unchanged,
+                adopted: true,
             };
         }
 
@@ -495,6 +555,7 @@ impl Checker {
             base: (base.sig, base.body_hash, base.raw_hash),
             span: Some(span),
             rebaselined: false,
+            adopted: false,
         }
     }
 }
@@ -586,86 +647,6 @@ pub fn has_missing_sources(root: &Path, notes: &[Note]) -> bool {
     notes.iter().any(|n| !root.join(n.path()).exists())
 }
 
-/// This branch's file alone; the read counts live here and must survive an audit.
-pub fn own_state(root: &Path) -> State {
-    read_state_file(&state_file(root))
-}
-
-/// Fold a lane's per-branch directory into its target and delete its own.
-///
-/// Safe because `done` rebases before it audits, so lanes serialise; without this the
-/// store accumulates a file per lane forever.
-pub fn roll_up(root: &Path, from: &str, into: &str) -> Result<()> {
-    let (from_log, into_log) = (log_file_for(root, from), log_file_for(root, into));
-    if let Ok(lines) = std::fs::read_to_string(&from_log) {
-        use std::io::Write;
-        if let Some(parent) = into_log.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&into_log)?;
-        write!(file, "{lines}")?;
-    }
-
-    let from_state = state_file_for(root, from);
-    if from_state.exists() {
-        let mine = read_state_file(&from_state);
-        let into_path = state_file_for(root, into);
-        let mut theirs = read_state_file(&into_path);
-        for (id, entry) in mine {
-            let merged = match theirs.remove(&id) {
-                Some(have) => {
-                    if have.checked >= entry.checked {
-                        have
-                    } else {
-                        entry
-                    }
-                }
-                None => entry,
-            };
-            theirs.insert(id, merged);
-        }
-        write_state_file(&into_path, &theirs)?;
-    }
-    let from_dir = branch_dir(root, from);
-    if from_dir.exists() {
-        std::fs::remove_dir_all(from_dir)?;
-    }
-    Ok(())
-}
-
-/// Drop a branch's files outright; used when its work is discarded rather than landed.
-pub fn discard_branch_files(root: &Path, branch: &str) {
-    let _ = std::fs::remove_dir_all(branch_dir(root, branch));
-}
-
-/// Remove caches for branches that no longer exist. Only ever state, never the log.
-pub fn gc_state(root: &Path) {
-    let live: std::collections::HashSet<String> = git::try_git(
-        &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
-        None,
-    )
-    .lines()
-    .map(|b| slug(b, 60))
-    .collect();
-    let dir = root.join(LANE_DIR).join(BRANCH);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return;
-    };
-    for entry in entries.filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = path.file_name().map(|s| s.to_string_lossy().to_string());
-        if name.is_some_and(|s| !live.contains(&s)) {
-            let _ = std::fs::remove_file(path.join("state.json"));
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -683,11 +664,35 @@ mod tests {
             .unwrap();
     }
 
-    fn write_state(root: &Path, branch: &str, id: &str, entry: NoteState) {
-        let path = state_file_for(root, branch);
-        let mut existing = read_state_file(&path);
-        existing.insert(id.to_string(), entry);
-        write_state_file(&path, &existing).unwrap();
+    fn confirm(root: &Path, id: &str, at: &str, sig: &str, body_hash: &str, raw_hash: &str) {
+        confirm_as(
+            root,
+            id,
+            at,
+            sig,
+            body_hash,
+            raw_hash,
+            crate::syntax::NORM_VERSION,
+        );
+    }
+
+    fn confirm_as(
+        root: &Path,
+        id: &str,
+        at: &str,
+        sig: &str,
+        body_hash: &str,
+        raw_hash: &str,
+        norm: &str,
+    ) {
+        append_log(
+            root,
+            &serde_json::json!({
+                "at": at, "kind": HOLDS, "id": id, "sig": sig,
+                "body_hash": body_hash, "raw_hash": raw_hash, "norm": norm,
+            }),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -704,17 +709,13 @@ mod tests {
             "01M0A",
             "keep this file dependency-free",
         );
-        write_state(
+        confirm(
             root.path(),
-            &crate::git::current_branch(),
             "01M0A",
-            NoteState {
-                sig,
-                body_hash,
-                raw_hash,
-                norm: crate::syntax::NORM_VERSION.into(),
-                ..Default::default()
-            },
+            "2026-01-01T00:00:00Z",
+            &sig,
+            &body_hash,
+            &raw_hash,
         );
 
         // line one of a file is an import; changing it is not a contract change
@@ -752,102 +753,65 @@ mod tests {
     }
 
     #[test]
-    fn writing_identical_state_does_not_touch_the_file() {
+    fn a_fingerprintless_record_vouches_for_nothing() {
         let root = tempfile::tempdir().unwrap();
-        let path = state_file_for(root.path(), "main");
-        let state = State::from([(
-            "01M0A".into(),
-            NoteState {
-                sig: "same".into(),
-                ..Default::default()
-            },
-        )]);
-
-        write_state_file(&path, &state).unwrap();
-        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
-        write_state_file(&path, &state).unwrap();
-
-        assert_eq!(
-            std::fs::metadata(&path).unwrap().modified().unwrap(),
-            before
-        );
-    }
-
-    #[test]
-    fn writing_changed_state_replaces_it_completely() {
-        let root = tempfile::tempdir().unwrap();
-        let path = state_file_for(root.path(), "main");
-        let first = State::from([(
-            "01M0A".into(),
-            NoteState {
-                sig: "old".into(),
-                ..Default::default()
-            },
-        )]);
-        let changed = State::from([(
-            "01M0A".into(),
-            NoteState {
-                sig: "new".into(),
-                ..Default::default()
-            },
-        )]);
-
-        write_state_file(&path, &first).unwrap();
-        write_state_file(&path, &changed).unwrap();
-
-        let text = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(
-            serde_json::from_str::<State>(&text).unwrap()["01M0A"].sig,
-            "new"
-        );
-        assert!(!text.contains("old"));
-    }
-
-    #[test]
-    fn writing_state_replaces_invalid_json() {
-        let root = tempfile::tempdir().unwrap();
-        let path = state_file_for(root.path(), "main");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "{invalid old bytes").unwrap();
-        let state = State::from([(
-            "01M0A".into(),
-            NoteState {
-                sig: "good".into(),
-                ..Default::default()
-            },
-        )]);
-
-        write_state_file(&path, &state).unwrap();
-
-        let text = std::fs::read_to_string(&path).unwrap();
-        assert!(serde_json::from_str::<State>(&text).is_ok());
-        assert!(!text.contains("invalid old bytes"));
-    }
-
-    #[test]
-    fn load_state_takes_the_newest_confirmation() {
-        let root = tempfile::tempdir().unwrap();
-        write_state(
+        append_log(
             root.path(),
-            "main",
-            "01M0A",
-            NoteState {
-                sig: "old".into(),
-                checked: "2026-01-01T00:00:00Z".into(),
-                ..Default::default()
-            },
-        );
-        write_state(
+            &serde_json::json!({"at": "2026-06-01T00:00:00Z", "kind": HOLDS, "id": "01M0A"}),
+        )
+        .unwrap();
+        assert!(!confirmations(root.path()).contains_key("01M0A"));
+    }
+
+    #[test]
+    fn confirmations_take_the_newest_record() {
+        let root = tempfile::tempdir().unwrap();
+        confirm(root.path(), "01M0A", "2026-01-01T00:00:00Z", "old", "", "");
+        confirm(root.path(), "01M0A", "2026-06-01T00:00:00Z", "new", "", "");
+
+        // Union merge interleaves two branches' appends, so `at` decides, not position.
+        confirm(
             root.path(),
-            "lane-x",
             "01M0A",
-            NoteState {
-                sig: "new".into(),
-                checked: "2026-06-01T00:00:00Z".into(),
-                ..Default::default()
-            },
+            "2026-03-01T00:00:00Z",
+            "middle",
+            "",
+            "",
         );
-        assert_eq!(load_state(root.path())["01M0A"].sig, "new");
+
+        assert_eq!(confirmations(root.path())["01M0A"].sig, "new");
+    }
+
+    #[test]
+    fn a_landing_marker_names_the_lane_not_the_branch() {
+        let log = concat!(
+            r#"{"kind":"evict","branch":"fix","lane":"01M0NOISE"}"#,
+            "\n",
+            r#"{"kind":"landing","branch":"fix","lane":"01M0FIRST"}"#,
+            "\n",
+            r#"{"kind":"landing","branch":"other"}"#,
+            "\n",
+        );
+        let landed = landings(log);
+        assert!(landed.contains("01M0FIRST"));
+        // Branch names are reused; a second lane called `fix` has landed nothing.
+        assert!(!landed.contains("fix"));
+        assert!(!landed.contains("01M0NOISE"));
+        // A marker with no lane id matches nothing rather than everything.
+        assert!(!landed.contains(""));
+    }
+
+    #[test]
+    fn every_record_carries_the_branch_that_wrote_it() {
+        let root = tempfile::tempdir().unwrap();
+        append_log(
+            root.path(),
+            &serde_json::json!({"kind": EVICT, "id": "01M0A"}),
+        )
+        .unwrap();
+        let line = std::fs::read_to_string(log_path(root.path())).unwrap();
+        let entry: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+        assert!(!entry["branch"].as_str().unwrap_or_default().is_empty());
     }
 
     /// A note plus a source file, ready to check.
@@ -869,25 +833,20 @@ mod tests {
     }
 
     #[test]
-    fn a_state_entry_beats_a_stale_creation_fingerprint() {
+    fn a_confirmation_beats_a_stale_creation_fingerprint() {
         let root = tempfile::tempdir().unwrap();
         let note = fixture(root.path(), "pub fn v() {}\n");
         let live = Source::new("pub fn v() {}\n", "src/a.rs");
         let span = live.resolve("@file").unwrap();
         let (sig, body_hash, raw_hash) = live.hashes(span, "@file");
 
-        write_state(
+        confirm(
             root.path(),
-            "main",
             "01M0A",
-            NoteState {
-                sig,
-                body_hash,
-                raw_hash,
-                checked: "2026-06-01T00:00:00Z".into(),
-                norm: crate::syntax::NORM_VERSION.into(),
-                ..Default::default()
-            },
+            "2026-06-01T00:00:00Z",
+            &sig,
+            &body_hash,
+            &raw_hash,
         );
         // The note's own fingerprint is empty, which would otherwise read as drift.
         assert_eq!(Checker::new(root.path()).check(&note).tier, FRESH);
@@ -901,42 +860,38 @@ mod tests {
         let span = live.resolve("@file").unwrap();
         let (_, _, raw_hash) = live.hashes(span, "@file");
 
-        write_state(
+        confirm_as(
             root.path(),
-            "main",
             "01M0A",
-            NoteState {
-                sig: "from-an-older-normalizer".into(),
-                raw_hash,
-                checked: "2026-06-01T00:00:00Z".into(),
-                norm: "0".into(),
-                ..Default::default()
-            },
+            "2026-06-01T00:00:00Z",
+            "from-an-older-normalizer",
+            "",
+            &raw_hash,
+            "0",
         );
         let res = Checker::new(root.path()).check(&note);
         assert_eq!(res.tier, FRESH);
         assert!(!res.rebaselined, "identical bytes cannot have drifted");
+        assert!(res.adopted, "the new normalization must be recorded");
     }
 
     #[test]
     fn an_old_normalization_is_reported_when_the_bytes_moved() {
         let root = tempfile::tempdir().unwrap();
         let note = fixture(root.path(), "pub fn v() {}\n");
-        write_state(
+        confirm_as(
             root.path(),
-            "main",
             "01M0A",
-            NoteState {
-                sig: "from-an-older-normalizer".into(),
-                raw_hash: "different".into(),
-                checked: "2026-06-01T00:00:00Z".into(),
-                norm: "0".into(),
-                ..Default::default()
-            },
+            "2026-06-01T00:00:00Z",
+            "from-an-older-normalizer",
+            "",
+            "different",
+            "0",
         );
         let res = Checker::new(root.path()).check(&note);
         assert_eq!(res.tier, FRESH);
         assert!(res.rebaselined, "an unresolvable baseline must be reported");
+        assert!(res.adopted);
     }
 
     #[test]
@@ -1076,7 +1031,6 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let old = fixture(root.path(), "pub fn v() {}\n");
         let branch = git::current_branch();
-        write_state(root.path(), &branch, &old.meta.id, NoteState::default());
         append_pending(
             root.path(),
             &PendingNote {
@@ -1100,8 +1054,9 @@ mod tests {
                 .join("01M0A-a-note.md")
                 .is_file()
         );
-        let state = own_state(root.path());
-        assert!(state.contains_key(&created[0].meta.id));
-        assert!(!state.contains_key(&old.meta.id));
+        // The replacement inherits nothing: its own creation fingerprint is the baseline,
+        // and the eviction is the only thing the log records.
+        assert!(!confirmations(root.path()).contains_key(&created[0].meta.id));
+        assert!(!confirmations(root.path()).contains_key(&old.meta.id));
     }
 }

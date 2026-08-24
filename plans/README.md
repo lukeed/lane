@@ -34,6 +34,7 @@ counts before starting, and update your row when done.
 | 029 | Put everything lane owns under `.lane/` | P2 | L | — | DONE |
 | 030 | Make the state file impossible to half-write | P2 | S | — | DONE |
 | 031 | Take the model out of the binary, and make the verdicts verbs | P2 | L | — | DONE |
+| 032 | Take derived state out of git, and make a `holds` a decision | P1 | L | — | DONE |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

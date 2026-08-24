@@ -152,9 +152,32 @@ $ lane done
 
 `done` never touches the network for git. Add `--keep` to preserve the
 worktree, `--squash` to land one commit, `--trunk <name>` for a non-default
-trunk.
+trunk, and `--no-merge` to stop before the merge so a pull request can carry it
+— see [Pull requests](#pull-requests).
 
 ---
+
+### Pull requests
+
+Where trunk is protected, `lane done --no-merge` stops one step before the merge:
+
+```
+$ lane done --no-merge
+$ git push -u origin fix-login
+```
+
+Turn on **Require branches to be up to date before merging**. The audit fingerprints
+spans against the post-rebase tree, so a pull request merged on a stale base describes a
+tree nobody has. That setting serializes two clones the way the landing lock serializes
+two lanes on one machine.
+
+The lane stays on disk until the pull request merges. `lane ls` marks it `landed` once
+trunk carries its landing record; `lane sweep` removes it. The marker is tree content
+rather than a commit, so neither a squash nor a rebase merge can hide it — `git branch -d`
+refuses both even when the trees are identical. It names the lane rather than the branch,
+because `fix` twice in a week is normal and the second one has landed nothing. Sweep still
+checks that nothing on the branch is missing from trunk, so work committed after the merge
+is never discarded, and it removes nothing you are standing in.
 
 ## What happens to notes over time
 
@@ -221,7 +244,7 @@ the note to the attic instead of vouching for it.
 
 Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by
 `pinned > touched by this lane > freshness > age` and moves the rest to
-`.lane/attic/` with the reason recorded in `.lane/branch/<name>/log.jsonl`.
+`.lane/attic/` with the reason recorded in `.lane/log.jsonl`.
 Nothing is deleted.
 
 Keep something permanently:
@@ -264,8 +287,8 @@ Run several agents at once:
 ```bash
 $ lane new agent-a && lane new agent-b && lane new agent-c
 $ lane ls
-  agent-a    agent-a    clean   3 pending note(s)
-  agent-b    agent-b    dirty   1 pending note(s)
+  agent-a    agent-a    open     clean   3 pending note(s)
+  agent-b    agent-b    landed   dirty   1 pending note(s)
 ```
 
 Each has its own warm build cache at no disk cost. They can annotate the same
@@ -284,7 +307,7 @@ The short version. See [commands](/commands) for full information.
 |---|---|
 | `lane init` | scaffold, probe reflink |
 | `lane new <name> [--dirty] [--base <ref>]` | create a lane |
-| `lane ls` | lanes, branch, dirt, pending notes |
+| `lane ls` | lanes, branch, whether they landed, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
 | `lane note -p <file> -a <anchor> [--supersedes <id>] "<text>"` | record or replace a finding |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
@@ -293,7 +316,9 @@ The short version. See [commands](/commands) for full information.
 | `lane holds <id>` | re-vouch for a resolved note |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
-| `lane done [--keep] [--trunk <ref>]` | rebase, audit, fast-forward, remove |
+| `lane done [--keep] [--trunk <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
+| `lane done --no-merge` | stop after the memory commit, for a pull request to carry |
+| `lane sweep [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it keeps a branch holding commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |
 
@@ -304,11 +329,10 @@ yourproject/
   .lane/
     memory/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
     attic/                        evicted, recoverable
-    branch/<name>/state.json      fingerprints, per branch
-    branch/<name>/log.jsonl       holds and evictions, per branch
+    log.jsonl                     holds, evictions and landings
     trees/
       fix-login/                  the lane worktree
-  .gitattributes                  one union rule, for log/*.jsonl
+  .gitattributes                  one union rule, for log.jsonl
   AGENTS.md
   .git/lane/pending.jsonl         notes not yet promoted, per worktree
 ```

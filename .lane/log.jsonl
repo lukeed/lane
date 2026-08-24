@@ -53,3 +53,4 @@
 {"anchor":"fn done","at":"2026-08-24T20:53:02Z","branch":"push-command","id":"01M0TQYBPCHTWG41WA1PMS1G4Y","kind":"evict","path":"crates/lane/src/cli.rs","reason":"superseded by 01M0TRRKQE397F7WNHV66M08JQ"}
 {"anchor":"fn trunk_name","at":"2026-08-24T20:53:02Z","branch":"push-command","id":"01M0TQYBQVSRHXXA7M83H5GE1A","kind":"evict","path":"crates/lane/src/worktree.rs","reason":"superseded by 01M0TRRKSWK26RY06J8DX6AQEY"}
 {"at":"2026-08-24T20:53:03Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"at":"2026-08-24T20:55:19Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}

@@ -50,7 +50,7 @@ fn every_command_answers_its_own_help_flag() {
         ("holds", Help::Holds),
         ("check", Help::Check),
         ("audit", Help::Audit),
-        ("done", Help::Done),
+        ("merge", Help::Merge),
         ("prune", Help::Prune),
         ("rm", Help::Rm),
         ("shellenv", Help::Shellenv),
@@ -119,8 +119,8 @@ fn the_shell_function_s_own_invocation_still_parses() {
         })
     );
     assert_eq!(
-        ok(&["done", "--cd"]),
-        Parsed::Done(DoneArgs {
+        ok(&["merge", "--cd"]),
+        Parsed::Merge(MergeArgs {
             base: None,
             keep: false,
             cd: true,
@@ -324,6 +324,11 @@ fn the_old_hooks_install_spelling_no_longer_parses() {
 }
 
 #[test]
+fn the_old_done_command_no_longer_parses() {
+    assert!(parse_words(&["done"]).is_err());
+}
+
+#[test]
 fn why_takes_an_optional_path_and_anchor() {
     assert_eq!(
         ok(&["why"]),
@@ -353,18 +358,18 @@ fn the_budget_flags_default_and_override_together() {
     assert_eq!(audit.base, "");
     assert!(!audit.json);
 
-    let Parsed::Done(done) = ok(&["done", "--max-chars", "80"]) else {
-        panic!("expected done");
+    let Parsed::Merge(merge) = ok(&["merge", "--max-chars", "80"]) else {
+        panic!("expected merge");
     };
-    assert_eq!(done.budget.max_notes, 5);
-    assert_eq!(done.budget.max_chars, 80);
+    assert_eq!(merge.budget.max_notes, 5);
+    assert_eq!(merge.budget.max_chars, 80);
 }
 
 #[test]
-fn done_and_rm_read_the_rest_of_their_flags() {
+fn merge_and_rm_read_the_rest_of_their_flags() {
     assert_eq!(
-        ok(&["done", "--base", "release", "--keep", "--squash"]),
-        Parsed::Done(DoneArgs {
+        ok(&["merge", "--base", "release", "--keep", "--squash"]),
+        Parsed::Merge(MergeArgs {
             base: Some("release".into()),
             keep: true,
             cd: false,
@@ -466,7 +471,7 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::Holds,
         Help::Check,
         Help::Audit,
-        Help::Done,
+        Help::Merge,
         Help::Push,
         Help::Prune,
         Help::Rm,

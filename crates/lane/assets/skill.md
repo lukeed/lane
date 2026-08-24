@@ -12,10 +12,10 @@ This repository keeps memory about its own code in `.lane/`. Notes are plain mar
 ```bash
 lane new fix-login     # branch + worktree; the build cache arrives by reference
 # edit and commit as usual
-lane done              # rebase, audit memory, fast-forward trunk, delete the lane
+lane merge             # rebase, audit memory, fast-forward trunk, delete the lane
 ```
 
-`lane new` prints the path. Work there, not in the parent tree. `lane done` rebases, so commit or stash tracked changes first; untracked files are fine.
+`lane new` prints the path. Work there, not in the parent tree. `lane merge` rebases, so commit or stash tracked changes first; untracked files are fine.
 
 Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the lane to the remote. Once it merges run `lane prune` to remove the lane. `lane ls` marks a lane `pushed` while the remote has its tip and `landed` when trunk carries its landing record.
 
@@ -27,7 +27,7 @@ lane why src/auth.rs
 
 Do this for every file you are about to change. The mark on a line is freshness: blank is current, `~` the implementation moved, `!` the described thing changed shape, `x` the symbol is gone, `?` the file's language has no grammar so nothing was checked. A `~` note is often still true — the words are what matter, not the hash.
 
-Before `lane done`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
+Before `lane merge`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 
 - `lane holds <id>` when the note is still true. This updates that note's own baseline, so commit it — a confirmation you do not commit is one nobody else gets.
 - `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is still right but the sentence is wrong.

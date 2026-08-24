@@ -5,9 +5,9 @@ created: 2026-08-20T04:23:47Z
 branch: install-skill
 norm: '1'
 sig: cb3f91d54eee30e5
-body_hash: 08422586ca986def
-raw_hash: ae61d9c1cefb9021
-vouched: 2026-08-24T21:27:23Z
+body_hash: 6d5ff985e1b1da70
+raw_hash: bf43cc4d723b8d3f
+vouched: 2026-08-24T21:39:42Z
 lines: 1-86
 ---
 

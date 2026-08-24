@@ -22,7 +22,7 @@ pub enum Help {
     Holds,
     Check,
     Audit,
-    Done,
+    Merge,
     Push,
     Prune,
     Rm,
@@ -45,7 +45,7 @@ impl Help {
             Help::Holds => HOLDS,
             Help::Check => CHECK,
             Help::Audit => AUDIT,
-            Help::Done => DONE,
+            Help::Merge => MERGE,
             Help::Push => PUSH,
             Help::Prune => PRUNE,
             Help::Rm => RM,
@@ -68,7 +68,7 @@ impl Help {
             Help::Holds => "lane holds <ID>",
             Help::Check => "lane check [--json]",
             Help::Audit => "lane audit [OPTIONS]",
-            Help::Done => "lane done [OPTIONS]",
+            Help::Merge => "lane merge [OPTIONS]",
             Help::Push => "lane push [OPTIONS]",
             Help::Prune => "lane prune [--dry-run]",
             Help::Rm => "lane rm [--force] <NAME>",
@@ -103,7 +103,7 @@ impl Help {
             Help::Holds => "lane holds",
             Help::Check => "lane check",
             Help::Audit => "lane audit",
-            Help::Done => "lane done",
+            Help::Merge => "lane merge",
             Help::Push => "lane push",
             Help::Prune => "lane prune",
             Help::Rm => "lane rm",
@@ -132,7 +132,7 @@ const ROOT: &str = "
     holds        Re-vouch for a drifted note
     check        Staleness report
     audit        Promote, re-anchor, rank, evict
-    done         Rebase, audit, fast-forward, remove
+    merge        Rebase, audit, fast-forward, remove
     push         Rebase, audit, push for a pull request
     prune        Remove lanes whose branch has landed
     rm           Discard a lane without landing it
@@ -146,7 +146,7 @@ const ROOT: &str = "
     $ lane new fix-login
     $ lane note -p src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
     $ lane why src/auth.rs
-    $ lane done
+    $ lane merge
 ";
 
 const INIT: &str = "
@@ -296,7 +296,7 @@ const CHECK: &str = "
 const AUDIT: &str = "
   Description
     Resolve pending notes against the working tree, re-anchor what moved, and
-    evict past the budget to the attic. `lane done` runs this for you.
+    evict past the budget to the attic. `lane merge` runs this for you.
 
   Usage
     $ lane audit [options]
@@ -309,13 +309,13 @@ const AUDIT: &str = "
     -h, --help          Display this message
 ";
 
-const DONE: &str = "
+const MERGE: &str = "
   Description
     Land a lane: rebase onto its base, audit memory, fast-forward, and remove
     the worktree. Landings are locked, so two at once serialize.
 
   Usage
-    $ lane done [options]
+    $ lane merge [options]
 
   Options
     --base <ref>        Rebase onto <ref> instead of the recorded base
@@ -327,8 +327,8 @@ const DONE: &str = "
     -h, --help          Display this message
 
   Examples
-    $ lane done
-    $ lane done --squash
+    $ lane merge
+    $ lane merge --squash
 ";
 
 const PUSH: &str = "
@@ -381,7 +381,7 @@ const RM: &str = "
 const SHELLENV: &str = "
   Description
     Print the shell function that leaves you in the right directory after
-    `lane new` and `lane done`, and adds `lane cd <name>`.
+    `lane new` and `lane merge`, and adds `lane cd <name>`.
 
   Usage
     $ eval \"$(lane shellenv)\"

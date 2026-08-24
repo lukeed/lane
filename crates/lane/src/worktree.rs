@@ -460,7 +460,7 @@ pub fn remove(name: &str) -> Result<()> {
     let dest = lanes_dir(&root).join(name);
 
     // Deleting the directory the caller is standing in leaves their shell in a path that no
-    // longer exists, which is the failure plan 006 exists to prevent. `done` chdirs to the
+    // longer exists, which is the failure plan 006 exists to prevent. `merge` chdirs to the
     // root before it gets here; `rm` and `prune` have no reason to, so refuse instead.
     let inside = std::env::current_dir()
         .ok()
@@ -513,7 +513,7 @@ fn tracked_changes(status: &str) -> Vec<String> {
     paths
 }
 
-/// Files a fast-forward would overwrite in the main worktree. Empty means `done` can land.
+/// Files a fast-forward would overwrite in the main worktree. Empty means `merge` can land.
 pub fn blocking_changes(root: &Path, trunk: &str, branch: &str) -> Vec<String> {
     // Only the merge path touches a working tree; update-ref cannot conflict.
     if try_git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(root)) != trunk {

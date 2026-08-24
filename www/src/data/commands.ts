@@ -108,8 +108,8 @@ export let commands: Command[] = [
 		example: "$ lane audit\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 contract-changed, 0 missing\n  drift   src/sync.rs#fn reconnect",
 	},
 	{
-		name: "done",
-		usage: "lane done [--base <ref>] [--keep] [--squash]",
+		name: "merge",
+		usage: "lane merge [--base <ref>] [--keep] [--squash]",
 		summary: "rebases the lane onto its base, audits memory, commits it, fast-forwards the base, and removes the lane.",
 		options: [
 			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto and advance; defaults to the lane's recorded base." },
@@ -119,7 +119,7 @@ export let commands: Command[] = [
 			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 		],
-		example: "$ lane done\nrebased onto main\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 contract-changed, 0 missing\ncommitted memory update\nfast-forwarded main\nremoved lane fix-login",
+		example: "$ lane merge\nrebased onto main\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 contract-changed, 0 missing\ncommitted memory update\nfast-forwarded main\nremoved lane fix-login",
 	},
 	{
 		name: "push",
@@ -181,9 +181,9 @@ export let commands: Command[] = [
 	{
 		name: "shellenv",
 		usage: "lane shellenv",
-		summary: "prints the shell function that makes new, cd and done leave you in the right directory.",
+		summary: "prints the shell function that makes new, cd and merge leave you in the right directory.",
 		options: [],
-		example: "$ eval \"$(lane shellenv)\"\n$ lane shellenv\nlane() {\n  case \"$1\" in\n    new)  shift; p=$(command lane new --cd \"$@\") ...\n    cd)   shift; p=$(command lane path \"$@\") ...\n    done) shift; p=$(command lane done --cd \"$@\") ...\n    *)    command lane \"$@\" ;;\n  esac\n}",
+		example: "$ eval \"$(lane shellenv)\"\n$ lane shellenv\nlane() {\n  case \"$1\" in\n    new)   shift; p=$(command lane new --cd \"$@\") ...\n    cd)    shift; p=$(command lane path \"$@\") ...\n    merge) shift; p=$(command lane merge --cd \"$@\") ...\n    *)     command lane \"$@\" ;;\n  esac\n}",
 	},
 	{
 		name: "capture",

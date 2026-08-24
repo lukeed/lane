@@ -79,7 +79,7 @@ is "exactly one modified file, not the whole tree" \
 is "warm dir also carried iff reflink" \
    "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes || echo no)" "$(want)"
 
-echo "== 4. note inside lane, done lands memory on trunk =="
+echo "== 4. note inside lane, merge lands memory on trunk =="
 setup
 "$LANE" new fix-login > /dev/null 2>&1
 LP="$TMP/repo/.lane/trees/fix-login"
@@ -88,7 +88,7 @@ sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|
 "$LANE" note -p src/auth.rs -a "fn verify" \
   "must be constant-time; early return leaks token length" > /dev/null
 git add -A && git commit -qm "refactor verify"
-"$LANE" done > /tmp/done.out 2>&1
+"$LANE" merge > /tmp/merge.out 2>&1
 cd "$TMP/repo"
 is "trunk advanced" "$(git log --oneline main | grep -c 'refactor verify')" "1"
 is "memory committed to trunk" \
@@ -125,10 +125,10 @@ echo "== 6. PARALLEL: two lanes, same anchor, both land clean =="
 "$LANE" new thread-a > /dev/null 2>&1
 "$LANE" new thread-b > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/thread-a" && "$LANE" note -p src/auth.rs -a "fn verify" \
-    "a: callers rely on false-on-expiry, not an error" > /dev/null && "$LANE" done > /tmp/a.out 2>&1 )
+    "a: callers rely on false-on-expiry, not an error" > /dev/null && "$LANE" merge > /tmp/a.out 2>&1 )
 is "lane a landed" "$?" "0"
 ( cd "$TMP/repo/.lane/trees/thread-b" && "$LANE" note -p src/auth.rs -a "fn verify" \
-    "b: token parse allocates; hot path, do not add regex" > /dev/null && "$LANE" done > /tmp/b.out 2>&1 )
+    "b: token parse allocates; hot path, do not add regex" > /dev/null && "$LANE" merge > /tmp/b.out 2>&1 )
 is "lane b landed after a, no conflict" "$?" "0"
 cd "$TMP/repo"
 is "both memories on trunk" \
@@ -324,9 +324,9 @@ git add -A && git commit -qm seed
 "$LANE" new refactor > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/refactor" \
   && git mv src/auth.rs src/token.rs && git commit -qm rename > /dev/null \
-  && "$LANE" done > /tmp/lanemv.out 2>&1 )
+  && "$LANE" merge > /tmp/lanemv.out 2>&1 )
 cd "$TMP/repo"
-is "done reports the move" "$(grep -c '^  moved   ' /tmp/lanemv.out)" "1"
+is "merge reports the move" "$(grep -c '^  moved   ' /tmp/lanemv.out)" "1"
 is "trunk has the note on the new path" \
    "$("$LANE" why src/token.rs 2>/dev/null | grep -c 'constant-time')" "1"
 
@@ -358,9 +358,9 @@ git add -A && git commit -qm memory
 "$LANE" new land > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/land" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
-  && "$LANE" done > /dev/null 2>&1 )
+  && "$LANE" merge > /dev/null 2>&1 )
 cd "$TMP/repo"
-is "done leaves no shared landing record" \
+is "merge leaves no shared landing record" \
    "$(find .lane -name 'log.jsonl' | wc -l | tr -d ' ')" "0"
 
 echo "== 18. anchors we cannot resolve are kept, not discarded =="
@@ -379,7 +379,7 @@ is "check reports it as unverifiable" \
 is "a typo in a language we DO parse still evicts" \
    "$(grep -rl 'typo anchor' .lane/attic | wc -l | tr -d ' ')" "1"
 
-echo "== 19. shell integration survives failure and survives done =="
+echo "== 19. shell integration survives failure and survives merge =="
 setup
 PATH="$(dirname "$LANE"):$PATH"
 eval "$(command lane shellenv)"
@@ -397,8 +397,8 @@ cd "$TMP/repo"
 
 lane new land > /dev/null 2>&1
 echo "fn x() {}" > src/x.rs && git add -A && git commit -qm x > /dev/null
-lane done > /dev/null 2>&1
-is "done lands the shell in the main worktree" "$PWD" "$(cd "$TMP/repo" && pwd -P)"
+lane merge > /dev/null 2>&1
+is "merge lands the shell in the main worktree" "$PWD" "$(cd "$TMP/repo" && pwd -P)"
 is "that directory exists" "$([ -d "$PWD" ] && echo yes || echo no)" "yes"
 
 echo "== 20. a lane carries what git ignores =="
@@ -434,7 +434,7 @@ want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "--dirty carries the change" \
    "$(grep -c 'scratch' "$TMP/repo/.lane/trees/carried/src/auth.rs")" "1"
 
-echo "== 21. done refuses before it writes =="
+echo "== 21. merge refuses before it writes =="
 setup
 "$LANE" new spike > /dev/null 2>&1
 LP="$TMP/repo/.lane/trees/spike"
@@ -442,12 +442,12 @@ LP="$TMP/repo/.lane/trees/spike"
   && git commit -qam "lane work" > /dev/null )
 printf 'pub fn verify() {\n    my version\n}\n' > src/auth.rs   # dirty in main, same file
 BEFORE=$(git -C "$LP" rev-parse HEAD)
-( cd "$LP" && "$LANE" done > /tmp/blocked.out 2>&1 )
-is "done refuses" "$(grep -c '^error:' /tmp/blocked.out)" "1"
+( cd "$LP" && "$LANE" merge > /tmp/blocked.out 2>&1 )
+is "merge refuses" "$(grep -c '^error:' /tmp/blocked.out)" "1"
 is "and names the file" "$(grep -c 'src/auth.rs' /tmp/blocked.out)" "1"
 is "nothing was committed" "$(git -C "$LP" rev-parse HEAD)" "$BEFORE"
 git checkout -- src/auth.rs
-( cd "$LP" && "$LANE" done > /dev/null 2>&1 )
+( cd "$LP" && "$LANE" merge > /dev/null 2>&1 )
 
 echo "== 22. decisions are captured from commit trailers =="
 setup
@@ -623,7 +623,7 @@ echo "== 28. landings are serialized and marked =="
 setup
 "$LANE" new solo > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/solo" && echo "work" > src/new.rs && git add -A && git commit -qm "add work" )
-( cd "$TMP/repo/.lane/trees/solo" && "$LANE" done > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/solo" && "$LANE" merge > /dev/null 2>&1 )
 is "a landing with no memory change needs no sync commit" \
   "$(git log -1 --format=%s | grep -c '^add work$')" "1"
 is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
@@ -632,7 +632,7 @@ is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
 ( cd "$TMP/repo/.lane/trees/sq" && echo "a" > src/a.rs && git add -A && git commit -qm "one" \
   && echo "b" > src/b.rs && git add -A && git commit -qm "two" )
 BEFORE=$(git rev-list --count HEAD)
-( cd "$TMP/repo/.lane/trees/sq" && "$LANE" done --squash > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/sq" && "$LANE" merge --squash > /dev/null 2>&1 )
 is "squash lands exactly one commit" \
   "$(( $(git rev-list --count HEAD) - BEFORE ))" "1"
 is "and names it merged" \
@@ -664,7 +664,7 @@ git add -A .lane && git commit -qm memory > /dev/null
 is "a lane preserves the baseline it compared against" \
    "$(cd "$TMP/repo/.lane/trees/carry" && "$LANE" check --json \
       | python3 -c "import json,sys; n=json.load(sys.stdin)[0]; print(int(n['tier']=='content-changed'))")" "1"
-( cd "$TMP/repo/.lane/trees/carry" && "$LANE" done > /dev/null 2>&1 )
+( cd "$TMP/repo/.lane/trees/carry" && "$LANE" merge > /dev/null 2>&1 )
 is "and the drift survives the landing" \
    "$("$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
 is "and is still reported by a later audit" \
@@ -690,9 +690,9 @@ is "holds makes the note fresh" \
 is "holds clears body drift" \
    "$("$LANE" check | awk '/^content-changed/{print $2}')" "0"
 git add -A .lane && git commit -qm holds
-( "$LANE" done > /tmp/holds-done.out 2>&1 )
+( "$LANE" merge > /tmp/holds-merge.out 2>&1 )
 cd "$TMP/repo"
-is "fresh state and change survive done" \
+is "fresh state and change survive merge" \
    "$("$LANE" check | awk '/^fresh/{print $2}'):$(grep -c '&& true' src/auth.rs)" "1:1"
 
 echo "== 31b. damaged frontmatter is never re-vouched =="
@@ -812,7 +812,7 @@ remote_setup
 "$LANE" new fix > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/fix" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "first time round" > /dev/null \
-  && "$LANE" done > /dev/null 2>&1 )
+  && "$LANE" merge > /dev/null 2>&1 )
 is "landing leaves no committed marker" \
    "$(find .lane -name 'log.jsonl' | wc -l | tr -d ' ')" "0"
 # `fix` twice in a week is normal, and the second one has landed nothing.
@@ -858,7 +858,7 @@ git -C "$TMP/other" add -A && git -C "$TMP/other" commit -qm remote && git -C "$
 is "the lease refuses a remote commit" "$?" "1"
 is "the lease names the failed push" "$(grep -c 'force-with-lease' /tmp/lease.out)" "1"
 
-echo "== 39. done warns only for orphaned pull requests =="
+echo "== 39. merge warns only for orphaned pull requests =="
 setup
 remote_setup
 "$LANE" new feat > /dev/null 2>&1
@@ -867,8 +867,8 @@ LP="$TMP/repo/.lane/trees/feat"
 REMOTE_TIP=$(git --git-dir="$TMP/origin.git" rev-parse refs/heads/feat)
 git --git-dir="$TMP/origin.git" update-ref refs/pull/7/head "$REMOTE_TIP"
 echo "base" > src/base.rs && git add -A && git commit -qm base
-( cd "$LP" && "$LANE" done > /tmp/orphan.out 2>&1 )
-is "done warns after rewriting the pushed tip" "$(grep -c '^warning: pushed pull request' /tmp/orphan.out)" "1"
+( cd "$LP" && "$LANE" merge > /tmp/orphan.out 2>&1 )
+is "merge warns after rewriting the pushed tip" "$(grep -c '^warning: pushed pull request' /tmp/orphan.out)" "1"
 is "the orphan warning names pull request 7" "$(grep -c 'pull request #7' /tmp/orphan.out)" "1"
 
 setup
@@ -876,8 +876,8 @@ remote_setup
 "$LANE" new clean-pr > /dev/null 2>&1
 LP="$TMP/repo/.lane/trees/clean-pr"
 ( cd "$LP" && echo "lane" > src/lane.rs && git add -A && git commit -qm lane && "$LANE" push > /dev/null )
-( cd "$LP" && "$LANE" done > /tmp/clean-pr.out 2>&1 )
-is "done stays silent when the pushed tip remains reachable" "$(grep -c '^warning: pushed pull request' /tmp/clean-pr.out)" "0"
+( cd "$LP" && "$LANE" merge > /tmp/clean-pr.out 2>&1 )
+is "merge stays silent when the pushed tip remains reachable" "$(grep -c '^warning: pushed pull request' /tmp/clean-pr.out)" "0"
 
 echo
 echo "passed: $pass   failed: $fail"

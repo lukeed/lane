@@ -17,7 +17,7 @@ something behind when it closes.
 ```bash
 $ lane new fix-login        # branch + worktree, the build cache by reference
 # work, commit as usual
-$ lane done                 # rebase, distill memory, fast-forward, delete
+$ lane merge                # rebase, distill memory, fast-forward, delete
 ```
 
 ---
@@ -142,7 +142,7 @@ read one to find out it is wrong.
 ### Close the lane
 
 ```bash
-$ lane done
+$ lane merge
   rebased onto main
   memory: +2 new; checked 8: 7 fresh, 1 content-changed, 0 contract-changed, 0 missing
   committed memory update
@@ -150,7 +150,7 @@ $ lane done
   removed lane fix-login
 ```
 
-`done` never touches the network for git. Add `--keep` to preserve the
+`merge` never touches the network for git. Add `--keep` to preserve the
 worktree, `--squash` to land one commit, or `--base <name>` to use a different
 base. Use `lane push` for a pull request — see [Pull requests](#pull-requests).
 
@@ -209,7 +209,7 @@ declaration *is* its anchor, so changing it reports `anchor-missing`, not
 
 ### Resolving drift
 
-Before `lane done`, run `lane check`. It lists every note that is not fresh with
+Before `lane merge`, run `lane check`. It lists every note that is not fresh with
 the id you need next:
 
 ```bash
@@ -268,7 +268,7 @@ you keep both:
 ## Context memory
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.
 - Record non-obvious findings with `lane note -p <path> -a <anchor> "..."`.
-- Do not edit `.lane/` by hand; `lane done` manages it.
+- Do not edit `.lane/` by hand; `lane merge` manages it.
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.
 ```
 
@@ -314,7 +314,7 @@ The short version. See [commands](/commands) for full information.
 | `lane holds <id>` | re-vouch for a resolved note |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
-| `lane done [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
+| `lane merge [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
 | `lane push [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
 | `lane prune [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |
@@ -339,10 +339,10 @@ so nothing is committed.
 ### When things go wrong
 
 **`trunk has diverged`** — someone else pushed. `git pull --rebase` on trunk,
-then `lane done` again.
+then `lane merge` again.
 
 **Rebase conflict** — resolve in the lane, `git rebase --continue`, rerun
-`lane done`. Pending notes are untouched; they're only resolved after the
+`lane merge`. Pending notes are untouched; they're only resolved after the
 rebase succeeds.
 
 **`lane has uncommitted changes`** — commit or stash first; the rebase refuses

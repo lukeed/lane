@@ -9,7 +9,7 @@ lane new spike --dirty               carry uncommitted work too
 lane ls
 lane note -p src/auth.rs -a "fn verify" "..."
 lane why src/auth.rs                 read what earlier lanes learned
-lane done                            rebase, audit memory, fast-forward, remove
+lane merge                           rebase, audit memory, fast-forward, remove
 lane push                            rebase, audit, and push for a pull request
 lane prune                           remove lanes whose branch has landed
 ```
@@ -131,16 +131,16 @@ Ripgrep and fd honour this file, so pickers built on them inherit it. Git ignore
 
 Lane writes neither file; they are yours to add.
 
-## Why `done` runs the audit after the rebase
+## Why `merge` runs the audit after the rebase
 
-Notes stay as pending JSON until audit. `lane done` rebases first, *then*
+Notes stay as pending JSON until audit. `lane merge` rebases first, *then*
 resolves and fingerprints spans against the post-rebase tree. Nothing is ever
 anchored to a commit the rebase is about to rewrite, so `notes.rewriteRef` is
 unnecessary and squash semantics never come up.
 
 ## Pull requests
 
-`lane done` lands the lane itself: it fast-forwards trunk and removes the worktree.
+`lane merge` lands the lane itself: it fast-forwards trunk and removes the worktree.
 Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the
 lane to its remote for the pull request to carry.
 

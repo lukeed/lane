@@ -25,6 +25,8 @@ pub struct Meta {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub raw_hash: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub vouched: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub lines: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub supersedes: String,

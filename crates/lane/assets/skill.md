@@ -29,7 +29,7 @@ Do this for every file you are about to change. The mark on a line is freshness:
 
 Before `lane done`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 
-- `lane holds <id>` when the note is still true. This appends a record to `.lane/log.jsonl`, so commit it — a confirmation you do not commit is one nobody else gets.
+- `lane holds <id>` when the note is still true. This updates that note's own baseline, so commit it — a confirmation you do not commit is one nobody else gets.
 - `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is still right but the sentence is wrong.
 - Delete the note file and commit when the constraint is gone.
 

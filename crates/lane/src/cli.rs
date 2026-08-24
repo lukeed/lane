@@ -106,22 +106,6 @@ impl LandingLock {
     }
 }
 
-fn append_line(path: &Path, line: &str) -> Result<()> {
-    let existing = std::fs::read_to_string(path).unwrap_or_default();
-    if existing.contains(line) {
-        return Ok(());
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
-    if !existing.is_empty() && !existing.ends_with('\n') {
-        writeln!(file)?;
-    }
-    writeln!(file, "{line}")?;
-    Ok(())
-}
-
 const PROTOCOL: &str = "\n<!-- lane:protocol -->\n\
 ## Context memory\n\n\
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.\n\
@@ -481,18 +465,13 @@ fn init() -> Result<i32> {
     std::fs::create_dir_all(&lane)?;
     std::fs::write(lane.join(".gitkeep"), "")?;
 
-    let attrs = root.join(".gitattributes");
-    // The log is the one genuinely append-only file, which is what union merge is for.
-    // Notes never conflict because they are never modified.
-    append_line(&attrs, &format!("{LANE_DIR}/{} merge=union", store::LOG))?;
-
     let agents = root.join("AGENTS.md");
     if write_protocol(&agents)? != 0 {
         return Ok(1);
     }
 
     let (ok, detail) = crate::cow::probe(&root);
-    println!("initialized .lane/, union merge rules, AGENTS.md protocol");
+    println!("initialized .lane/ and AGENTS.md protocol");
     println!(
         "reflink on this filesystem: {} ({detail})",
         if ok { "yes" } else { "no" }
@@ -537,9 +516,6 @@ fn ls() -> Result<i32> {
         println!("no lanes");
         return Ok(0);
     }
-    // A week can pass between preparing a lane and its pull request merging, so `ls` has
-    // to say the lane is collectable without being asked.
-    let landed = landed_lanes(&root);
     let dirty: Vec<bool> = std::thread::scope(|scope| {
         let workers: Vec<_> = lanes
             .iter()
@@ -558,7 +534,10 @@ fn ls() -> Result<i32> {
             .unwrap_or_default();
         let dirty = if dirty { "dirty" } else { "clean" };
         let upstream = try_git(&["rev-parse", "@{upstream}"], Some(&lane.path));
-        let state = if landed.contains(&store::lane_id(&lane.path)) {
+        // Only marked lanes pay for the containment probe.
+        let state = if store::is_landed(&lane.path)
+            && wt::contained_in(&root, &wt::trunk_name(&root), &lane.branch)
+        {
             "landed"
         } else if !upstream.is_empty()
             && try_git(&["rev-parse", "HEAD"], Some(&lane.path)) == upstream
@@ -575,21 +554,9 @@ fn ls() -> Result<i32> {
     Ok(0)
 }
 
-/// Trunk's copy of the log, read from the ref so it is what merged rather than what is
-/// checked out. A lane landed exactly when its marker reached that copy.
-fn landed_lanes(root: &Path) -> std::collections::HashSet<String> {
-    let trunk = wt::trunk_name(root);
-    let log = try_git(
-        &["show", &format!("{trunk}:{LANE_DIR}/{}", store::LOG)],
-        Some(root),
-    );
-    store::landings(&log)
-}
-
 fn sweep(dry_run: bool) -> Result<i32> {
     let root = wt::main_root()?;
     let trunk = wt::trunk_name(&root);
-    let landed = landed_lanes(&root);
     let lanes = wt::list_lanes(&root);
 
     let mut removed = 0;
@@ -597,7 +564,7 @@ fn sweep(dry_run: bool) -> Result<i32> {
     for lane in lanes {
         // Identity, not name. A lane with no id was not made by `lane new`, and sweep is
         // destructive, so an unrecognised lane is left alone rather than guessed at.
-        if !landed.contains(&store::lane_id(&lane.path)) {
+        if !store::is_landed(&lane.path) {
             continue;
         }
         let name = lane
@@ -910,18 +877,11 @@ fn prepare(
     let out = audit::run(&lane_path, &options(&base, budget))?;
     audit::report(&out, info)?;
 
-    // The marker that survives every merge strategy. Its presence in trunk's copy of the
-    // log is what tells `lane sweep` this branch landed.
-    let lane_id = store::lane_id(&lane_path);
-    if lane_id.is_empty() {
+    // Per-worktree state: a reused branch name starts without this marker.
+    if store::lane_id(&lane_path).is_empty() {
         eprintln!("warning: lane has no id; `lane sweep` will not recognise this landing");
     }
-    store::append_log(
-        &lane_path,
-        &serde_json::json!({
-            "at": now_iso(), "kind": store::LANDING, "branch": branch, "lane": lane_id,
-        }),
-    )?;
+    store::mark_landed(&lane_path)?;
 
     let changed = try_git(
         &["status", "--porcelain", "--", LANE_DIR, "AGENTS.md"],

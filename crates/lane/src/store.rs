@@ -13,16 +13,9 @@ pub const LANE_DIR: &str = ".lane";
 /// Reserved: everything under it mirrors user paths, so a repo may have its own attic/.
 pub const NOTES: &str = "memory";
 pub const ATTIC: &str = "attic";
-pub const LOG: &str = "log.jsonl";
 pub const PENDING: &str = "lane/pending.jsonl";
 pub const LANE_ID: &str = "lane/id";
-
-/// Log record kinds. `holds` and `rebaseline` both move a baseline and are distinguished
-/// so a machine's automatic re-anchor never reads as a person's vouch.
-pub const HOLDS: &str = "holds";
-pub const REBASELINE: &str = "rebaseline";
-pub const LANDING: &str = "landing";
-pub const EVICT: &str = "evict";
+pub const LANDED: &str = "lane/landed";
 
 /// Per-worktree: git resolves an uncommon path inside .git/worktrees/<name> for a lane,
 /// so a lane cannot inherit the queue its parent has not promoted yet.
@@ -57,6 +50,33 @@ pub fn stamp_lane_id(worktree: &Path) -> Result<()> {
     }
     std::fs::write(path, format!("{}\n", ulid()))?;
     Ok(())
+}
+
+/// A landing is local to this worktree. A new worktree reusing the same branch gets a
+/// different git directory, so it cannot inherit this marker.
+pub fn landed_path(worktree: &Path) -> Option<PathBuf> {
+    git::layout(worktree)
+        .ok()
+        .map(|layout| layout.git_dir.join(LANDED))
+}
+
+pub fn mark_landed(worktree: &Path) -> Result<()> {
+    let Some(path) = landed_path(worktree) else {
+        return Ok(());
+    };
+    let id = lane_id(worktree);
+    if id.is_empty() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{id} {}\n", now_iso()))?;
+    Ok(())
+}
+
+pub fn is_landed(worktree: &Path) -> bool {
+    landed_path(worktree).is_some_and(|path| path.is_file())
 }
 
 /// The whole file. Its span has no declaration line, so its first line is an
@@ -117,30 +137,6 @@ pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
         .collect()
 }
 
-/// A re-confirmation of a note's baseline: the shape of the code that someone, or a
-/// normalization change, last vouched for. Committed, so it survives a merge and a clone.
-#[derive(Clone, Debug, Default)]
-pub struct Confirmation {
-    pub sig: String,
-    pub body_hash: String,
-    pub raw_hash: String,
-    pub norm: String,
-    pub at: String,
-}
-
-pub fn log_path(root: &Path) -> PathBuf {
-    root.join(LANE_DIR).join(LOG)
-}
-
-fn log_lines(root: &Path) -> Vec<serde_json::Value> {
-    let Ok(text) = std::fs::read_to_string(log_path(root)) else {
-        return Vec::new();
-    };
-    text.lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect()
-}
-
 fn field(entry: &serde_json::Value, key: &str) -> String {
     entry
         .get(key)
@@ -149,95 +145,119 @@ fn field(entry: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
-/// The newest re-confirmation of each note. Union merge can interleave two branches'
-/// appends, so `at` orders them and file position breaks a tie.
-pub fn confirmations(root: &Path) -> HashMap<String, Confirmation> {
-    let mut out: HashMap<String, Confirmation> = HashMap::new();
-    for entry in log_lines(root) {
-        let kind = field(&entry, "kind");
-        if kind != HOLDS && kind != REBASELINE {
-            continue;
-        }
-        let id = field(&entry, "id");
-        if id.is_empty() {
-            continue;
-        }
-        let fresh = Confirmation {
-            sig: field(&entry, "sig"),
-            body_hash: field(&entry, "body_hash"),
-            raw_hash: field(&entry, "raw_hash"),
-            norm: field(&entry, "norm"),
-            at: field(&entry, "at"),
-        };
-        // A record with no fingerprint vouches for nothing. `check` reads an empty baseline
-        // as a first fingerprint and reports fresh, so a truncated line would silence a
-        // note forever; fall back to the creation fingerprint instead.
-        if fresh.sig.is_empty() && fresh.body_hash.is_empty() {
-            continue;
-        }
-        match out.get(&id) {
-            Some(have) if have.at > fresh.at => {}
-            _ => {
-                out.insert(id, fresh);
-            }
-        }
-    }
-    out
+/// Re-vouch a readable note by moving its committed baseline in place.
+pub fn confirm(note: &mut Note, sig: &str, body_hash: &str, raw_hash: &str) -> Result<()> {
+    write_baseline(note, sig, body_hash, raw_hash, Some(now_iso()))
 }
 
-/// Every landing writes one of these. Its presence in *trunk's* copy of the log is how a
-/// merged branch is recognised, whichever way the merge was made: it is tree content, not
-/// commit identity, so a squash cannot hide it the way it hides a SHA.
-pub fn landings(log: &str) -> HashSet<String> {
-    log.lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|entry| field(entry, "kind") == LANDING)
-        .map(|entry| field(&entry, "lane"))
-        .filter(|lane| !lane.is_empty())
-        .collect()
+/// Adopt a baseline after a normalization change without claiming a human vouched for it.
+pub fn rebaseline(note: &mut Note, sig: &str, body_hash: &str, raw_hash: &str) -> Result<()> {
+    write_baseline(note, sig, body_hash, raw_hash, None)
 }
 
-/// Append-only, one file, so this is the one thing union merge is for. Every record
-/// carries the branch that wrote it; nothing else records provenance now.
-pub fn append_log(root: &Path, entry: &serde_json::Value) -> Result<()> {
-    use std::io::Write;
-    let mut entry = entry.clone();
-    if let Some(map) = entry.as_object_mut() {
-        map.entry("branch")
-            .or_insert_with(|| git::current_branch().into());
-    }
-    let path = log_path(root);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
-    writeln!(file, "{entry}")?;
-    Ok(())
-}
-
-/// A vouch, by a person or by a normalization change, recorded with the fingerprint it
-/// confirmed. Without those four fields the record says a note was vouched for but not
-/// for which shape of the code, which is the whole content of the decision.
-pub fn append_confirmation(
-    root: &Path,
-    kind: &str,
-    note: &Note,
+fn write_baseline(
+    note: &mut Note,
     sig: &str,
     body_hash: &str,
     raw_hash: &str,
+    vouched: Option<String>,
 ) -> Result<()> {
-    append_log(
-        root,
-        &serde_json::json!({
-            "at": now_iso(), "kind": kind, "id": note.meta.id,
-            "path": note.path(), "anchor": note.meta.anchor,
-            "sig": sig, "body_hash": body_hash, "raw_hash": raw_hash,
-            "norm": crate::syntax::NORM_VERSION,
-        }),
-    )
+    if note.unreadable {
+        anyhow::bail!(
+            "cannot hold note {}: frontmatter is unreadable",
+            note.meta.id
+        );
+    }
+    let file = note
+        .file
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("cannot hold note {}: no note file", note.meta.id))?;
+    note.meta.sig = sig.into();
+    note.meta.body_hash = body_hash.into();
+    note.meta.raw_hash = raw_hash.into();
+    note.meta.norm = crate::syntax::NORM_VERSION.into();
+    if let Some(vouched) = vouched {
+        note.meta.vouched = vouched;
+    }
+    note.write(file)
+}
+
+/// Fold the old shared log once. Newest records win; malformed and non-baseline records
+/// are deliberately ignored, and the file goes with them. It is kept only when a note it
+/// vouches for cannot be rewritten, because that vouch has no other copy.
+pub fn fold_legacy_log(root: &Path) -> Result<()> {
+    let legacy = "log.jsonl";
+    let path = root.join(LANE_DIR).join(legacy);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let mut entries: Vec<(usize, serde_json::Value)> = text
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| serde_json::from_str(line).ok().map(|entry| (i, entry)))
+        .collect();
+    entries.sort_by(|(ia, a), (ib, b)| field(b, "at").cmp(&field(a, "at")).then(ib.cmp(ia)));
+    let mut seen = HashSet::new();
+    let mut stranded = false;
+    for (_, entry) in entries {
+        let kind = field(&entry, "kind");
+        if kind != "holds" && kind != "rebaseline" {
+            continue;
+        }
+        let id = field(&entry, "id");
+        if id.is_empty() || !seen.insert(id.clone()) {
+            continue;
+        }
+        let sig = field(&entry, "sig");
+        let body_hash = field(&entry, "body_hash");
+        if sig.is_empty() && body_hash.is_empty() {
+            continue;
+        }
+        let Ok(mut note) = resolve_id(root, &id) else {
+            continue;
+        };
+        // A vouch is a human judgment with no other copy, so a note we cannot rewrite keeps
+        // the log rather than losing it. The fold retries on the next audit.
+        if note.unreadable {
+            eprintln!("warning: keeping {legacy}: note {id} has unreadable frontmatter");
+            stranded = true;
+            continue;
+        }
+        let at = field(&entry, "at");
+        if kind == "holds" {
+            write_baseline(
+                &mut note,
+                &sig,
+                &body_hash,
+                &field(&entry, "raw_hash"),
+                Some(at),
+            )?;
+        } else {
+            rebaseline(&mut note, &sig, &body_hash, &field(&entry, "raw_hash"))?;
+        }
+        if !field(&entry, "norm").is_empty() {
+            note.meta.norm = field(&entry, "norm");
+            note.write(note.file.as_deref().expect("parsed note has a file"))?;
+        }
+    }
+    if stranded {
+        return Ok(());
+    }
+    std::fs::remove_file(&path)?;
+    let attrs = root.join(".gitattributes");
+    if let Ok(text) = std::fs::read_to_string(&attrs) {
+        let rule = format!(".lane/{legacy} merge=union");
+        let kept: Vec<_> = text
+            .lines()
+            .filter(|line| *line != rule && !line.trim().is_empty())
+            .collect();
+        if kept.is_empty() {
+            std::fs::remove_file(attrs)?;
+        } else {
+            std::fs::write(attrs, format!("{}\n", kept.join("\n")))?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -363,25 +383,18 @@ pub fn supersede(root: &Path, old: &mut Note, fresh: &Note) -> Result<()> {
 }
 
 /// Never delete: audit moves notes to the attic so every retirement stays inspectable.
-pub fn evict(root: &Path, note: &mut Note, reason: &str) -> Result<()> {
+pub fn evict(root: &Path, note: &mut Note, _reason: &str) -> Result<()> {
     let Some(file) = note.file.clone() else {
         return Ok(());
     };
     let live = root.join(LANE_DIR).join(NOTES);
     let rel = file.strip_prefix(&live).unwrap_or(&file);
     let dest = root.join(LANE_DIR).join(ATTIC).join(rel);
-    // A pure move: the note is retired, not rewritten. The reason goes to the log.
+    // A pure move: the note is retired, not rewritten.
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::rename(&file, &dest)?;
-    append_log(
-        root,
-        &serde_json::json!({
-            "at": now_iso(), "kind": EVICT, "id": note.meta.id,
-            "path": note.path(), "anchor": note.meta.anchor, "reason": reason,
-        }),
-    )?;
     note.file = Some(dest);
     Ok(())
 }
@@ -405,7 +418,6 @@ pub struct Check {
 pub struct Checker {
     root: PathBuf,
     cache: HashMap<String, Option<Source>>,
-    confirmed: HashMap<String, Confirmation>,
 }
 
 impl Checker {
@@ -413,7 +425,6 @@ impl Checker {
         Checker {
             root: root.to_path_buf(),
             cache: HashMap::new(),
-            confirmed: confirmations(root),
         }
     }
 
@@ -459,19 +470,7 @@ impl Checker {
             return blank(FRESH);
         }
 
-        // The newest confirmation wins; the note's creation fingerprint is the fallback.
-        // Both are committed, so every machine compares against the same baseline.
-        let base = self
-            .confirmed
-            .get(&note.meta.id)
-            .cloned()
-            .unwrap_or(Confirmation {
-                sig: note.meta.sig.clone(),
-                body_hash: note.meta.body_hash.clone(),
-                raw_hash: note.meta.raw_hash.clone(),
-                norm: note.meta.norm.clone(),
-                at: String::new(),
-            });
+        let base = note.meta.clone();
 
         let (path, anchor) = (note.path(), note.meta.anchor.clone());
         let Some(src) = self.source(&path) else {
@@ -650,35 +649,9 @@ mod tests {
             .unwrap();
     }
 
-    fn confirm(root: &Path, id: &str, at: &str, sig: &str, body_hash: &str, raw_hash: &str) {
-        confirm_as(
-            root,
-            id,
-            at,
-            sig,
-            body_hash,
-            raw_hash,
-            crate::syntax::NORM_VERSION,
-        );
-    }
-
-    fn confirm_as(
-        root: &Path,
-        id: &str,
-        at: &str,
-        sig: &str,
-        body_hash: &str,
-        raw_hash: &str,
-        norm: &str,
-    ) {
-        append_log(
-            root,
-            &serde_json::json!({
-                "at": at, "kind": HOLDS, "id": id, "sig": sig,
-                "body_hash": body_hash, "raw_hash": raw_hash, "norm": norm,
-            }),
-        )
-        .unwrap();
+    fn confirm(root: &Path, id: &str, sig: &str, body_hash: &str, raw_hash: &str) {
+        let mut note = resolve_id(root, id).unwrap();
+        super::confirm(&mut note, sig, body_hash, raw_hash).unwrap();
     }
 
     #[test]
@@ -695,14 +668,7 @@ mod tests {
             "01M0A",
             "keep this file dependency-free",
         );
-        confirm(
-            root.path(),
-            "01M0A",
-            "2026-01-01T00:00:00Z",
-            &sig,
-            &body_hash,
-            &raw_hash,
-        );
+        confirm(root.path(), "01M0A", &sig, &body_hash, &raw_hash);
 
         // line one of a file is an import; changing it is not a contract change
         std::fs::write(
@@ -739,65 +705,20 @@ mod tests {
     }
 
     #[test]
-    fn a_fingerprintless_record_vouches_for_nothing() {
+    fn a_note_re_vouch_updates_its_own_baseline_once() {
         let root = tempfile::tempdir().unwrap();
-        append_log(
-            root.path(),
-            &serde_json::json!({"at": "2026-06-01T00:00:00Z", "kind": HOLDS, "id": "01M0A"}),
-        )
-        .unwrap();
-        assert!(!confirmations(root.path()).contains_key("01M0A"));
-    }
-
-    #[test]
-    fn confirmations_take_the_newest_record() {
-        let root = tempfile::tempdir().unwrap();
-        confirm(root.path(), "01M0A", "2026-01-01T00:00:00Z", "old", "", "");
-        confirm(root.path(), "01M0A", "2026-06-01T00:00:00Z", "new", "", "");
-
-        // Union merge interleaves two branches' appends, so `at` decides, not position.
-        confirm(
-            root.path(),
-            "01M0A",
-            "2026-03-01T00:00:00Z",
-            "middle",
-            "",
-            "",
-        );
-
-        assert_eq!(confirmations(root.path())["01M0A"].sig, "new");
-    }
-
-    #[test]
-    fn a_landing_marker_names_the_lane_not_the_branch() {
-        let log = concat!(
-            r#"{"kind":"evict","branch":"fix","lane":"01M0NOISE"}"#,
-            "\n",
-            r#"{"kind":"landing","branch":"fix","lane":"01M0FIRST"}"#,
-            "\n",
-            r#"{"kind":"landing","branch":"other"}"#,
-            "\n",
-        );
-        let landed = landings(log);
-        assert!(landed.contains("01M0FIRST"));
-        // Branch names are reused; a second lane called `fix` has landed nothing.
-        assert!(!landed.contains("fix"));
-        assert!(!landed.contains("01M0NOISE"));
-        // A marker with no lane id matches nothing rather than everything.
-        assert!(!landed.contains(""));
-    }
-
-    #[test]
-    fn every_record_carries_the_branch_that_wrote_it() {
-        let root = tempfile::tempdir().unwrap();
-        append_log(
-            root.path(),
-            &serde_json::json!({"kind": EVICT, "id": "01M0A"}),
-        )
-        .unwrap();
-        let line = std::fs::read_to_string(log_path(root.path())).unwrap();
-        let entry: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
-        assert!(!entry["branch"].as_str().unwrap_or_default().is_empty());
+        seed_note(root.path(), "src/a.rs", "01M0A", "keep");
+        let before = resolve_id(root.path(), "01M0A").unwrap();
+        assert!(before.meta.vouched.is_empty());
+        confirm(root.path(), "01M0A", "first", "body", "raw");
+        let once = resolve_id(root.path(), "01M0A").unwrap();
+        assert_eq!(once.meta.sig, "first");
+        assert!(!once.meta.vouched.is_empty());
+        assert_eq!(once.meta.created, before.meta.created);
+        confirm(root.path(), "01M0A", "second", "body2", "raw2");
+        let twice = resolve_id(root.path(), "01M0A").unwrap();
+        assert_eq!(twice.meta.sig, "second");
+        assert_eq!(twice.meta.created, before.meta.created);
     }
 
     /// A note plus a source file, ready to check.
@@ -826,14 +747,7 @@ mod tests {
         let span = live.resolve("@file").unwrap();
         let (sig, body_hash, raw_hash) = live.hashes(span, "@file");
 
-        confirm(
-            root.path(),
-            "01M0A",
-            "2026-06-01T00:00:00Z",
-            &sig,
-            &body_hash,
-            &raw_hash,
-        );
+        confirm(root.path(), "01M0A", &sig, &body_hash, &raw_hash);
         // The note's own fingerprint is empty, which would otherwise read as drift.
         assert_eq!(Checker::new(root.path()).check(&note).tier, FRESH);
     }
@@ -841,20 +755,21 @@ mod tests {
     #[test]
     fn an_old_normalization_rebaselines_silently_when_the_bytes_match() {
         let root = tempfile::tempdir().unwrap();
-        let note = fixture(root.path(), "pub fn v() {}\n");
+        let _note = fixture(root.path(), "pub fn v() {}\n");
         let live = Source::new("pub fn v() {}\n", "src/a.rs");
         let span = live.resolve("@file").unwrap();
         let (_, _, raw_hash) = live.hashes(span, "@file");
 
-        confirm_as(
+        confirm(
             root.path(),
             "01M0A",
-            "2026-06-01T00:00:00Z",
             "from-an-older-normalizer",
             "",
             &raw_hash,
-            "0",
         );
+        let mut note = resolve_id(root.path(), "01M0A").unwrap();
+        note.meta.norm = "0".into();
+        note.write(note.file.as_deref().unwrap()).unwrap();
         let res = Checker::new(root.path()).check(&note);
         assert_eq!(res.tier, FRESH);
         assert!(!res.rebaselined, "identical bytes cannot have drifted");
@@ -864,16 +779,17 @@ mod tests {
     #[test]
     fn an_old_normalization_is_reported_when_the_bytes_moved() {
         let root = tempfile::tempdir().unwrap();
-        let note = fixture(root.path(), "pub fn v() {}\n");
-        confirm_as(
+        let _note = fixture(root.path(), "pub fn v() {}\n");
+        confirm(
             root.path(),
             "01M0A",
-            "2026-06-01T00:00:00Z",
             "from-an-older-normalizer",
             "",
             "different",
-            "0",
         );
+        let mut note = resolve_id(root.path(), "01M0A").unwrap();
+        note.meta.norm = "0".into();
+        note.write(note.file.as_deref().unwrap()).unwrap();
         let res = Checker::new(root.path()).check(&note);
         assert_eq!(res.tier, FRESH);
         assert!(res.rebaselined, "an unresolvable baseline must be reported");
@@ -1040,9 +956,7 @@ mod tests {
                 .join("01M0A-a-note.md")
                 .is_file()
         );
-        // The replacement inherits nothing: its own creation fingerprint is the baseline,
-        // and the eviction is the only thing the log records.
-        assert!(!confirmations(root.path()).contains_key(&created[0].meta.id));
-        assert!(!confirmations(root.path()).contains_key(&old.meta.id));
+        // The replacement inherits nothing; its own creation fingerprint is the baseline.
+        assert!(created[0].meta.vouched.is_empty());
     }
 }

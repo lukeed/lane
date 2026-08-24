@@ -50,6 +50,8 @@ is "warm dir present in lane iff reflink" \
    "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes || echo no)" "$(want)"
 is "tracked file present" "$([ -f "$LP/src/auth.rs" ] && echo yes)" "yes"
 is "lane status clean" "$(git -C "$LP" status --porcelain | wc -l | tr -d ' ')" "0"
+is "ls prints the lane name once" \
+   "$("$LANE" ls | awk '$1 == "fix-login" && $2 == "open" && $3 == "clean" && $4 == "0" { n++ } END { print n + 0 }')" "1"
 is "reflink verdict reported" "$(grep -c 'reflink:' /tmp/new.out)" "1"
 is "tracked files not re-cloned" \
    "$(grep -o 'cloned' /tmp/new.out | head -1)" "cloned"

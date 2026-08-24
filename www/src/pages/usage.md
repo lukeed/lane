@@ -287,8 +287,8 @@ Run several agents at once:
 ```bash
 $ lane new agent-a && lane new agent-b && lane new agent-c
 $ lane ls
-  agent-a    agent-a    open     clean   3 pending note(s)
-  agent-b    agent-b    landed   dirty   1 pending note(s)
+  agent-a    open     clean   3 pending note(s)
+  agent-b    landed   dirty   1 pending note(s)
 ```
 
 Each has its own warm build cache at no disk cost. They can annotate the same
@@ -307,7 +307,7 @@ The short version. See [commands](/commands) for full information.
 |---|---|
 | `lane init` | scaffold, probe reflink |
 | `lane new <name> [--dirty] [--base <ref>]` | create a lane |
-| `lane ls` | lanes, branch, whether they landed, dirt, pending notes |
+| `lane ls` | lanes, whether they landed, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
 | `lane note -p <file> -a <anchor> [--supersedes <id>] "<text>"` | record or replace a finding |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |

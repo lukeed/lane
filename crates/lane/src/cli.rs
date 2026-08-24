@@ -563,8 +563,7 @@ fn ls() -> Result<i32> {
             "open"
         };
         println!(
-            "{name:<20} {:<24} {state:<7} {dirty:<6} {} pending note(s)",
-            lane.branch,
+            "{name:<20} {state:<7} {dirty:<6} {} pending note(s)",
             store::pending_count(&lane.path)
         );
     }

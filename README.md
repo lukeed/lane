@@ -162,7 +162,7 @@ marks it `landed` once trunk carries its landing record, and `lane sweep` remove
 
 ```
 $ lane ls
-fix-login    fix-login    landed   clean   0 pending note(s)
+fix-login    landed   clean   0 pending note(s)
 $ lane sweep
 removed fix-login
 ```

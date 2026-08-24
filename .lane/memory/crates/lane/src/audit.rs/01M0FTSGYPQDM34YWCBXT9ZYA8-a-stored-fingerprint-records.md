@@ -5,9 +5,9 @@ created: 2026-08-20T14:48:26Z
 branch: drift-stays-flagged
 norm: '1'
 sig: 2f3bd298b9e785b1
-body_hash: 5fec05df659bd1aa
-raw_hash: 290c2d0c304a599b
-vouched: 2026-08-22T18:23:00Z
+body_hash: f92c7af0bbff83ca
+raw_hash: 07998294cf83bc5b
+vouched: 2026-08-24T21:04:42Z
 lines: 80-221
 ---
 

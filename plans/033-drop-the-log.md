@@ -88,7 +88,7 @@ meaning and never changes.
 ### Step 3: The landing marker goes local
 
 - `store::LANDING`, `store::landings`, and `cli::landed_lanes` are deleted.
-- `lane done --no-merge` and `lane done` write a file next to the lane id, in the
+- `prepare`, which both `lane push` and `lane done` run through, writes a file next to the lane id, in the
   worktree's own git dir (`git_dir/lane/landed`), holding the lane id and an ISO stamp.
 - `sweep` gates on that file existing instead of on the trunk log. The second gate,
   `wt::contained_in`, is unchanged and remains the authoritative merge check — it already

@@ -344,15 +344,16 @@ const SWEEP: &str = "
 
 const RM: &str = "
   Description
-    Discard a lane without landing it, with its per-branch state and record.
-    The worktree always goes. A branch holding commits the trunk does not have
-    is kept unless --force, and `lane new <name>` opens a lane on it again.
+    Discard a lane and everything it still holds: the worktree, the branch,
+    the pending notes, the per-branch state. Anything that would be lost with
+    it stops the removal and is named instead. A squash or rebase merge counts
+    as landed, where `git branch -d` refuses it.
 
   Usage
     $ lane rm <name> [options]
 
   Options
-    --force       Discard commits the trunk does not have
+    --force       Discard it anyway
     -h, --help    Display this message
 ";
 

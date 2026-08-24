@@ -134,46 +134,79 @@ sedi 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
 "$LANE" audit > /dev/null
 is "evicted to attic" "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
-echo "== 11. rm will not discard commits trunk does not have =="
+echo "== 11. rm refuses before it destroys, and --force means everything =="
 setup
 "$LANE" new scrap > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/scrap" && echo "fn work() {}" > src/work.rs \
   && git add -A && git commit -qm "unlanded work" > /dev/null )
 SHA=$(git rev-parse scrap)
 "$LANE" rm scrap > /tmp/rm.out 2>&1
-is "rm exits non-zero when it kept a branch" "$?" "1"
-is "rm says the branch was kept" "$(grep -c 'kept branch scrap' /tmp/rm.out)" "1"
+is "rm exits non-zero when it kept the lane" "$?" "1"
+is "rm names the commits at stake" \
+   "$(grep -c 'kept lane scrap: commits main does not have' /tmp/rm.out)" "1"
+is "rm names the way through" "$(grep -c 'lane rm scrap --force' /tmp/rm.out)" "1"
 is "unlanded branch survives" "$(git branch --list scrap | wc -l | tr -d ' ')" "1"
 is "unlanded commit still reachable" "$(git rev-parse scrap)" "$SHA"
-is "worktree is gone either way" \
-   "$([ -d "$TMP/repo/.lane/trees/scrap" ] && echo yes || echo no)" "no"
-is "rm names the command that reopens the lane" "$(grep -c 'lane new scrap' /tmp/rm.out)" "1"
-
-# The refusal already took the worktree, so the --force it offered has only a branch left.
-"$LANE" new scrap > /dev/null 2>&1
-is "the offered lane new adopts the kept branch" "$(git rev-parse scrap)" "$SHA"
-is "and carries the unlanded work" \
+# The refusal is the whole point: a --force offered after the worktree already went
+# would be offering to recover work that is not there any more.
+is "the refused lane is still on disk" \
    "$([ -f "$TMP/repo/.lane/trees/scrap/src/work.rs" ] && echo yes || echo no)" "yes"
-"$LANE" rm scrap > /dev/null 2>&1
 "$LANE" rm scrap --force > /tmp/force.out 2>&1
-is "the offered --force exits zero with no worktree left" "$?" "0"
-is "the offered --force discards the branch" "$(git branch --list scrap | wc -l | tr -d ' ')" "0"
-is "the offered --force reports no git error" "$(grep -c 'not a working tree' /tmp/force.out)" "0"
+is "--force exits zero" "$?" "0"
+is "--force discards the branch" "$(git branch --list scrap | wc -l | tr -d ' ')" "0"
+is "--force discards the worktree" \
+   "$([ -d "$TMP/repo/.lane/trees/scrap" ] && echo yes || echo no)" "no"
+
+# Memory is the thing a lane holds that no branch can give back.
+"$LANE" new notes > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/notes" \
+  && "$LANE" note -p src/auth.rs -a "fn verify" "only in the lane" > /dev/null )
+"$LANE" rm notes > /tmp/notes.out 2>&1
+is "rm counts pending notes as loss" \
+   "$(grep -c 'kept lane notes: 1 pending note(s)' /tmp/notes.out)" "1"
+is "the lane with notes survives" \
+   "$([ -d "$TMP/repo/.lane/trees/notes" ] && echo yes || echo no)" "yes"
+"$LANE" rm notes --force > /dev/null 2>&1
+is "--force discards the notes with it" \
+   "$([ -d "$TMP/repo/.lane/trees/notes" ] && echo yes || echo no)" "no"
+
+"$LANE" new edited > /dev/null 2>&1
+echo "// scratch" >> "$TMP/repo/.lane/trees/edited/src/auth.rs"
+"$LANE" rm edited > /tmp/edited.out 2>&1
+is "rm counts uncommitted work as loss" \
+   "$(grep -c 'kept lane edited: 1 uncommitted change(s)' /tmp/edited.out)" "1"
+"$LANE" rm edited --force > /dev/null 2>&1
+is "--force takes the edit too" \
+   "$([ -d "$TMP/repo/.lane/trees/edited" ] && echo yes || echo no)" "no"
+
+# A clean lane holding nothing trunk lacks costs nothing, so no --force is asked for.
+"$LANE" new empty > /dev/null 2>&1
+"$LANE" rm empty > /tmp/empty.out 2>&1
+is "rm takes a lane with nothing at stake" "$?" "0"
+is "and says so" "$(grep -c 'removed lane empty' /tmp/empty.out)" "1"
+
+# The squash merge git branch -d always refuses. Lane compares patches, not ancestry.
+"$LANE" new squashed > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/squashed" && echo "fn s() {}" > src/s.rs \
+  && git add -A && git commit -qm "squash me" > /dev/null )
+git merge --squash squashed > /dev/null 2>&1 && git commit -qm "squashed (#1)"
+is "git itself refuses the squashed branch" \
+   "$(git branch -d squashed > /dev/null 2>&1 && echo deleted || echo refused)" "refused"
+"$LANE" rm squashed > /tmp/squash.out 2>&1
+is "rm sees the squash and needs no --force" "$?" "0"
+is "the squashed branch is gone" "$(git branch --list squashed | wc -l | tr -d ' ')" "0"
 
 "$LANE" rm ghost > /tmp/ghost.out 2>&1
 is "rm rejects a name that is neither lane nor branch" "$?" "1"
 is "rm says so plainly" "$(grep -c 'no lane ghost' /tmp/ghost.out)" "1"
 
+# A worktree deleted by hand leaves a branch git will not remove a worktree for.
 "$LANE" new gone > /dev/null 2>&1
 rm -rf "$TMP/repo/.lane/trees/gone"
-"$LANE" rm gone --force > /dev/null 2>&1
-is "rm cleans up a hand-deleted worktree" "$(git branch --list gone | wc -l | tr -d ' ')" "0"
-
-"$LANE" new scrap2 > /dev/null 2>&1
-( cd "$TMP/repo/.lane/trees/scrap2" && echo "fn work() {}" > src/work2.rs \
-  && git add -A && git commit -qm "throwaway" > /dev/null )
-"$LANE" rm scrap2 --force > /dev/null 2>&1
-is "--force discards the branch" "$(git branch --list scrap2 | wc -l | tr -d ' ')" "0"
+"$LANE" rm gone --force > /tmp/gone.out 2>&1
+is "rm cleans up after a hand-deleted worktree" "$?" "0"
+is "with no git fatal" "$(grep -c 'not a working tree' /tmp/gone.out)" "0"
+is "and the branch goes with it" "$(git branch --list gone | wc -l | tr -d ' ')" "0"
 
 echo "== 12. init scaffolding and the per-anchor budget =="
 setup
@@ -710,7 +743,7 @@ git merge -q --squash after && git commit -qm "squash after" > /dev/null
 ( cd "$TMP/repo/.lane/trees/after" \
   && echo "// later" >> src/auth.rs && git add -A && git commit -qm later > /dev/null )
 is "sweep refuses work trunk does not have" \
-   "$("$LANE" sweep 2>&1 | grep -c 'skipped after: has work main does not')" "1"
+   "$("$LANE" sweep 2>&1 | grep -c 'skipped after: commits main does not have')" "1"
 is "and leaves the lane in place" \
    "$([ -d .lane/trees/after ] && echo yes || echo no)" "yes"
 

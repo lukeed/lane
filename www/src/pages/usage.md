@@ -319,7 +319,7 @@ The short version. See [commands](/commands) for full information.
 | `lane done [--keep] [--trunk <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
 | `lane done --no-merge` | stop after the memory commit, for a pull request to carry |
 | `lane sweep [--dry-run]` | remove lanes whose branch has landed in trunk |
-| `lane rm <name> [--force]` | discard a lane; it keeps a branch holding commits trunk does not have, `--force` drops them |
+| `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |
 
 ### Layout

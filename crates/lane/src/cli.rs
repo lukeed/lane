@@ -600,15 +600,11 @@ fn sweep(dry_run: bool) -> Result<i32> {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        if wt::is_dirty(&lane.path) {
-            eprintln!("skipped {name}: uncommitted changes");
-            skipped += 1;
-            continue;
-        }
-        // Checked before anything is removed: `wt::remove` drops the worktree even when it
-        // keeps the branch, so a late refusal would already have thrown the work away.
-        if !wt::contained_in(&root, &trunk, &lane.branch) {
-            eprintln!("skipped {name}: has work {trunk} does not");
+        // A landing marker says the work reached trunk, not that the lane kept nothing
+        // back: notes written after it, or an edit never committed, are still only here.
+        let losses = wt::losses(&root, &lane.path, &lane.branch, &trunk);
+        if !losses.is_empty() {
+            eprintln!("skipped {name}: {}", losses.join(", "));
             skipped += 1;
             continue;
         }
@@ -617,9 +613,7 @@ fn sweep(dry_run: bool) -> Result<i32> {
             removed += 1;
             continue;
         }
-        // Forced, and only here: the landing marker plus the containment probe are stronger
-        // evidence than `git branch -d`, which refuses every squash and rebase merge.
-        wt::remove(&name, true)?;
+        wt::remove(&name)?;
         println!("removed {name}");
         removed += 1;
     }
@@ -967,7 +961,7 @@ fn done(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        wt::remove(&name, true)?;
+        wt::remove(&name)?;
         writeln!(info, "removed lane {branch}")?;
     }
     if cd {
@@ -977,15 +971,20 @@ fn done(
 }
 
 fn rm(name: &str, force: bool) -> Result<i32> {
-    if wt::remove(name, force)? {
-        println!("removed lane {name}");
-        return Ok(0);
+    let root = wt::main_root()?;
+    if !force {
+        let trunk = wt::trunk_name(&root);
+        let path = wt::lanes_dir(&root).join(name);
+        let losses = wt::losses(&root, &path, name, &trunk);
+        if !losses.is_empty() {
+            eprintln!("kept lane {name}: {}", losses.join(", "));
+            eprintln!("  lane rm {name} --force   to discard it anyway");
+            return Ok(1);
+        }
     }
-    let trunk = wt::trunk_name(&wt::main_root()?);
-    eprintln!("removed lane {name}; kept branch {name}, it has commits {trunk} does not");
-    eprintln!("  lane new {name}          to open a lane on it again");
-    eprintln!("  lane rm {name} --force   to discard them");
-    Ok(1)
+    wt::remove(name)?;
+    println!("removed lane {name}");
+    Ok(0)
 }
 
 fn shellenv() -> Result<i32> {

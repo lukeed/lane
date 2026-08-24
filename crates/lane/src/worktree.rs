@@ -386,11 +386,41 @@ fn registered(root: &Path, dest: &Path) -> bool {
     })
 }
 
-/// Remove a lane's worktree, and its branch when that is safe. True if the branch went too.
+/// What removing this lane destroys for good. Empty means nothing is at stake.
 ///
-/// `-d` not `-D`: an unlanded lane holds the only reference to its commits, so discarding
-/// them is asked for, never a side effect. `done` passes force after fast-forwarding trunk.
-pub fn remove(name: &str, force: bool) -> Result<bool> {
+/// Every caller of `remove` asks this first. `git branch -d` is the weaker question: it
+/// refuses every squash and rebase merge, and knows nothing about the memory a lane holds.
+pub fn losses(root: &Path, path: &Path, branch: &str, trunk: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    if path.is_dir() {
+        // Untracked counts here where it does not for a rebase: removal deletes the file.
+        let changed = try_git(&["status", "--porcelain"], Some(path))
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count();
+        if changed > 0 {
+            out.push(format!("{changed} uncommitted change(s)"));
+        }
+        let pending = crate::store::pending_count(path);
+        if pending > 0 {
+            out.push(format!("{pending} pending note(s)"));
+        }
+    }
+    let refname = format!("refs/heads/{branch}");
+    if git_ok(&["rev-parse", "--verify", "--quiet", &refname], Some(root))
+        && !contained_in(root, trunk, branch)
+    {
+        // No count: a squash merge leaves commits whose patches landed inside one of
+        // trunk's, so `rev-list` would name a number larger than what is really at risk.
+        out.push(format!("commits {trunk} does not have"));
+    }
+    out
+}
+
+/// Remove a lane's worktree and its branch, and with them everything the lane still held.
+///
+/// Unconditional by design: `losses` is the guard, and every caller runs it first.
+pub fn remove(name: &str) -> Result<()> {
     let root = main_root()?;
     let dest = lanes_dir(&root).join(name);
 
@@ -413,29 +443,19 @@ pub fn remove(name: &str, force: bool) -> Result<bool> {
         bail!("no lane {name}");
     }
 
-    // The refusal keeps the branch but still drops the worktree, so the `--force` it asks
-    // for arrives with nothing left to remove, and git calls an absent worktree fatal.
+    // A hand-deleted lane leaves a branch and no worktree, and git calls removing an
+    // absent one fatal. Skipping is what lets `rm` clean up after that.
     if worktree {
         let dest_str = dest.to_string_lossy().to_string();
-        let mut args = vec!["worktree", "remove"];
-        if force {
-            args.push("--force");
-        }
-        args.push(&dest_str);
-        git(&args, Some(&root))?;
+        git(&["worktree", "remove", "--force", &dest_str], Some(&root))?;
     }
-
-    let mut deleted = true;
     if branch {
-        deleted = git_ok(
-            &["branch", if force { "-D" } else { "-d" }, name],
-            Some(&root),
-        );
+        git(&["branch", "-D", name], Some(&root))?;
     }
     if dest.exists() {
         let _ = std::fs::remove_dir_all(&dest);
     }
-    Ok(deleted)
+    Ok(())
 }
 
 fn tracked_changes(status: &str) -> Vec<String> {

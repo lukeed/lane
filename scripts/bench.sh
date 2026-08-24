@@ -10,6 +10,7 @@
 #   scripts/bench.sh --compare before.json    time again and print the deltas
 #   scripts/bench.sh --bin path/to/lane       time a binary built elsewhere
 #   scripts/bench.sh --fixture DIR            build the fixture there and stop, for profiling
+#   scripts/bench.sh --against old-lane       A/B both binaries in one run, immune to drift
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,6 +21,7 @@ OUT=""
 BASELINE=""
 FILTER=""
 FIXTURE_ONLY=""
+AGAINST=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -29,6 +31,7 @@ while [ $# -gt 0 ]; do
     --runs)    RUNS="$2"; shift 2 ;;
     --only)    FILTER="$2"; shift 2 ;;
     --fixture) FIXTURE_ONLY="$2"; shift 2 ;;
+    --against) AGAINST="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
@@ -166,22 +169,53 @@ if [ -n "$FIXTURE_ONLY" ]; then
   exit 0
 fi
 
-# name|command. Read-only unless marked; `new` gets a prepare step to stay honest.
-CASES=$(cat <<CASES
-version|$BIN --version
-ls|$BIN ls
-check|$BIN check
-check-json|$BIN check --json
-why-hot|$BIN why src/mod_0.rs
-why-cold|$BIN why src/mod_7.rs
-audit|$BIN audit
-sweep|$BIN sweep --dry-run
-shellenv|$BIN shellenv
+# name|args. Read-only unless marked; `new` gets a prepare step to stay honest.
+CASES=$(cat <<'CASES'
+version|--version
+ls|ls
+check|check
+check-json|check --json
+why-hot|why src/mod_0.rs
+why-cold|why src/mod_7.rs
+audit|audit
+sweep|sweep --dry-run
+shellenv|shellenv
 CASES
 )
 
+# `new` mutates, so each run starts from a lane that is not there yet. Under -N there is
+# no shell to chain the reset, so it lives in a file.
+cat > "$TMP/reset-lane" <<RESET
+#!/usr/bin/env bash
+rm -rf "$REPO/.lane/trees/benchlane"
+git -C "$REPO" worktree prune
+git -C "$REPO" branch -D benchlane >/dev/null 2>&1
+exit 0
+RESET
+chmod +x "$TMP/reset-lane"
+
 RESULTS="$TMP/results.json"
 echo '{}' > "$RESULTS"
+
+# A quiet machine is not a given. --against times both binaries inside ONE hyperfine
+# invocation per case, so load that drifts between runs hits both sides equally; the
+# earlier --compare reads a file recorded minutes ago and cannot do that.
+run_ab() {
+  local name="$1" args="$2" prepare="${3:-}"
+  [ -n "$FILTER" ] && [[ "$name" != *"$FILTER"* ]] && return 0
+  local json="$TMP/ab-$name.json"
+  local hf=(-N --warmup "$WARMUP" --runs "$RUNS" --style none --export-json "$json")
+  [ -n "$prepare" ] && hf+=(--prepare "$prepare")
+  if ! hyperfine "${hf[@]}" "$AGAINST $args" "$BIN $args" >/dev/null 2>&1; then
+    echo "  !! $name failed to run" >&2
+    return 0
+  fi
+  local before after delta
+  before=$(jq -r '.results[0].mean * 1000' "$json")
+  after=$(jq -r '.results[1].mean * 1000' "$json")
+  delta=$(python3 -c "print(f'{(($after-$before)/$before*100):+.1f}%')")
+  printf '  %-12s %9.1f %9.1f %9s\n' "$name" "$before" "$after" "$delta" >&2
+}
 
 run_case() {
   local name="$1" cmd="$2" prepare="${3:-}"
@@ -207,21 +241,23 @@ echo "binary: $BIN ($(stat -f%z "$BIN" 2>/dev/null || stat -c%s "$BIN") bytes)" 
 echo "runs:   $RUNS (warmup $WARMUP)" >&2
 echo "" >&2
 
-while IFS='|' read -r name cmd; do
+if [ -n "$AGAINST" ]; then
+  printf '  %-12s %9s %9s %9s\n' "case" "before" "after" "delta" >&2
+  printf '  %-12s %9s %9s %9s\n' "----" "------" "-----" "-----" >&2
+  while IFS='|' read -r name args; do
+    [ -z "$name" ] && continue
+    run_ab "$name" "$args"
+  done <<< "$CASES"
+  run_ab "new" "new benchlane" "$TMP/reset-lane"
+  echo "" >&2
+  exit 0
+fi
+
+while IFS='|' read -r name args; do
   [ -z "$name" ] && continue
-  run_case "$name" "$cmd"
+  run_case "$name" "$BIN $args"
 done <<< "$CASES"
 
-# `new` mutates, so each run starts from a lane that is not there yet. Under -N there is
-# no shell to chain the reset, so it lives in a file.
-cat > "$TMP/reset-lane" <<RESET
-#!/usr/bin/env bash
-rm -rf "$REPO/.lane/trees/benchlane"
-git -C "$REPO" worktree prune
-git -C "$REPO" branch -D benchlane >/dev/null 2>&1
-exit 0
-RESET
-chmod +x "$TMP/reset-lane"
 run_case "new" "$BIN new benchlane" "$TMP/reset-lane"
 
 echo "" >&2

@@ -109,18 +109,28 @@ export let commands: Command[] = [
 	},
 	{
 		name: "done",
-		usage: "lane done [--trunk <ref>] [--keep] [--squash | --no-merge]",
-		summary: "rebases the lane onto trunk, audits memory, commits it, fast-forwards trunk, and removes the lane.",
+		usage: "lane done [--base <ref>] [--keep] [--squash]",
+		summary: "rebases the lane onto its base, audits memory, commits it, fast-forwards the base, and removes the lane.",
 		options: [
-			{ flag: "--trunk", arg: "<ref>", about: "branch to rebase onto and advance; defaults to the repo's trunk." },
+			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto and advance; defaults to the lane's recorded base." },
 			{ flag: "--keep", arg: null, about: "keep the lane worktree and branch after landing." },
 			{ flag: "--squash", arg: null, about: "squash the lane's commits into one landing commit." },
-			{ flag: "--no-merge", arg: null, about: "stop after the memory commit, leaving the merge to a pull request." },
 			{ flag: "--cd", arg: null, about: "print the main root path last on stdout, for the shell function." },
 			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 		],
 		example: "$ lane done\nrebased onto main\nmemory: +2 new; checked 8: 7 fresh, 1 content-changed,\n        0 contract-changed, 0 missing\ncommitted memory update\nfast-forwarded main\nremoved lane fix-login",
+	},
+	{
+		name: "push",
+		usage: "lane push [--base <ref>]",
+		summary: "rebases the lane onto its base, audits and commits memory, then pushes it for a pull request.",
+		options: [
+			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto; defaults to the lane's recorded base." },
+			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
+			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
+		],
+		example: "$ lane push\nrebased onto main\npushed fix-login to origin",
 	},
 	{
 		name: "sweep",

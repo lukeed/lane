@@ -23,6 +23,7 @@ pub enum Help {
     Check,
     Audit,
     Done,
+    Push,
     Sweep,
     Rm,
     Shellenv,
@@ -45,6 +46,7 @@ impl Help {
             Help::Check => CHECK,
             Help::Audit => AUDIT,
             Help::Done => DONE,
+            Help::Push => PUSH,
             Help::Sweep => SWEEP,
             Help::Rm => RM,
             Help::Shellenv => SHELLENV,
@@ -67,6 +69,7 @@ impl Help {
             Help::Check => "lane check [--json]",
             Help::Audit => "lane audit [OPTIONS]",
             Help::Done => "lane done [OPTIONS]",
+            Help::Push => "lane push [OPTIONS]",
             Help::Sweep => "lane sweep [--dry-run]",
             Help::Rm => "lane rm [--force] <NAME>",
             Help::Shellenv => "lane shellenv",
@@ -101,6 +104,7 @@ impl Help {
             Help::Check => "lane check",
             Help::Audit => "lane audit",
             Help::Done => "lane done",
+            Help::Push => "lane push",
             Help::Sweep => "lane sweep",
             Help::Rm => "lane rm",
             Help::Shellenv => "lane shellenv",
@@ -129,6 +133,7 @@ const ROOT: &str = "
     check        Staleness report
     audit        Promote, re-anchor, rank, evict
     done         Rebase, audit, fast-forward, remove
+    push         Rebase, audit, push for a pull request
     sweep        Remove lanes whose branch has landed
     rm           Discard a lane without landing it
     shellenv     Print shell integration
@@ -165,7 +170,7 @@ const NEW: &str = "
     $ lane new <name> [options]
 
   Options
-    --base <rev>    Branch from <rev> instead of the trunk
+    --base <rev>    Branch from <rev> instead of the default base
     --dirty         Carry uncommitted work into the lane
     --cd            Print the path last, for the shell function
     -h, --help      Display this message
@@ -306,15 +311,14 @@ const AUDIT: &str = "
 
 const DONE: &str = "
   Description
-    Land a lane: rebase onto the trunk, audit memory, fast-forward, and remove
+    Land a lane: rebase onto its base, audit memory, fast-forward, and remove
     the worktree. Landings are locked, so two at once serialize.
 
   Usage
     $ lane done [options]
 
   Options
-    --trunk <branch>    Land onto <branch> instead of the detected trunk
-    --no-merge          Stop at the commit, for a pull request to carry
+    --base <ref>        Rebase onto <ref> instead of the recorded base
     --squash            Squash the lane's commits into one landing commit
     --keep              Leave the worktree in place after landing
     --cd                Print the path last, for the shell function
@@ -325,13 +329,30 @@ const DONE: &str = "
   Examples
     $ lane done
     $ lane done --squash
-    $ lane done --no-merge     # then: git push -u origin <branch>
+";
+
+const PUSH: &str = "
+  Description
+    Rebase a lane onto its base, audit and commit memory, then push it for a
+    pull request. The remote is the branch's upstream or origin.
+
+  Usage
+    $ lane push [options]
+
+  Options
+    --base <ref>        Rebase onto <ref> instead of the recorded base
+    --max-notes <n>     Notes kept per anchor (default: 5)
+    --max-chars <n>     Characters kept per anchor (default: 1200)
+    -h, --help          Display this message
+
+  Examples
+    $ lane push
 ";
 
 const SWEEP: &str = "
   Description
-    Remove every lane whose branch has landed in trunk. A lane prepared with
-    `lane done --no-merge` sits here until its pull request merges; this is
+    Remove every lane whose branch has landed in trunk. A pushed lane sits here
+    until its pull request merges; this is
     what collects it. Work committed after the merge is never discarded.
 
   Usage

@@ -39,6 +39,12 @@ EOF
   git add -A && git commit -qm "lane init"
 }
 
+remote_setup() {
+  rm -rf "$TMP/origin.git"
+  git init --bare -q "$TMP/origin.git"
+  git remote add origin "$TMP/origin.git"
+}
+
 echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
 "$LANE" new fix-login > /tmp/new.out 2>&1
@@ -671,20 +677,21 @@ cd "$TMP/repo"
 is "fresh state and change survive done" \
    "$("$LANE" check | awk '/^fresh/{print $2}'):$(grep -c '&& true' src/auth.rs)" "1:1"
 
-echo "== 32. a prepared lane merges elsewhere, then sweeps =="
+echo "== 32. a pushed lane merges elsewhere, then sweeps =="
 setup
+remote_setup
 "$LANE" new feat > /dev/null 2>&1
 BEFORE=$(git rev-parse main)
 ( cd "$TMP/repo/.lane/trees/feat" \
   && sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& fresh()/' src/auth.rs \
   && "$LANE" note -p src/auth.rs -a "fn verify" "the freshness check is not optional" > /dev/null \
   && git add -A && git commit -qm work > /dev/null \
-  && "$LANE" done --no-merge > /tmp/prep.out 2>&1 )
+  && "$LANE" push > /tmp/push.out 2>&1 )
 cd "$TMP/repo"
-is "prepare leaves trunk where it was" "$(git rev-parse main)" "$BEFORE"
-is "prepare keeps the lane" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "yes"
-is "prepare says so" "$(grep -c 'main not moved' /tmp/prep.out)" "1"
-is "the lane is not landed yet" "$("$LANE" ls | grep -c 'feat .*open')" "1"
+is "push leaves trunk where it was" "$(git rev-parse main)" "$BEFORE"
+is "push keeps the lane" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "yes"
+is "push reaches origin" "$(git --git-dir="$TMP/origin.git" branch --list feat | wc -l | tr -d ' ')" "1"
+is "the lane is pushed, not landed" "$("$LANE" ls | grep -c 'feat .*pushed')" "1"
 
 # The merge happens where lane is not: squash, the button that hides every SHA.
 git merge -q --squash feat && git commit -qm "squash feat" > /dev/null
@@ -698,16 +705,17 @@ git -C .lane/trees/feat checkout -- src/auth.rs
 is "sweep removes it once clean" "$("$LANE" sweep 2>&1 | grep -c 'removed feat')" "1"
 is "and the lane is gone" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "no"
 
-echo "== 33. two lanes prepared from one base merge in either order =="
+echo "== 33. two pushed lanes from one base merge in either order =="
 setup
+remote_setup
 "$LANE" new a > /dev/null 2>&1
 "$LANE" new b > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/a" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "a: callers rely on false-on-expiry" > /dev/null \
-  && "$LANE" done --no-merge > /dev/null 2>&1 )
+  && "$LANE" push > /dev/null 2>&1 )
 ( cd "$TMP/repo/.lane/trees/b" \
   && "$LANE" note -p src/auth.rs -a "fn refresh" "b: rotation is not idempotent" > /dev/null \
-  && "$LANE" done --no-merge > /dev/null 2>&1 )
+  && "$LANE" push > /dev/null 2>&1 )
 cd "$TMP/repo"
 # Neither rebased onto the other: this is what two open pull requests look like.
 git merge -q --no-edit a > /dev/null 2>&1
@@ -732,12 +740,13 @@ git branch taken
 is "--base is refused for an existing branch" \
    "$("$LANE" new taken --base main 2>&1 | grep -c '^error:')" "1"
 
-echo "== 35. a rebase merge is seen, and unprepared work is not swept =="
+echo "== 35. a rebase merge is seen, and unpushed work is not swept =="
 setup
+remote_setup
 "$LANE" new rb > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/rb" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "rb: the note" > /dev/null \
-  && "$LANE" done --no-merge > /dev/null 2>&1 )
+  && "$LANE" push > /dev/null 2>&1 )
 # A rebase merge replays onto a trunk that moved, so every SHA differs and `-d` refuses.
 echo "// unrelated" >> src/auth.rs && git add -A && git commit -qm "trunk moved"
 git cherry-pick "$(git merge-base main rb)..rb" > /dev/null 2>&1
@@ -748,10 +757,11 @@ is "git itself refuses the branch" \
 is "sweep sees through the replay" "$("$LANE" sweep 2>&1 | grep -c 'removed rb')" "1"
 
 setup
+remote_setup
 "$LANE" new after > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/after" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "prepared" > /dev/null \
-  && "$LANE" done --no-merge > /dev/null 2>&1 )
+  && "$LANE" note -p src/auth.rs -a "fn verify" "pushed" > /dev/null \
+  && "$LANE" push > /dev/null 2>&1 )
 git merge -q --squash after && git commit -qm "squash after" > /dev/null
 # Work that arrived after the pull request merged never reached trunk.
 ( cd "$TMP/repo/.lane/trees/after" \
@@ -763,6 +773,7 @@ is "and leaves the lane in place" \
 
 echo "== 36. a landing marks the lane, not the name =="
 setup
+remote_setup
 "$LANE" new fix > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/fix" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "first time round" > /dev/null \
@@ -780,7 +791,7 @@ setup
 "$LANE" new here > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/here" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "n" > /dev/null \
-  && "$LANE" done --no-merge > /dev/null 2>&1 )
+  && "$LANE" push > /dev/null 2>&1 )
 git merge -q --squash here && git commit -qm "squash here" > /dev/null
 is "sweep refuses from inside the lane" \
    "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" sweep 2>&1 | grep -c 'cd out first')" "1"
@@ -788,6 +799,50 @@ is "rm refuses from inside the lane" \
    "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" rm here --force 2>&1 | grep -c 'cd out first')" "1"
 is "the lane is untouched" "$([ -d .lane/trees/here ] && echo yes || echo no)" "yes"
 is "and sweep still works from the root" "$("$LANE" sweep 2>&1 | grep -c 'removed here')" "1"
+
+echo "== 38. push re-pushes safely and reports its state =="
+setup
+remote_setup
+"$LANE" new feat > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/feat"
+( cd "$LP" && echo "one" > src/push.rs && git add -A && git commit -qm one && "$LANE" push > /dev/null )
+is "push records its base" "$(git config --get lane.feat.base)" "main"
+is "ls calls an exact remote tip pushed" "$("$LANE" ls | grep -c 'feat .*pushed')" "1"
+( cd "$LP" && echo "two" >> src/push.rs && git add -A && git commit -qm two )
+is "a local commit returns ls to open" "$("$LANE" ls | grep -c 'feat .*open')" "1"
+( cd "$LP" && "$LANE" push > /dev/null )
+echo "base" > src/base.rs && git add -A && git commit -qm base
+( cd "$LP" && "$LANE" push > /dev/null )
+is "a re-push carries a moved base" "$(git -C "$LP" merge-base --is-ancestor main HEAD && echo yes || echo no)" "yes"
+git clone -q --branch feat "$TMP/origin.git" "$TMP/other"
+git -C "$TMP/other" config user.email t@t.t
+git -C "$TMP/other" config user.name t
+echo "remote" > "$TMP/other/remote.rs"
+git -C "$TMP/other" add -A && git -C "$TMP/other" commit -qm remote && git -C "$TMP/other" push -q
+( cd "$LP" && echo "local" > src/local.rs && git add -A && git commit -qm local && "$LANE" push > /tmp/lease.out 2>&1 )
+is "the lease refuses a remote commit" "$?" "1"
+is "the lease names the failed push" "$(grep -c 'force-with-lease' /tmp/lease.out)" "1"
+
+echo "== 39. done warns only for orphaned pull requests =="
+setup
+remote_setup
+"$LANE" new feat > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/feat"
+( cd "$LP" && echo "lane" > src/lane.rs && git add -A && git commit -qm lane && "$LANE" push > /dev/null )
+REMOTE_TIP=$(git --git-dir="$TMP/origin.git" rev-parse refs/heads/feat)
+git --git-dir="$TMP/origin.git" update-ref refs/pull/7/head "$REMOTE_TIP"
+echo "base" > src/base.rs && git add -A && git commit -qm base
+( cd "$LP" && "$LANE" done > /tmp/orphan.out 2>&1 )
+is "done warns after rewriting the pushed tip" "$(grep -c '^warning: pushed pull request' /tmp/orphan.out)" "1"
+is "the orphan warning names pull request 7" "$(grep -c 'pull request #7' /tmp/orphan.out)" "1"
+
+setup
+remote_setup
+"$LANE" new clean-pr > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/clean-pr"
+( cd "$LP" && echo "lane" > src/lane.rs && git add -A && git commit -qm lane && "$LANE" push > /dev/null )
+( cd "$LP" && "$LANE" done > /tmp/clean-pr.out 2>&1 )
+is "done stays silent when the pushed tip remains reachable" "$(grep -c '^warning: pushed pull request' /tmp/clean-pr.out)" "0"
 
 echo
 echo "passed: $pass   failed: $fail"

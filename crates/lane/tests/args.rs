@@ -121,11 +121,10 @@ fn the_shell_function_s_own_invocation_still_parses() {
     assert_eq!(
         ok(&["done", "--cd"]),
         Parsed::Done(DoneArgs {
-            trunk: None,
+            base: None,
             keep: false,
             cd: true,
             squash: false,
-            no_merge: false,
             budget: Budget::default(),
         })
     );
@@ -364,13 +363,12 @@ fn the_budget_flags_default_and_override_together() {
 #[test]
 fn done_and_rm_read_the_rest_of_their_flags() {
     assert_eq!(
-        ok(&["done", "--trunk", "release", "--keep", "--squash"]),
+        ok(&["done", "--base", "release", "--keep", "--squash"]),
         Parsed::Done(DoneArgs {
-            trunk: Some("release".into()),
+            base: Some("release".into()),
             keep: true,
             cd: false,
             squash: true,
-            no_merge: false,
             budget: Budget::default(),
         })
     );
@@ -447,7 +445,7 @@ fn every_command_the_root_screen_lists_parses() {
         .take_while(|line| !line.trim().is_empty())
         .filter_map(|line| line.split_whitespace().next())
         .collect();
-    assert_eq!(listed.len(), 15, "{listed:?}");
+    assert_eq!(listed.len(), 16, "{listed:?}");
     for name in listed {
         assert!(matches!(ok(&[name, "--help"]), Parsed::Help(_)), "{name}");
     }
@@ -469,6 +467,7 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::Check,
         Help::Audit,
         Help::Done,
+        Help::Push,
         Help::Sweep,
         Help::Rm,
         Help::Shellenv,
@@ -485,20 +484,17 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
 }
 
 #[test]
-fn done_prepares_for_a_pull_request_or_lands_it_but_not_both() {
-    let Parsed::Done(done) = ok(&["done", "--no-merge"]) else {
-        panic!("expected done");
-    };
-    assert!(done.no_merge);
-    assert!(!done.squash);
-
-    // `--squash` writes the merge commit `--no-merge` leaves to the pull request.
-    let message = err(&["done", "--squash", "--no-merge"]);
-    assert!(
-        message.contains("the argument '--squash' cannot be used with '--no-merge'"),
-        "{message}"
+fn push_takes_a_base_and_budget() {
+    assert_eq!(
+        ok(&["push", "--base", "release", "--max-notes", "3"]),
+        Parsed::Push(PushArgs {
+            base: Some("release".into()),
+            budget: Budget {
+                max_notes: 3,
+                max_chars: 1200,
+            },
+        })
     );
-    assert!(message.contains("try 'lane done --help'"), "{message}");
 }
 
 #[test]

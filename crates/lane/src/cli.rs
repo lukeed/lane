@@ -71,13 +71,13 @@ pub fn run() -> Result<i32> {
         Parsed::Check { json } => check(json),
         Parsed::Audit(args) => audit_cmd(&args.base, &args.budget, args.json),
         Parsed::Done(args) => done(
-            args.trunk.as_deref(),
+            args.base.as_deref(),
             args.keep,
             args.cd,
             args.squash,
-            args.no_merge,
             &args.budget,
         ),
+        Parsed::Push(args) => push(args.base.as_deref(), &args.budget),
         Parsed::Sweep { dry_run } => sweep(dry_run),
         Parsed::Rm(args) => rm(&args.name, args.force),
         Parsed::Shellenv => shellenv(),
@@ -557,8 +557,13 @@ fn ls() -> Result<i32> {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         let dirty = if dirty { "dirty" } else { "clean" };
+        let upstream = try_git(&["rev-parse", "@{upstream}"], Some(&lane.path));
         let state = if landed.contains(&store::lane_id(&lane.path)) {
             "landed"
+        } else if !upstream.is_empty()
+            && try_git(&["rev-parse", "HEAD"], Some(&lane.path)) == upstream
+        {
+            "pushed"
         } else {
             "open"
         };
@@ -849,62 +854,60 @@ fn audit_cmd(base: &str, budget: &Budget, json: bool) -> Result<i32> {
     Ok(0)
 }
 
-/// rebase -> audit -> commit memory -> fast-forward trunk -> remove lane.
-///
-/// Audit runs AFTER the rebase so spans resolve against the post-rebase tree.
-/// Under `--no-merge` it stops at the commit, and the merge happens wherever the pull
-/// request is merged; `lane sweep` cleans up afterwards.
-fn done(
-    trunk: Option<&str>,
-    keep: bool,
-    cd: bool,
-    squash: bool,
-    no_merge: bool,
+struct Prepared {
+    lane_path: PathBuf,
+    root: PathBuf,
+    branch: String,
+    base: String,
+    _lock: LandingLock,
+}
+
+enum Preparation {
+    Ready(Prepared),
+    Exit(i32),
+}
+
+fn prepare(
+    base: Option<&str>,
     budget: &Budget,
-) -> Result<i32> {
+    check_blocking: bool,
+    info: &mut dyn Write,
+) -> Result<Preparation> {
     let lane_path = git::repo_root()?;
     let root = wt::main_root()?;
     if lane_path == root {
         eprintln!("error: not inside a lane");
-        return Ok(2);
+        return Ok(Preparation::Exit(2));
     }
     let branch = git::current_branch();
-    let trunk = trunk
+    let base = base
         .map(str::to_string)
-        .unwrap_or_else(|| wt::trunk_name(&root));
+        .unwrap_or_else(|| wt::lane_base(&root, &branch));
 
     if wt::is_dirty(&lane_path) {
         eprintln!(
             "error: lane has uncommitted changes; commit or stash first, the rebase will refuse them either way"
         );
-        return Ok(1);
+        return Ok(Preparation::Exit(1));
     }
 
-    let blocked = if no_merge {
-        Vec::new()
-    } else {
-        wt::blocking_changes(&root, &trunk, &branch)
-    };
-    if !blocked.is_empty() {
-        eprintln!(
-            "error: {} has uncommitted changes to {}; commit or stash there first",
-            trunk,
-            blocked.join(", ")
-        );
-        return Ok(1);
+    if check_blocking {
+        let blocked = wt::blocking_changes(&root, &base, &branch);
+        if !blocked.is_empty() {
+            eprintln!(
+                "error: {base} has uncommitted changes to {}; commit or stash there first",
+                blocked.join(", ")
+            );
+            return Ok(Preparation::Exit(1));
+        }
     }
 
-    let _lock = LandingLock::acquire(&trunk)?;
+    let lock = LandingLock::acquire(&base)?;
 
-    let info: &mut dyn std::io::Write = if cd {
-        &mut std::io::stderr()
-    } else {
-        &mut std::io::stdout()
-    };
-    git(&["rebase", &trunk], Some(&lane_path))?;
-    writeln!(info, "rebased onto {trunk}")?;
+    git(&["rebase", &base], Some(&lane_path))?;
+    writeln!(info, "rebased onto {base}")?;
 
-    let out = audit::run(&lane_path, &options(&trunk, budget))?;
+    let out = audit::run(&lane_path, &options(&base, budget))?;
     audit::report(&out, info)?;
 
     // The marker that survives every merge strategy. Its presence in trunk's copy of the
@@ -933,15 +936,33 @@ fn done(
         writeln!(info, "committed memory update")?;
     }
 
-    if no_merge {
-        writeln!(info, "prepared {branch}; {trunk} not moved")?;
-        writeln!(info, "  git push -u origin {branch}")?;
-        writeln!(info, "  lane sweep    once the pull request has merged")?;
-        if cd {
-            println!("{}", lane_path.display());
-        }
-        return Ok(0);
-    }
+    Ok(Preparation::Ready(Prepared {
+        lane_path,
+        root,
+        branch,
+        base,
+        _lock: lock,
+    }))
+}
+
+fn done(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget) -> Result<i32> {
+    let info: &mut dyn Write = if cd {
+        &mut std::io::stderr()
+    } else {
+        &mut std::io::stdout()
+    };
+    let prepared = match prepare(base, budget, true, info)? {
+        Preparation::Ready(prepared) => prepared,
+        Preparation::Exit(code) => return Ok(code),
+    };
+    let Prepared {
+        lane_path,
+        root,
+        branch,
+        base,
+        _lock,
+    } = prepared;
+    let upstream = upstream_branch(&lane_path, &branch);
 
     if squash {
         git(&["merge", "--squash", &branch], Some(&root))?;
@@ -949,10 +970,24 @@ fn done(
             &["commit", "-q", "-m", &format!("lane: merged {branch}")],
             Some(&root),
         )?;
-        writeln!(info, "squash-merged {branch} into {trunk}")?;
+        writeln!(info, "squash-merged {branch} into {base}")?;
     } else {
-        wt::fast_forward(&root, &trunk, &branch)?;
-        writeln!(info, "fast-forwarded {trunk}")?;
+        wt::fast_forward(&root, &base, &branch)?;
+        writeln!(info, "fast-forwarded {base}")?;
+    }
+
+    if let Some(upstream) = upstream {
+        if !git::git_ok(
+            &["merge-base", "--is-ancestor", &upstream.tip, &base],
+            Some(&root),
+        ) {
+            let number = pull_request_number(&lane_path, &upstream.remote, &upstream.tip);
+            let detail = number.map_or_else(String::new, |number| format!(" #{number}"));
+            eprintln!(
+                "warning: pushed pull request{detail} remains open; close it on {}",
+                upstream.remote
+            );
+        }
     }
 
     if !keep {
@@ -967,6 +1002,86 @@ fn done(
     if cd {
         println!("{}", root.display());
     }
+    Ok(0)
+}
+
+fn branch_remote(lane_path: &Path) -> Option<String> {
+    let upstream = try_git(
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+        Some(lane_path),
+    );
+    if let Some((remote, _)) = upstream.split_once('/') {
+        return Some(remote.into());
+    }
+    git::git_ok(&["config", "--get", "remote.origin.url"], Some(lane_path)).then(|| "origin".into())
+}
+
+struct Upstream {
+    remote: String,
+    tip: String,
+}
+
+fn upstream_branch(lane_path: &Path, branch: &str) -> Option<Upstream> {
+    let name = try_git(
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+        Some(lane_path),
+    );
+    let tip = try_git(&["rev-parse", "@{upstream}"], Some(lane_path));
+    if name.is_empty() || tip.is_empty() {
+        return None;
+    }
+    let key = format!("branch.{branch}.remote");
+    let configured = try_git(&["config", "--get", &key], Some(lane_path));
+    let remote = if configured.is_empty() {
+        name.split_once('/')?.0.to_string()
+    } else {
+        configured
+    };
+    (remote != ".").then_some(Upstream { remote, tip })
+}
+
+fn pull_request_number(lane_path: &Path, remote: &str, tip: &str) -> Option<String> {
+    let refs = try_git(&["ls-remote", remote, "refs/pull/*/head"], Some(lane_path));
+    refs.lines().find_map(|line| {
+        let (sha, name) = line.split_once('\t')?;
+        (sha == tip)
+            .then_some(name)
+            .and_then(|name| name.strip_prefix("refs/pull/"))
+            .and_then(|name| name.strip_suffix("/head"))
+            .map(Into::into)
+    })
+}
+
+fn push(base: Option<&str>, budget: &Budget) -> Result<i32> {
+    let prepared = match prepare(base, budget, false, &mut std::io::stdout())? {
+        Preparation::Ready(prepared) => prepared,
+        Preparation::Exit(code) => return Ok(code),
+    };
+    let remote = branch_remote(&prepared.lane_path).ok_or_else(|| {
+        anyhow::anyhow!("no remote configured; add an upstream or `git remote add origin <url>`")
+    })?;
+    git(
+        &[
+            "push",
+            "--force-with-lease",
+            "--force-if-includes",
+            "-u",
+            &remote,
+            &prepared.branch,
+        ],
+        Some(&prepared.lane_path),
+    )?;
+    println!("pushed {} to {remote}", prepared.branch);
     Ok(0)
 }
 

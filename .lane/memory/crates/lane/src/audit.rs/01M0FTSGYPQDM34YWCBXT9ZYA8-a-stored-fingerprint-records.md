@@ -2,12 +2,11 @@
 id: 01M0FTSGYPQDM34YWCBXT9ZYA8
 anchor: run
 created: 2026-08-20T14:48:26Z
-branch: drift-stays-flagged
 norm: '1'
 sig: 2f3bd298b9e785b1
-body_hash: f92c7af0bbff83ca
-raw_hash: 07998294cf83bc5b
-vouched: 2026-08-24T21:04:42Z
+body_hash: 6d2b3c337f5f5dd1
+raw_hash: 54603717ad54d256
+vouched: 2026-08-24T23:11:24Z
 lines: 80-221
 ---
 

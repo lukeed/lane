@@ -2,7 +2,6 @@
 id: 01M0RP813WRK018HGY8ATHW0XT
 anchor: pico-args
 created: 2026-08-24T01:30:25Z
-branch: argv-manual
 norm: '1'
 ---
 

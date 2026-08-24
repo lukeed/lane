@@ -2,7 +2,6 @@
 id: 01M0TMPTR29GTK9N5MA1Z0PHKD
 anchor: struct Source
 created: 2026-08-24T19:09:49Z
-branch: perf-audit
 norm: '1'
 sig: 7877fe79130c24bf
 body_hash: ea97b192f427557c

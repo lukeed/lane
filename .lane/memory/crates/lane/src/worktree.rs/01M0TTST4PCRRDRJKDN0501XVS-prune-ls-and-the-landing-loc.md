@@ -2,7 +2,6 @@
 id: 01M0TTST4PCRRDRJKDN0501XVS
 anchor: fn trunk_name
 created: 2026-08-24T21:27:24Z
-branch: rename-sweep-prune
 norm: '1'
 sig: 6388df923cf25623
 body_hash: 1fe611ea9801b789

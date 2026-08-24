@@ -16,6 +16,8 @@ pub struct Options {
 
 pub struct Outcome {
     pub created: Vec<Note>,
+    /// Notes rewritten to remove obsolete branch provenance.
+    pub migrated: usize,
     /// (old path, new path, notes moved) for source files that were renamed, not deleted.
     pub moved: Vec<(String, String, usize)>,
     /// Notes whose baseline predated a normalization change and could not be compared.
@@ -60,6 +62,7 @@ fn eviction_key(
 pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     store::fold_legacy_log(root)?;
     let created = store::promote_pending(root)?;
+    let migrated = store::strip_legacy_branches(root)?;
     let touched: HashSet<String> = if opts.base.is_empty() {
         HashSet::new()
     } else {
@@ -148,6 +151,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
 
     Ok(Outcome {
         created,
+        migrated,
         moved,
         stats,
         rebaselined,
@@ -168,6 +172,14 @@ pub fn report(out: &Outcome, w: &mut dyn Write) -> std::io::Result<()> {
         n(SIG),
         n(MISSING)
     )?;
+
+    if out.migrated > 0 {
+        writeln!(
+            w,
+            "  removed branch provenance from {} note(s)",
+            out.migrated
+        )?;
+    }
 
     if out.rebaselined > 0 {
         writeln!(

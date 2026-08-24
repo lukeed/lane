@@ -2,7 +2,6 @@
 id: 01M0TMPTRQ3T4E9ZAVYT7G7E6Y
 anchor: struct RepoLayout
 created: 2026-08-24T19:14:32Z
-branch: perf-audit
 norm: '1'
 sig: 096b5de33f51b8a7
 body_hash: 4f4e2f70126b3686

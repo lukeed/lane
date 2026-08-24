@@ -644,7 +644,6 @@ fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Resul
             text: text.to_string(),
             path: rel.clone(),
             anchor: anchor.to_string(),
-            branch: git::current_branch(),
             at: now_iso(),
             supersedes: supersedes.clone(),
         },
@@ -676,32 +675,23 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
             .push(note);
     }
 
-    let mut checker = store::Checker::new(&root);
-    for ((file, anchor), mut group) in groups {
-        println!("\n{file}#{anchor}");
+    for (index, ((file, anchor), mut group)) in groups.into_iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        if rel.is_some() {
+            println!("[{anchor}]");
+        } else {
+            println!("[{file}@{anchor}]");
+        }
         group.sort_by(|a, b| a.meta.id.cmp(&b.meta.id));
         for note in group {
-            let tier = checker.check(&note).tier;
-            let mark = mark(tier);
-            let tail = if tier == FRESH {
-                String::new()
-            } else {
-                format!("   [{tier}]")
-            };
             println!(
-                "  {mark} {}{tail}",
-                note.body.trim().replace('\n', "\n    ")
-            );
-            println!(
-                "      {} · {} · {}",
+                "  - {} · {}",
                 &note.meta.id[..10.min(note.meta.id.len())],
-                if note.meta.branch.is_empty() {
-                    "?"
-                } else {
-                    &note.meta.branch
-                },
                 note.meta.created.get(..10).unwrap_or("?")
             );
+            println!("    {}", note.body.trim().replace('\n', "\n    "));
         }
     }
     Ok(0)
@@ -1243,7 +1233,6 @@ mod tests {
                     text: text.into(),
                     path: path.into(),
                     anchor: anchor.into(),
-                    branch: "main".into(),
                     at: "2026-08-21T00:00:00Z".into(),
                     supersedes: String::new(),
                 },

@@ -64,9 +64,9 @@ made by hand:
 ```
 $ lane why src/auth.rs
 
-src/auth.rs#fn verify
+[fn verify]
+  - 01M0B9MBYB · 2026-08-19
     early return leaks token length
-      01M0B9MBYB · main · 2026-08-19
 ```
 
 ### Hand the line to an agent

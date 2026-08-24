@@ -2,7 +2,6 @@
 id: 01M0THM3E8J7FS0WE1PEAA168Y
 anchor: '@file'
 created: 2026-08-24T18:48:09Z
-branch: ci-cache-prune
 norm: '1'
 sig: eb0ffc2134160f8f
 body_hash: e331d477641683c3

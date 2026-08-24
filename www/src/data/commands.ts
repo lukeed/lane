@@ -73,11 +73,11 @@ export let commands: Command[] = [
 	{
 		name: "why",
 		usage: "lane why [<path>] [-a <anchor>]",
-		summary: "prints the notes for a path, each with a freshness mark. A pure read; it changes nothing.",
+		summary: "prints the notes for a path in compact form. A pure read; it changes nothing.",
 		options: [
 			{ flag: "-a, --anchor", arg: "<anchor>", about: "show only the notes on this anchor." },
 		],
-		example: "$ lane why src/auth.rs\n\nsrc/auth.rs#fn verify\n    must stay constant-time; early return leaks length\n      01M0B9MBYB · fix-login · 2026-08-14\n  ~ callers rely on false-on-expiry   [content-changed]\n      01M0B4KQTX · rate-limit · 2026-07-30",
+		example: "$ lane why src/auth.rs\n\n[fn verify]\n  - 01M0B4KQTX · 2026-07-30\n    callers rely on false-on-expiry\n  - 01M0B9MBYB · 2026-08-14\n    must stay constant-time; early return leaks length",
 	},
 	{
 		name: "holds",

@@ -2,7 +2,6 @@
 id: 01M0ESYXZH9H0Z631FGCPND97V
 anchor: fn retarget
 created: 2026-08-20T05:14:25Z
-branch: symlink-retarget
 norm: '1'
 sig: 6b7dd66fe2601cc3
 body_hash: a7328eb6dd52ef1d

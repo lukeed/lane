@@ -15,8 +15,6 @@ pub struct Meta {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub created: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub branch: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub norm: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sig: String,
@@ -75,6 +73,37 @@ impl Note {
         }
         std::fs::write(path, self.render())?;
         Ok(())
+    }
+
+    /// Remove provenance written by older Lane versions without disturbing any other
+    /// frontmatter, including fields this binary may not know about yet.
+    pub fn strip_legacy_branch(&mut self) -> Result<bool> {
+        if self.unreadable {
+            return Ok(false);
+        }
+        let Some(rest) = self.raw.strip_prefix("---\n") else {
+            return Ok(false);
+        };
+        let Some(end) = rest.find("\n---") else {
+            return Ok(false);
+        };
+        let front = &rest[..end];
+        if !front.lines().any(|line| line.starts_with("branch:")) {
+            return Ok(false);
+        }
+        let kept = front
+            .lines()
+            .filter(|line| !line.starts_with("branch:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let rewritten = format!("---\n{kept}{}", &rest[end..]);
+        let file = self
+            .file
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("note {} has no file", self.meta.id))?;
+        std::fs::write(file, &rewritten)?;
+        self.raw = rewritten;
+        Ok(true)
     }
 }
 
@@ -181,6 +210,25 @@ mod tests {
         let parsed = parse(&file).unwrap();
         assert!(!parsed.unreadable);
         assert_eq!(parsed.render(), parsed.raw);
+    }
+
+    #[test]
+    fn legacy_branch_is_removed_without_losing_unknown_frontmatter() {
+        let root = tempfile::tempdir().unwrap();
+        let file = write_note(root.path(), "src/auth.rs", "seed: constant time");
+        let text = std::fs::read_to_string(&file).unwrap().replacen(
+            "created: 2026-08-19T00:00:00Z\n",
+            "created: 2026-08-19T00:00:00Z\nbranch: fix-login\nfuture: preserved\n",
+            1,
+        );
+        std::fs::write(&file, text).unwrap();
+
+        let mut parsed = parse(&file).unwrap();
+        assert!(parsed.strip_legacy_branch().unwrap());
+        let migrated = std::fs::read_to_string(file).unwrap();
+        assert!(!migrated.contains("branch:"));
+        assert!(migrated.contains("future: preserved"));
+        assert!(migrated.ends_with("seed: constant time\n"));
     }
 
     #[test]

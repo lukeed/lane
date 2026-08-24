@@ -2,7 +2,6 @@
 id: 01M0EY6QRYZN40BQYKQW99NN9Y
 anchor: '@file'
 created: 2026-08-20T06:35:46Z
-branch: fix-linux-gate
 norm: '1'
 sig: e3b0c44298fc1c14
 body_hash: 77794c69145518a9

@@ -2,7 +2,6 @@
 id: 01M0EY6QRVZSWS021QT5B8N5E9
 anchor: podman run
 created: 2026-08-20T06:30:09Z
-branch: fix-linux-gate
 norm: '1'
 ---
 

@@ -2,7 +2,6 @@
 id: 01M0EVWZGPP2GNST4Y52MG8AS1
 anchor: POST_COMMIT_BLOCK
 created: 2026-08-20T05:55:07Z
-branch: warn-dropped-trailer
 norm: '1'
 sig: 05a975d77f5b9730
 body_hash: f98d652429c9d778

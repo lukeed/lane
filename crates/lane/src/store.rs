@@ -265,7 +265,6 @@ pub struct PendingNote {
     pub text: String,
     pub path: String,
     pub anchor: String,
-    pub branch: String,
     pub at: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub supersedes: String,
@@ -313,7 +312,6 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             id: ulid(),
             anchor: rec.anchor.clone(),
             created: rec.at,
-            branch: rec.branch,
             norm: crate::syntax::NORM_VERSION.into(),
             supersedes: rec.supersedes.clone(),
             ..Default::default()
@@ -373,6 +371,30 @@ pub fn resolve_id(root: &Path, id: &str) -> Result<Note> {
             anyhow::bail!("{id} matches {n} notes:\n  {}", shown.join("\n  "))
         }
     }
+}
+
+/// Remove obsolete branch provenance from both active and retired notes.
+pub fn strip_legacy_branches(root: &Path) -> Result<usize> {
+    let mut migrated = 0;
+    for tree in [NOTES, ATTIC] {
+        let base = root.join(LANE_DIR).join(tree);
+        if !base.exists() {
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(base)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if !entry.file_type().is_file()
+                || !entry.path().extension().is_some_and(|ext| ext == "md")
+            {
+                continue;
+            }
+            let mut note = note::parse(entry.path())?;
+            migrated += usize::from(note.strip_legacy_branch()?);
+        }
+    }
+    Ok(migrated)
 }
 
 /// The replacement carries its own creation fingerprint, so nothing is inherited: a
@@ -916,12 +938,16 @@ mod tests {
             text: "early return leaks token length".into(),
             path: "src/auth.rs".into(),
             anchor: "fn verify".into(),
-            branch: "main".into(),
             at: "2026-08-19T00:00:00Z".into(),
             supersedes: String::new(),
         };
 
         append_pending(root.path(), &pending).unwrap();
+        assert!(
+            !std::fs::read_to_string(pending_path(root.path()))
+                .unwrap()
+                .contains("\"branch\"")
+        );
         assert_eq!(promote_pending(root.path()).unwrap().len(), 1);
         append_pending(root.path(), &pending).unwrap();
         assert!(promote_pending(root.path()).unwrap().is_empty());
@@ -929,17 +955,34 @@ mod tests {
     }
 
     #[test]
+    fn old_pending_records_with_a_branch_still_promote() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/auth.rs"), "pub fn verify() {}\n").unwrap();
+        let pending = pending_path(root.path());
+        std::fs::create_dir_all(pending.parent().unwrap()).unwrap();
+        std::fs::write(
+            &pending,
+            r#"{"text":"legacy","path":"src/auth.rs","anchor":"fn verify","branch":"old-lane","at":"2026-08-19T00:00:00Z"}
+"#,
+        )
+        .unwrap();
+
+        let promoted = promote_pending(root.path()).unwrap();
+        assert_eq!(promoted.len(), 1);
+        assert!(!promoted[0].render().contains("branch:"));
+    }
+
+    #[test]
     fn pending_supersede_links_and_attics_its_predecessor() {
         let root = tempfile::tempdir().unwrap();
         let old = fixture(root.path(), "pub fn v() {}\n");
-        let branch = git::current_branch();
         append_pending(
             root.path(),
             &PendingNote {
                 text: "replacement note".into(),
                 path: "src/a.rs".into(),
                 anchor: "@file".into(),
-                branch,
                 at: "2026-08-21T00:00:00Z".into(),
                 supersedes: old.meta.id.clone(),
             },

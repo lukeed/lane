@@ -2,7 +2,6 @@
 id: 01M0TMPTRSMCPHAKVYK4FMJJ3K
 anchor: fn byte_range
 created: 2026-08-24T19:14:32Z
-branch: perf-audit
 norm: '1'
 sig: 651739647cf1a22b
 body_hash: 465d8737e0d68b54

@@ -2,7 +2,6 @@
 id: 01M0ESPFENGV6K4TS7B4SMERA8
 anchor: PROTOCOL
 created: 2026-08-20T05:09:06Z
-branch: repair-protocol
 norm: '1'
 sig: ebf04d00814343a4
 body_hash: 99408de2e8eb5879

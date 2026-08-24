@@ -9,6 +9,7 @@
 #   scripts/bench.sh --out before.json        record a baseline
 #   scripts/bench.sh --compare before.json    time again and print the deltas
 #   scripts/bench.sh --bin path/to/lane       time a binary built elsewhere
+#   scripts/bench.sh --fixture DIR            build the fixture there and stop, for profiling
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +19,7 @@ BIN=""
 OUT=""
 BASELINE=""
 FILTER=""
+FIXTURE_ONLY=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -26,6 +28,7 @@ while [ $# -gt 0 ]; do
     --compare) BASELINE="$2"; shift 2 ;;
     --runs)    RUNS="$2"; shift 2 ;;
     --only)    FILTER="$2"; shift 2 ;;
+    --fixture) FIXTURE_ONLY="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
@@ -43,7 +46,11 @@ fi
 [ -x "$BIN" ] || { echo "no binary at $BIN" >&2; exit 1; }
 BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
 
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+if [ -n "$FIXTURE_ONLY" ]; then
+  TMP="$FIXTURE_ONLY"; mkdir -p "$TMP"; rm -rf "${TMP:?}/repo"
+else
+  TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+fi
 
 # ---------------------------------------------------------------------------
 # Fixture: 18 files across 5 grammars, ~180 KB, 30 notes, 3 lanes. Sized to sit
@@ -154,6 +161,11 @@ PY
 build_fixture
 cd "$REPO" || exit 1
 
+if [ -n "$FIXTURE_ONLY" ]; then
+  echo "fixture kept at $REPO" >&2
+  exit 0
+fi
+
 # name|command. Read-only unless marked; `new` gets a prepare step to stay honest.
 CASES=$(cat <<CASES
 version|$BIN --version
@@ -221,7 +233,6 @@ fi
 
 if [ -n "$BASELINE" ]; then
   echo "" >&2
-  printf '  %-12s %>10s %>10s %>9s\n' "case" "before" "after" "delta" >&2 2>/dev/null || true
   printf '  %-12s %10s %10s %9s\n' "case" "before" "after" "delta" >&2
   printf '  %-12s %10s %10s %9s\n' "----" "------" "-----" "-----" >&2
   jq -r --slurpfile base "$BASELINE" '

@@ -28,3 +28,4 @@
 {"at":"2026-08-24T01:30:33Z","branch":"argv-manual","kind":"landing","lane":"01M0RP74Q1CSNQ7SBJNKTQQR59"}
 {"anchor":"@file","at":"2026-08-24T18:41:36Z","body_hash":"87beb9cf647e7c1b","branch":"ci-cache-prune","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"a9e6a05f50ff68bb","sig":"e3b0c44298fc1c14"}
 {"at":"2026-08-24T18:48:15Z","branch":"ci-cache-prune","kind":"landing","lane":"01M0THKV4P8ABWJ2N1V8XJJ307"}
+{"at":"2026-08-24T19:42:10Z","branch":"perf-audit","kind":"landing","lane":"01M0TGVNCZR5V7TEH34CYQ5AC7"}

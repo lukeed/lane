@@ -90,13 +90,8 @@ struct LandingLock {
 
 impl LandingLock {
     fn acquire(trunk: &str) -> Result<Self> {
-        let common = git(
-            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-            None,
-        )?;
-        let path = PathBuf::from(common)
-            .join("lane")
-            .join(format!("{trunk}.lock"));
+        let common = git::layout(&std::env::current_dir()?)?.common_dir;
+        let path = common.join("lane").join(format!("{trunk}.lock"));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -545,17 +540,23 @@ fn ls() -> Result<i32> {
     // A week can pass between preparing a lane and its pull request merging, so `ls` has
     // to say the lane is collectable without being asked.
     let landed = landed_lanes(&root);
-    for lane in lanes {
+    let dirty: Vec<bool> = std::thread::scope(|scope| {
+        let workers: Vec<_> = lanes
+            .iter()
+            .map(|lane| scope.spawn(|| wt::is_dirty(&lane.path)))
+            .collect();
+        workers
+            .into_iter()
+            .map(|handle| handle.join().expect("status worker panicked"))
+            .collect()
+    });
+    for (lane, dirty) in lanes.into_iter().zip(dirty) {
         let name = lane
             .path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        let dirty = if wt::is_dirty(&lane.path) {
-            "dirty"
-        } else {
-            "clean"
-        };
+        let dirty = if dirty { "dirty" } else { "clean" };
         let state = if landed.contains(&store::lane_id(&lane.path)) {
             "landed"
         } else {

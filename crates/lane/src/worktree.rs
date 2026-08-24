@@ -1,29 +1,37 @@
 //! Lane lifecycle: create, list, land, remove.
 
 use crate::cow;
-use crate::git::{git, git_ok, try_git};
+use crate::git::{git, git_ok, layout, try_git};
 use anyhow::{Context, Result, bail};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 const TREES_DIRNAME: &str = "trees";
 const TREES_PATH: &str = ".lane/trees";
 
 /// Root of the primary worktree, even when called from inside a lane.
 pub fn main_root() -> Result<PathBuf> {
-    let common = git(
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        None,
-    )?;
-    Ok(PathBuf::from(common)
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default())
+    Ok(layout(&std::env::current_dir()?)?.main_root)
 }
 
 pub fn trunk_name(root: &Path) -> String {
+    static TRUNKS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
+    let trunks = TRUNKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut trunks = trunks
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(trunk) = trunks.get(root) {
+        return trunk.clone();
+    }
+
+    let trunk = trunk_name_uncached(root);
+    trunks.insert(root.to_path_buf(), trunk.clone());
+    trunk
+}
+
+fn trunk_name_uncached(root: &Path) -> String {
     for candidate in ["main", "master", "trunk"] {
         if git_ok(&["rev-parse", "--verify", "--quiet", candidate], Some(root)) {
             return candidate.into();
@@ -57,17 +65,26 @@ fn ignored_entries(root: &Path) -> Vec<String> {
         .collect()
 }
 
-/// git 2.48+; older versions get absolute paths, which work in place but not after a move.
-fn relative_paths_supported(root: &Path) -> bool {
-    let Ok(output) = Command::new("git")
-        .args(["worktree", "add", "-h"])
-        .current_dir(root)
-        .output()
-    else {
-        return false;
-    };
-    String::from_utf8_lossy(&output.stdout).contains("relative-paths")
-        || String::from_utf8_lossy(&output.stderr).contains("relative-paths")
+/// git 2.48+ supports relative paths. Older versions reject just that option, then use
+/// absolute paths, which work in place but not after a move.
+fn add_worktree(root: &Path, args: &[&str]) -> Result<()> {
+    let mut relative_args = vec!["worktree", "add", "--relative-paths"];
+    relative_args.extend(args);
+    match git(&relative_args, Some(root)) {
+        Ok(_) => Ok(()),
+        Err(error) if rejects_relative_paths(&error) => {
+            let mut absolute_args = vec!["worktree", "add"];
+            absolute_args.extend(args);
+            git(&absolute_args, Some(root)).map(|_| ())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn rejects_relative_paths(error: &anyhow::Error) -> bool {
+    let message = error.to_string();
+    message.contains("relative-paths")
+        && (message.contains("unknown option") || message.contains("unrecognized option"))
 }
 
 fn append_line(path: &Path, line: &str) -> Result<()> {
@@ -281,16 +298,12 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
         }
     }
     let dest_str = dest.to_string_lossy().to_string();
-    let relative_paths = relative_paths_supported(&root);
 
     let stats = match materialization(dirty, supported) {
         Materialization::Dirty => {
-            let mut args = vec!["worktree", "add", "--no-checkout"];
-            if relative_paths {
-                args.push("--relative-paths");
-            }
+            let mut args = vec!["--no-checkout"];
             args.extend(branch_args(adopt, name, &dest_str, &base));
-            git(&args, Some(&root))?;
+            add_worktree(&root, &args)?;
             let skip = |rel: &str, _is_dir: bool| {
                 rel == ".git"
                     || rel.starts_with(".git/")
@@ -325,12 +338,9 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
                 Vec::new()
             };
             let excluded = excluded(&root);
-            let mut args = vec!["worktree", "add"];
-            if relative_paths {
-                args.push("--relative-paths");
-            }
+            let mut args = Vec::new();
             args.extend(branch_args(adopt, name, &dest_str, &base));
-            git(&args, Some(&root))?;
+            add_worktree(&root, &args)?;
             let mut stats = cow::CloneStats::default();
             for entry in ignored {
                 if excluded.contains(&entry) {

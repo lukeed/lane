@@ -28,3 +28,7 @@
 {"at":"2026-08-24T01:30:33Z","branch":"argv-manual","kind":"landing","lane":"01M0RP74Q1CSNQ7SBJNKTQQR59"}
 {"anchor":"@file","at":"2026-08-24T18:41:36Z","body_hash":"87beb9cf647e7c1b","branch":"ci-cache-prune","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"a9e6a05f50ff68bb","sig":"e3b0c44298fc1c14"}
 {"at":"2026-08-24T18:48:15Z","branch":"ci-cache-prune","kind":"landing","lane":"01M0THKV4P8ABWJ2N1V8XJJ307"}
+{"at":"2026-08-24T19:42:10Z","branch":"perf-audit","kind":"landing","lane":"01M0TGVNCZR5V7TEH34CYQ5AC7"}
+{"anchor":"fn acquire","at":"2026-08-24T19:42:51Z","body_hash":"bac6a3e1e712e18d","branch":"perf-audit","id":"01M0G14CMHEQQ05FRZT0PZA5EG","kind":"holds","norm":"1","path":"crates/lane/src/cli.rs","raw_hash":"e484b52dcbe99ef9","sig":"0bff83f9aaa042a1"}
+{"anchor":"fn create","at":"2026-08-24T19:42:51Z","body_hash":"bfc1cf40b1329b34","branch":"perf-audit","id":"01M0EXNVCK4JP9328P47M4W2C1","kind":"holds","norm":"1","path":"crates/lane/src/worktree.rs","raw_hash":"00e7afe49321a755","sig":"2a21aaf08379e25a"}
+{"anchor":"@file","at":"2026-08-24T19:42:51Z","body_hash":"87beb9cf647e7c1b","branch":"perf-audit","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"a9e6a05f50ff68bb","sig":"e3b0c44298fc1c14"}

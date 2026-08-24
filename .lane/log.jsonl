@@ -26,3 +26,4 @@
 {"anchor":"fn create","at":"2026-08-22T20:52:05Z","body_hash":"97bc6a740125f84b","branch":"state-out-of-git","id":"01M0EXNVCK4JP9328P47M4W2C1","kind":"holds","norm":"1","path":"crates/lane/src/worktree.rs","raw_hash":"7d27fd0bd69499c0","sig":"2a21aaf08379e25a"}
 {"anchor":"@file","at":"2026-08-22T20:52:05Z","body_hash":"c48edff8d22ea483","branch":"state-out-of-git","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"61108909a406b19a","sig":"e3b0c44298fc1c14"}
 {"at":"2026-08-24T01:30:33Z","branch":"argv-manual","kind":"landing","lane":"01M0RP74Q1CSNQ7SBJNKTQQR59"}
+{"anchor":"@file","at":"2026-08-24T18:41:36Z","body_hash":"87beb9cf647e7c1b","branch":"ci-cache-prune","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"a9e6a05f50ff68bb","sig":"e3b0c44298fc1c14"}

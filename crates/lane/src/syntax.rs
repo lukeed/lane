@@ -24,9 +24,11 @@ pub enum Resolution {
 struct Grammar {
     language: fn() -> Language,
     decls: &'static str,
+    query: &'static OnceLock<Option<Query>>,
 }
 
-const RUST: Grammar = Grammar {
+static RUST_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static RUST: Grammar = Grammar {
     language: || tree_sitter_rust::LANGUAGE.into(),
     decls: r#"
         (function_item name: (identifier) @name) @decl
@@ -40,9 +42,11 @@ const RUST: Grammar = Grammar {
         (macro_definition name: (identifier) @name) @decl
         (impl_item type: (type_identifier) @name) @decl
     "#,
+    query: &RUST_QUERY,
 };
 
-const GO: Grammar = Grammar {
+static GO_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static GO: Grammar = Grammar {
     language: || tree_sitter_go::LANGUAGE.into(),
     decls: r#"
         (function_declaration name: (identifier) @name) @decl
@@ -51,14 +55,17 @@ const GO: Grammar = Grammar {
         (const_declaration (const_spec name: (identifier) @name)) @decl
         (var_declaration (var_spec name: (identifier) @name)) @decl
     "#,
+    query: &GO_QUERY,
 };
 
-const PYTHON: Grammar = Grammar {
+static PYTHON_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static PYTHON: Grammar = Grammar {
     language: || tree_sitter_python::LANGUAGE.into(),
     decls: r#"
         (function_definition name: (identifier) @name) @decl
         (class_definition name: (identifier) @name) @decl
     "#,
+    query: &PYTHON_QUERY,
 };
 
 /// Shared by javascript, typescript and tsx; the TS-only forms are appended below.
@@ -92,7 +99,8 @@ const C_DECLS: &str = r#"
     (type_definition declarator: (type_identifier) @name) @decl
 "#;
 
-const JAVA: Grammar = Grammar {
+static JAVA_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static JAVA: Grammar = Grammar {
     language: || tree_sitter_java::LANGUAGE.into(),
     decls: r#"
         (method_declaration name: (identifier) @name) @decl
@@ -102,60 +110,89 @@ const JAVA: Grammar = Grammar {
         (enum_declaration name: (identifier) @name) @decl
         (record_declaration name: (identifier) @name) @decl
     "#,
+    query: &JAVA_QUERY,
 };
 
-const BASH: Grammar = Grammar {
+static BASH_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static BASH: Grammar = Grammar {
     language: || tree_sitter_bash::LANGUAGE.into(),
     decls: r#"(function_definition name: (word) @name) @decl"#,
+    query: &BASH_QUERY,
 };
 
 /// css/html/markdown carry no name anchors; they are here for block, heading and comment work.
-const CSS: Grammar = Grammar {
+static CSS_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static CSS: Grammar = Grammar {
     language: || tree_sitter_css::LANGUAGE.into(),
     decls: "",
+    query: &CSS_QUERY,
 };
 
-const HTML: Grammar = Grammar {
+static HTML_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static HTML: Grammar = Grammar {
     language: || tree_sitter_html::LANGUAGE.into(),
     decls: "",
+    query: &HTML_QUERY,
 };
 
-const MARKDOWN: Grammar = Grammar {
+static MARKDOWN_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static MARKDOWN: Grammar = Grammar {
     language: || tree_sitter_md::LANGUAGE.into(),
     decls: "",
+    query: &MARKDOWN_QUERY,
 };
 
-fn grammar_for(ext: &str) -> Option<Grammar> {
+static JS_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static JS: Grammar = Grammar {
+    language: || tree_sitter_javascript::LANGUAGE.into(),
+    decls: JS_DECLS,
+    query: &JS_QUERY,
+};
+
+static TYPESCRIPT_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static TYPESCRIPT: Grammar = Grammar {
+    language: || tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+    decls: TS_DECLS,
+    query: &TYPESCRIPT_QUERY,
+};
+
+static TSX_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static TSX: Grammar = Grammar {
+    language: || tree_sitter_typescript::LANGUAGE_TSX.into(),
+    decls: TS_DECLS,
+    query: &TSX_QUERY,
+};
+
+static C_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static C: Grammar = Grammar {
+    language: || tree_sitter_c::LANGUAGE.into(),
+    decls: C_DECLS,
+    query: &C_QUERY,
+};
+
+static CPP_QUERY: OnceLock<Option<Query>> = OnceLock::new();
+static CPP: Grammar = Grammar {
+    language: || tree_sitter_cpp::LANGUAGE.into(),
+    decls: C_DECLS,
+    query: &CPP_QUERY,
+};
+
+fn grammar_for(ext: &str) -> Option<&'static Grammar> {
     Some(match ext {
-        "rs" => RUST,
-        "go" => GO,
-        "py" | "pyi" => PYTHON,
-        "js" | "mjs" | "cjs" | "jsx" => Grammar {
-            language: || tree_sitter_javascript::LANGUAGE.into(),
-            decls: JS_DECLS,
-        },
-        "ts" | "mts" | "cts" => Grammar {
-            language: || tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            decls: TS_DECLS,
-        },
-        "tsx" => Grammar {
-            language: || tree_sitter_typescript::LANGUAGE_TSX.into(),
-            decls: TS_DECLS,
-        },
-        "c" | "h" => Grammar {
-            language: || tree_sitter_c::LANGUAGE.into(),
-            decls: C_DECLS,
-        },
-        "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => Grammar {
-            language: || tree_sitter_cpp::LANGUAGE.into(),
-            decls: C_DECLS,
-        },
-        "java" => JAVA,
-        "sh" | "bash" | "zsh" => BASH,
-        "css" => CSS,
+        "rs" => &RUST,
+        "go" => &GO,
+        "py" | "pyi" => &PYTHON,
+        "js" | "mjs" | "cjs" | "jsx" => &JS,
+        "ts" | "mts" | "cts" => &TYPESCRIPT,
+        "tsx" => &TSX,
+        "c" | "h" => &C,
+        "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => &CPP,
+        "java" => &JAVA,
+        "sh" | "bash" | "zsh" => &BASH,
+        "css" => &CSS,
         // An SFC is three languages in one; html locates the blocks, the anchor picks the rest.
-        "html" | "htm" | "svelte" | "vue" => HTML,
-        "md" | "markdown" => MARKDOWN,
+        "html" | "htm" | "svelte" | "vue" => &HTML,
+        "md" | "markdown" => &MARKDOWN,
         _ => return None,
     })
 }
@@ -170,13 +207,27 @@ fn parse_with(text: &str, language: &Language) -> Option<Tree> {
     parser.parse(text, None)
 }
 
+/// Byte offsets for the starts of the lines that `str::lines()` reports.
+fn line_starts(text: &str) -> Vec<usize> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+    let mut starts = vec![0];
+    for (offset, byte) in text.bytes().enumerate() {
+        if byte == b'\n' && offset + 1 < text.len() {
+            starts.push(offset + 1);
+        }
+    }
+    starts
+}
+
 /// One parsed file, reused across every note anchored to it.
 pub struct Source {
     text: String,
+    line_starts: Vec<usize>,
     ext: String,
-    grammar: Option<Grammar>,
+    grammar: Option<&'static Grammar>,
     tree: Option<Tree>,
-    query: OnceLock<Option<Query>>,
 }
 
 impl Source {
@@ -191,33 +242,50 @@ impl Source {
             .and_then(|g| parse_with(text, &(g.language)()));
         Source {
             text: text.to_string(),
+            line_starts: line_starts(text),
             ext,
             grammar,
             tree,
-            query: OnceLock::new(),
         }
     }
 
     fn line_count(&self) -> usize {
-        self.text.lines().count()
+        self.line_starts.len()
+    }
+
+    /// A line with the same terminator handling as `str::lines()`.
+    fn line_at(&self, row: usize) -> Option<&str> {
+        let start = *self.line_starts.get(row)?;
+        let end = self
+            .line_starts
+            .get(row + 1)
+            .copied()
+            .unwrap_or(self.text.len());
+        let line = &self.text[start..end];
+        if let Some(line) = line.strip_suffix('\n') {
+            return Some(line.strip_suffix('\r').unwrap_or(line));
+        }
+        Some(line)
     }
 
     /// Byte range covering a 1-indexed inclusive line span.
     fn byte_range(&self, span: Span) -> Range<usize> {
-        let mut start = self.text.len();
-        let mut end = self.text.len();
-        let mut offset = 0usize;
-        for (i, line) in self.text.split_inclusive('\n').enumerate() {
-            let no = i + 1;
-            if no == span.start {
-                start = offset;
-            }
-            offset += line.len();
-            if no == span.end {
-                end = offset;
-                break;
-            }
-        }
+        let start = span
+            .start
+            .checked_sub(1)
+            .and_then(|line| self.line_starts.get(line))
+            .copied()
+            .unwrap_or(self.text.len());
+        let end = span
+            .end
+            .checked_sub(1)
+            .and_then(|line| {
+                self.line_starts
+                    .get(line + 1)
+                    .copied()
+                    .or_else(|| self.line_starts.get(line).map(|_| self.text.len()))
+            })
+            .unwrap_or(self.text.len());
         start.min(end)..end
     }
 
@@ -313,7 +381,7 @@ impl Source {
     /// `fn verify` or a bare `verify`: the earliest declaration of that name in the file.
     fn resolve_decl(&self, anchor: &str) -> Option<Span> {
         let tree = self.tree.as_ref()?;
-        let query = self.decl_query().as_ref()?;
+        let query = self.decl_query()?;
         let parts: Vec<&str> = anchor.split_whitespace().collect();
         let name = *parts.last()?;
         let keyword = if parts.len() > 1 {
@@ -344,7 +412,7 @@ impl Source {
             // must find a line that really says `fn`, whichever pattern matched it.
             if let Some(kw) = keyword {
                 let row = decl.node.start_position().row;
-                let line = self.text.lines().nth(row).unwrap_or_default();
+                let line = self.line_at(row).unwrap_or_default();
                 if !has_word(line, kw) {
                     continue;
                 }
@@ -357,14 +425,17 @@ impl Source {
         best.map(|(_, span)| span)
     }
 
-    fn decl_query(&self) -> &Option<Query> {
-        self.query.get_or_init(|| {
-            let g = self.grammar.as_ref()?;
-            if g.decls.trim().is_empty() {
-                return None;
-            }
-            Query::new(&(g.language)(), g.decls).ok()
-        })
+    fn decl_query(&self) -> Option<&Query> {
+        let grammar = self.grammar?;
+        grammar
+            .query
+            .get_or_init(|| {
+                if grammar.decls.trim().is_empty() {
+                    return None;
+                }
+                Query::new(&(grammar.language)(), grammar.decls).ok()
+            })
+            .as_ref()
     }
 
     /// Which grammar owns the comments inside this span.
@@ -691,5 +762,103 @@ pub fn refresh(token: &str) -> String {
             src.resolve_detail("fn verfy"),
             Resolution::NotFound
         ));
+    }
+
+    fn legacy_span_text(text: &str, span: Span) -> String {
+        let mut start = text.len();
+        let mut end = text.len();
+        let mut offset = 0usize;
+        for (i, line) in text.split_inclusive('\n').enumerate() {
+            let no = i + 1;
+            if no == span.start {
+                start = offset;
+            }
+            offset += line.len();
+            if no == span.end {
+                end = offset;
+                break;
+            }
+        }
+        text[start.min(end)..end].to_string()
+    }
+
+    #[test]
+    fn line_index_matches_str_lines_for_edge_cases() {
+        for (text, count) in [
+            ("", 0),
+            ("one", 1),
+            ("one\n", 1),
+            ("one\r\n", 1),
+            ("a\r\nb\r\n", 2),
+            ("a\n\nb\n", 3),
+            ("é 🙂\n中", 2),
+        ] {
+            let src = Source::new(text, "a.rs");
+            assert_eq!(src.line_count(), count, "{text:?}");
+            assert_eq!(src.line_count(), text.lines().count(), "{text:?}");
+            for (row, line) in text.lines().enumerate() {
+                assert_eq!(src.line_at(row), Some(line), "{text:?}, row {row}");
+            }
+        }
+    }
+
+    #[test]
+    fn indexed_byte_ranges_preserve_legacy_span_text_exactly() {
+        let text = "é 🙂\r\n\r\n中\n";
+        let src = Source::new(text, "a.rs");
+        for span in [
+            Span { start: 1, end: 1 },
+            Span { start: 2, end: 99 },
+            Span { start: 99, end: 99 },
+            Span { start: 3, end: 1 },
+            Span { start: 1, end: 99 },
+            Span { start: 0, end: 1 },
+        ] {
+            assert_eq!(
+                src.span_text(span),
+                legacy_span_text(text, span),
+                "{span:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn declaration_queries_are_shared_per_grammar() {
+        let rust_a = Source::new("fn shared() {}\n", "a.rs");
+        let rust_b = Source::new("fn shared() {}\n", "b.rs");
+        let go = Source::new("func shared() {}\n", "a.go");
+
+        let rust_a_query = rust_a.decl_query().unwrap() as *const Query;
+        let rust_b_query = rust_b.decl_query().unwrap() as *const Query;
+        let go_query = go.decl_query().unwrap() as *const Query;
+        assert_eq!(rust_a_query, rust_b_query);
+        assert_ne!(rust_a_query, go_query);
+        assert!(rust_a.resolve("fn shared").is_some());
+        assert!(go.resolve("func shared").is_some());
+
+        let html = Source::new("<p>nothing</p>", "a.html");
+        assert!(html.decl_query().is_none());
+        let unparsed = Source::new("func shared() {}", "a.swift");
+        assert!(matches!(
+            unparsed.resolve_detail("func shared"),
+            Resolution::Unparsed
+        ));
+    }
+
+    #[test]
+    fn sfc_comment_language_remains_independent_of_the_html_grammar() {
+        let source = Source::new("<script>\nlet x = 1;\n</script>\n", "E.svelte");
+        assert_eq!(
+            source.comment_language("#script"),
+            Some(tree_sitter_javascript::LANGUAGE.into())
+        );
+        assert_eq!(
+            source.comment_language("#style"),
+            Some(tree_sitter_css::LANGUAGE.into())
+        );
+        assert_eq!(
+            source.comment_language("#template"),
+            Some(tree_sitter_html::LANGUAGE.into())
+        );
     }
 }

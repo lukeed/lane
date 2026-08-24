@@ -226,7 +226,9 @@ const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
 const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
 const POST_COMMIT_END: &str = "# lane: end";
 const POST_COMMIT_BLOCK: &str = "# lane: capture Why trailers\n\
-if command -v lane >/dev/null 2>&1; then\n\
+if [ -d \"$(git rev-parse --git-path rebase-merge 2>/dev/null)\" ] || [ -d \"$(git rev-parse --git-path rebase-apply 2>/dev/null)\" ]; then\n\
+  :\n\
+elif command -v lane >/dev/null 2>&1; then\n\
   lane capture HEAD || true\n\
 elif git log -1 --format=%B | grep -qi '^Why:'; then\n\
   echo \"lane: not on PATH, so the Why trailer in this commit was not captured\" >&2\n\

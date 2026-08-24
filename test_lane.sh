@@ -478,6 +478,27 @@ Why: src/auth.rs#fn verify | early return leaks token length"
 is "an identical note is not duplicated" \
    "$(grep -rl 'early return leaks' .lane/memory --include='*.md' | wc -l | tr -d ' ')" "1"
 
+setup
+"$LANE" install hooks > /dev/null
+git switch -qc replay
+printf 'pub fn replayed() {}\n' > src/replayed.rs
+git add src/replayed.rs
+git commit -q -m "record replay decision
+
+Why: src/replayed.rs | replaying the commit is not a new decision"
+is "a replay candidate is captured once" \
+   "$(grep -c 'not a new decision' .git/lane/pending.jsonl)" "1"
+git switch -q main
+printf 'pub fn moved_base() {}\n' > src/base.rs
+git add src/base.rs && git commit -qm "move base"
+git switch -q replay
+git rebase main > /tmp/replay.out 2>&1
+is "the decision-bearing commit rebases cleanly" "$?" "0"
+is "a replayed commit is not captured again" \
+   "$(grep -c 'not a new decision' .git/lane/pending.jsonl)" "1"
+
+setup
+"$LANE" install hooks > /dev/null
 git commit -q --allow-empty -m "silent commit
 
 Why: src/auth.rs#fn verify | a trailer that should warn when lane is missing" 2>/tmp/nolane.err

@@ -63,13 +63,13 @@ Conventions: one-line comments, `anyhow::Result`, `cli::run` returns an exit cod
 |---|---|---|
 | Unit + integration | `cargo test` | baseline, all pass |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 | Shell syntax | `lane shellenv \| bash -n` and `\| zsh -n` | exit 0 |
 
 ## Scope
 
 **In scope**: `crates/lane/src/cli.rs` (`shellenv`, `new`, `path`, `done`, and the `done`
-subcommand's args), `test_lane.sh`, and the `shellenv` lines in `README.md` / `USAGE.md`
+subcommand's args), `scripts/test.sh`, and the `shellenv` lines in `README.md` / `USAGE.md`
 if they describe the old behaviour.
 
 **Out of scope**: the order of operations in `done()`; `set_current_dir` before removal;
@@ -140,7 +140,7 @@ deleted-cwd problem — the answer comes from a process not standing in the doom
 
 ### Step 5: Cover it
 
-Add to `test_lane.sh` before the summary. The section needs the binary's directory on
+Add to `scripts/test.sh` before the summary. The section needs the binary's directory on
 `PATH` so the function's `command lane` resolves to the binary under test:
 
 ```bash
@@ -169,11 +169,11 @@ is "that directory exists" "$([ -d "$PWD" ] && echo yes || echo no)" "yes"
 The second assertion is the regression: after the first `lane new dup` the shell is
 inside the lane, and the failing second call must not move it.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ## Done criteria
 
-- [ ] `./test_lane.sh` passes, baseline + 4; `cargo test` unchanged and passing
+- [ ] `./scripts/test.sh` passes, baseline + 4; `cargo test` unchanged and passing
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `lane shellenv | grep -cE 'tail -1|rev-parse'` → `0`
 - [ ] `lane shellenv | bash -n` and `| zsh -n` both exit 0

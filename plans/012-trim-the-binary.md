@@ -86,7 +86,7 @@ fn grammar_for(ext: &str) -> Option<Grammar> {
 | Minimal build | `cargo build --release --no-default-features` | succeeds |
 | Tests | `cargo test` | baseline, all pass |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline |
 
 Measure size with `ls -l "$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys;print(json.load(sys.stdin)["target_directory"])')/release/lane"`.
 The shared `target-dir` in `~/.cargo/config.toml` means a build in another checkout
@@ -153,14 +153,14 @@ the default list still matches what `README.md` claims under Install, and that t
 grammar is a compile error, a missing grammar for a listed feature is not. Add a one-line
 comment above the feature block saying they must move together.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline.
 
 ## Done criteria
 
 - [ ] `cargo build --release` and `cargo build --release --no-default-features` both succeed
 - [ ] `cargo test` and `cargo test --no-default-features` both pass
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
-- [ ] `./test_lane.sh` passes at the baseline count
+- [ ] `./scripts/test.sh` passes at the baseline count
 - [ ] The minimal build is at least 8 MB smaller than the default build
 - [ ] README documents the default set and how to trim
 - [ ] `plans/README.md` row updated

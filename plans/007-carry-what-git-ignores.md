@@ -133,13 +133,13 @@ Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at fi
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 3 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 5 |
 
 At `43e404f` the baselines are 40 and 72.
 
 ## Scope
 
-**In scope**: `crates/lane/src/worktree.rs`, `cli.rs`, `test_lane.sh`, `README.md`,
+**In scope**: `crates/lane/src/worktree.rs`, `cli.rs`, `scripts/test.sh`, `README.md`,
 `USAGE.md`.
 
 **Out of scope**:
@@ -219,7 +219,7 @@ Delete the "untracked + ignored" column claim, which was never true.
 
 ### Step 5: Cover it
 
-Add to `test_lane.sh` before the summary. The suite must work on a filesystem without
+Add to `scripts/test.sh` before the summary. The suite must work on a filesystem without
 reflink, so assert the *relationship* rather than the outcome — that keeps the count stable
 and tests both paths:
 
@@ -258,11 +258,11 @@ is "--dirty carries the change" \
 
 Section 2's existing "warm dir present in lane" assertion must get the same treatment.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 5.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 5.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 5
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline + 5
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `grep -c 'WARM_DEFAULT\|tracked_set' crates/lane/src/worktree.rs` → `0`
 - [ ] `grep -rc 'fork' crates/lane/src/ README.md USAGE.md` → `0` everywhere

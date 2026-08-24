@@ -14,7 +14,7 @@ podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro -w /w docker.io/librar
   apt-get update -qq >/dev/null 2>&1
   apt-get install -y -qq gcc git python3 >/dev/null 2>&1
   rustup component add clippy rustfmt >/dev/null 2>&1
-  # A linked worktree .git points outside the container; the gates do not need it because test_lane.sh creates its own repos.
+  # A linked worktree .git points outside the container; the gates do not need it because scripts/test.sh creates its own repos.
   mkdir -p /build && cp -a /w/. /build/ && rm -rf /build/.git && cd /build
   git config --global user.email ci@lane.test
   git config --global user.name ci
@@ -23,5 +23,5 @@ podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro -w /w docker.io/librar
   cargo fmt --all --check
   cargo clippy --all-targets -- -D warnings
   TMPDIR=/scratch cargo test
-  TMPDIR=/scratch ./test_lane.sh
+  TMPDIR=/scratch ./scripts/test.sh
 '

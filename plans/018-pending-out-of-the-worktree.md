@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat 365492a..HEAD -- crates/lane/src/store.rs crates/lane/src/cli.rs test_lane.sh`
+> `git diff --stat 365492a..HEAD -- crates/lane/src/store.rs crates/lane/src/cli.rs scripts/test.sh`
 
 ## Status
 
@@ -126,14 +126,14 @@ queue out of the worktree`.
 | Unit + integration | `cargo test` | 53 passing, unchanged |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, 86 assertions + 1 |
+| End to end | `./scripts/test.sh` | `failed: 0`, 86 assertions + 1 |
 | Linux gates | `./scripts/check-linux.sh` | all pass |
 
 Baselines at `365492a` are 53 and 86, confirmed by running them.
 
 ## Scope
 
-**In scope**: `crates/lane/src/store.rs`, `crates/lane/src/cli.rs`, `test_lane.sh`,
+**In scope**: `crates/lane/src/store.rs`, `crates/lane/src/cli.rs`, `scripts/test.sh`,
 `explainer.md`, `USAGE.md`, and this repository's own `.gitignore`.
 
 **Out of scope**:
@@ -196,7 +196,7 @@ followed by `git status --porcelain` shows `.gitignore` unmodified.
 
 ### Step 3: Prove the lane no longer inherits the queue
 
-`test_lane.sh` currently asserts the opposite at line 213:
+`scripts/test.sh` currently asserts the opposite at line 213:
 
 ```bash
 is "pending notes are ignored" "$(grep -c '.wt/pending.jsonl' .gitignore)" "1"
@@ -224,7 +224,7 @@ is "a fresh lane does not inherit the parent's queue" \
 
 Confirm it fails against the pre-Step-1 binary before you rely on it.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, 87 assertions.
+**Verify**: `./scripts/test.sh` → `failed: 0`, 87 assertions.
 
 ### Step 4: Correct the documentation
 
@@ -238,14 +238,14 @@ git add .context .gitattributes AGENTS.md .gitignore
 drops `.gitignore`, since `init` no longer writes it; and the Layout section gains the
 queue where it now lives, one line, alongside the existing tree.
 
-**Verify**: `grep -rn '\.wt/' *.md crates/ test_lane.sh` → no matches outside `plans/`.
+**Verify**: `grep -rn '\.wt/' *.md crates/ scripts/test.sh` → no matches outside `plans/`.
 
 ## Done criteria
 
-- [ ] `cargo test` → 53 passing; `./test_lane.sh` → `failed: 0`, 87 assertions
+- [ ] `cargo test` → 53 passing; `./scripts/test.sh` → `failed: 0`, 87 assertions
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes
-- [ ] `grep -rn '\.wt' crates/ test_lane.sh *.md` → no matches
+- [ ] `grep -rn '\.wt' crates/ scripts/test.sh *.md` → no matches
 - [ ] In a scratch repo: `lane init` leaves `.gitignore` unmodified; `lane note` then
       `lane new x` then `lane ls` shows `0 pending` for `x`
 - [ ] `lane note`, `lane audit`, `lane why` still round-trip a note end to end

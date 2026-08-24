@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat d8d8074..HEAD -- crates/lane/src/audit.rs crates/lane/src/store.rs test_lane.sh`
+> `git diff --stat d8d8074..HEAD -- crates/lane/src/audit.rs crates/lane/src/store.rs scripts/test.sh`
 
 ## Status
 
@@ -117,18 +117,18 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 | Unit + integration | `cargo test` | baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 | Linux gates | `./scripts/check-linux.sh` | passes from a lane *and* the main checkout |
 
 Record both baselines before starting; at `d8d8074` they are 72 and 113.
 
 `tests/fake-reviewer` is a working reviewer you can drive with
-`--review cmd --review-cmd ./tests/fake-reviewer`; `test_lane.sh` already uses it. Use it
+`--review cmd --review-cmd ./tests/fake-reviewer`; `scripts/test.sh` already uses it. Use it
 for the `holds` case rather than the network.
 
 ## Scope
 
-**In scope**: `crates/lane/src/audit.rs`, `crates/lane/src/store.rs`, `test_lane.sh`,
+**In scope**: `crates/lane/src/audit.rs`, `crates/lane/src/store.rs`, `scripts/test.sh`,
 `README.md`, `USAGE.md`.
 
 **Out of scope**:
@@ -188,7 +188,7 @@ the audit looked successful.
 Add unit tests in `audit.rs`'s test module: an unresolved drift leaves the stored hashes
 untouched; a `holds` verdict updates them; a `fresh` note updates them.
 
-Add to `test_lane.sh` before the summary, numbered one past the last:
+Add to `scripts/test.sh` before the summary, numbered one past the last:
 
 ```bash
 echo "== N. unresolved drift stays flagged =="
@@ -219,7 +219,7 @@ is "an unsure verdict leaves it flagged" \
 Confirm the first two fail against the pre-Step-1 binary. Check `lane check --json`'s actual
 key names before relying on them; adjust the extraction, not the assertion's intent.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ### Step 5: Say what it means
 
@@ -232,7 +232,7 @@ is simply wrong — delete the file and commit, which is already the documented 
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes from a lane and from the main checkout
 - [ ] Edit a noted span, `lane audit --review none`, `lane check` → `body-drift 1`

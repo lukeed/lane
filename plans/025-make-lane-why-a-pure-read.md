@@ -105,7 +105,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 | Unit + integration | `cargo test` | baseline − 0, see Step 4 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 3 |
 | Linux gates | `./scripts/check-linux.sh` | exit 0, from a lane and from the main checkout |
 
 Record both baselines before starting; at `d21d877` they are 76 and 122.
@@ -116,7 +116,7 @@ reports `tail`'s status and has already masked a failure in this project.
 ## Scope
 
 **In scope**: `crates/lane/src/store.rs`, `crates/lane/src/audit.rs`,
-`crates/lane/src/cli.rs`, `test_lane.sh`, `README.md`, `USAGE.md`.
+`crates/lane/src/cli.rs`, `scripts/test.sh`, `README.md`, `USAGE.md`.
 
 **Out of scope**:
 - Note content, the attic, the budget numbers (5 notes / 1200 chars).
@@ -143,7 +143,7 @@ Remove the `counts` term from the sort key in `audit.rs`, and remove the
 The key becomes `pinned > touched > tier_rank > id`. Do not reorder the remaining terms.
 
 **Verify**: `cargo test` compiles and passes; eviction still happens when over budget —
-`test_lane.sh` section 12 exercises the budget and must still pass.
+`scripts/test.sh` section 12 exercises the budget and must still pass.
 
 ### Step 3: Remove the field, and keep old files readable
 
@@ -173,7 +173,7 @@ from a lane → exits non-zero, prints a lane-level error naming
 
 ### Step 5: Cover it
 
-Add to `test_lane.sh` before the summary, numbered one past the last:
+Add to `scripts/test.sh` before the summary, numbered one past the last:
 
 ```bash
 echo "== N. reading context does not modify the tree =="
@@ -195,7 +195,7 @@ Also add a unit test asserting the eviction key no longer consults any read coun
 clearest form is a budget test where the note that would have won on reads is evicted on
 the remaining terms.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 3.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 3.
 
 ### Step 6: Correct the documentation
 
@@ -214,7 +214,7 @@ note is not a vote for it, because you often read one to find out it is wrong.
 ## Done criteria
 
 - [ ] `lane why` leaves `git status --porcelain` empty, on any number of reads
-- [ ] `cargo test` passes; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` passes; `./scripts/test.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` exit 0 from a lane and from the main checkout
 - [ ] Eviction still occurs over budget, and is deterministic — same repo, same result

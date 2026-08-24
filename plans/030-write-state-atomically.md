@@ -102,10 +102,10 @@ Conventional Commits, under 28 characters, describing WHAT; the reason goes in t
 | Unit + integration | `cargo test` | 81 + your new tests |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, 128, unchanged |
+| End to end | `./scripts/test.sh` | `failed: 0`, 128, unchanged |
 | Linux gates | `./scripts/check-linux.sh` | exit 0 |
 
-`./test_lane.sh` must stay at exactly 128. This plan changes how a file is written, not
+`./scripts/test.sh` must stay at exactly 128. This plan changes how a file is written, not
 what it contains.
 
 Capture every exit code without a pipe (`cmd > /tmp/out 2>&1; echo $?`).
@@ -159,18 +159,18 @@ Add unit tests in `store.rs`:
 3. a pre-existing file with invalid JSON is fully replaced by a good write, leaving no
    remnant of the old bytes
 
-**Verify**: `cargo test` → 81 + 3; `./test_lane.sh` → 128, unchanged.
+**Verify**: `cargo test` → 81 + 3; `./scripts/test.sh` → 128, unchanged.
 
 ## Done criteria
 
-- [ ] `cargo test` passes at 84; `./test_lane.sh` passes at exactly 128
+- [ ] `cargo test` passes at 84; `./scripts/test.sh` passes at exactly 128
 - [ ] `cargo clippy --all-targets` zero warnings; `cargo fmt --all --check` exit 0
 - [ ] `./scripts/check-linux.sh` exit 0
 - [ ] A repeat audit writes nothing — same mtime, same content
 - [ ] No temp files remain under `.lane/` after any operation
 - [ ] The temp file is created beside the target, not in `$TMPDIR`
 - [ ] `Cargo.toml` unchanged
-- [ ] `git diff --stat -- crates/lane-tour/ test_lane.sh` → empty
+- [ ] `git diff --stat -- crates/lane-tour/ scripts/test.sh` → empty
 
 ## STOP conditions
 
@@ -179,7 +179,7 @@ Add unit tests in `store.rs`:
 - Any temp file survives a normal operation, or appears inside a lane's worktree.
 - The temp file is created outside the target's directory.
 - You want to add `fsync`, or to change `Cargo.toml`.
-- `./test_lane.sh` moves off 128.
+- `./scripts/test.sh` moves off 128.
 
 ## Maintenance notes
 

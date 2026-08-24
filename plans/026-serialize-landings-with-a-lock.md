@@ -148,7 +148,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 | Unit + integration | `cargo test` | baseline + 1 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 5 |
 | Linux gates | `./scripts/check-linux.sh` | exit 0, from a lane and the main checkout |
 
 Record both baselines before starting; at `6991fe0` they are 75 and 117.
@@ -159,7 +159,7 @@ reports `tail`'s status and has already masked a failure in this project.
 ## Scope
 
 **In scope**: `crates/lane/src/cli.rs`, `crates/lane/src/store.rs`,
-`crates/lane/Cargo.toml`, `test_lane.sh`, `README.md`, `USAGE.md`.
+`crates/lane/Cargo.toml`, `scripts/test.sh`, `README.md`, `USAGE.md`.
 
 **Out of scope**:
 - `crates/lane/src/cow.rs` and the clone layer. Do not touch `libc::clonefile`.
@@ -237,7 +237,7 @@ Add unit tests: two `File` handles on the same path, both flocked — the second
 error. That is the property the whole plan rests on, and `flock` is per open-file-
 description so this works within one process.
 
-Add to `test_lane.sh` before the summary, numbered one past the last. Five assertions:
+Add to `scripts/test.sh` before the summary, numbered one past the last. Five assertions:
 
 ```bash
 echo "== N. landings are serialized and marked =="
@@ -263,7 +263,7 @@ is "and removed the branch" "$(git branch --list sq | wc -l | tr -d ' ')" "0"
 
 Confirm each fails against the pre-change binary.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 5.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 5.
 
 ### Step 6: Say what is actually true
 
@@ -280,7 +280,7 @@ by a lock held for the duration of a landing, so a landing is exclusive. `USAGE.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 1; `./test_lane.sh` passes, baseline + 5
+- [ ] `cargo test` passes, baseline + 1; `./scripts/test.sh` passes, baseline + 5
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` exit 0 from a lane **and** from the main checkout
 - [ ] With the lock held elsewhere, `lane done` exits non-zero immediately with a clear

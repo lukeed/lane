@@ -91,13 +91,13 @@ Conventions: `%`-free formatting (`format!` with inline args), one-line comments
 | Unit + integration | `cargo test` | all pass, baseline + 4 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 
 Record the baseline counts before you start.
 
 ## Scope
 
-**In scope**: `crates/lane/src/syntax.rs`, `store.rs`, `audit.rs`, `cli.rs`, `test_lane.sh`,
+**In scope**: `crates/lane/src/syntax.rs`, `store.rs`, `audit.rs`, `cli.rs`, `scripts/test.sh`,
 and `README.md`'s "Still stubbed" section.
 
 **Out of scope**:
@@ -174,7 +174,7 @@ exits 0, and the note survives the next `lane audit`.
 
 ### Step 5: Cover it
 
-Add to `test_lane.sh`, before the summary block, modelled on section 12:
+Add to `scripts/test.sh`, before the summary block, modelled on section 12:
 
 ```bash
 echo "== N. anchors we cannot resolve are kept, not discarded =="
@@ -195,7 +195,7 @@ is "a typo in a language we DO parse still evicts" \
 
 Confirm the first and third assertions fail against the current code before changing it.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ### Step 6: Correct the README
 
@@ -209,7 +209,7 @@ fix for a language you care about is a table entry in `crates/lane/src/syntax.rs
 ## Done criteria
 
 - [ ] `cargo test` passes, baseline + 4
-- [ ] `./test_lane.sh` prints `failed: 0`, baseline + 4
+- [ ] `./scripts/test.sh` prints `failed: 0`, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] A named-anchor note on a `.swift` file survives two consecutive `lane audit` runs
 - [ ] A note with a typo'd anchor on a `.rs` file is still evicted
@@ -218,7 +218,7 @@ fix for a language you care about is a table entry in `crates/lane/src/syntax.rs
 
 ## STOP conditions
 
-- Adding a tier breaks the `--json` consumers in `test_lane.sh` sections 5, 8 or 10.
+- Adding a tier breaks the `--json` consumers in `scripts/test.sh` sections 5, 8 or 10.
   Those parse `lane check --json` and `lane audit --json`; the new tier is additive, so
   it should not. Report rather than reshaping the JSON.
 - You find yourself wanting to evict `unverifiable` notes to stop them accumulating.

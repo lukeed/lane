@@ -115,14 +115,14 @@ six of those say `verdict: "holds"`. See step 9: the migration is not the no-op 
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
-./test_lane.sh
+./scripts/test.sh
 jq -c 'select(.kind=="holds")' .lane/log.jsonl
 ```
 
 ## Scope
 
 In scope: `store.rs`, `audit.rs`, `cli.rs`, `worktree.rs`, `.gitattributes`,
-`test_lane.sh`, `README.md`, `crates/lane/assets/skill.md`, the `AGENTS.md` protocol text,
+`scripts/test.sh`, `README.md`, `crates/lane/assets/skill.md`, the `AGENTS.md` protocol text,
 `www/src`, and this repository's own `.lane/`.
 
 Out of scope: the landing lock (it still serializes trunk's ref and the commit, and stays
@@ -290,7 +290,7 @@ fingerprint, `sig` identical in every case. They split two ways:
 
 - **Six have a matching `verdict: "holds"` record** in the log — the reviewer plan 031
   deleted, vouching for spans in `cli.rs#PROTOCOL`, `worktree.rs#fn create`,
-  `scenes.rs#@file`, `test_lane.sh#@file`, `AGENTS.md#@file` and `skill.md#@file`.
+  `scenes.rs#@file`, `scripts/test.sh#@file`, `AGENTS.md#@file` and `skill.md#@file`.
 - **Four have no record at all**: `cli.rs#write_protocol`, `cli.rs#POST_COMMIT_BLOCK`, and
   both notes on `audit.rs#run`. These are residue from the behaviour plan 024 fixed — an
   audit that "rewrites every note's fingerprint before review, so drift is reported once and
@@ -311,7 +311,7 @@ ten notes above and no others beyond what this branch's own edits drifted.
 
 ### Step 10: Cover it, then say it
 
-`test_lane.sh` asserts the old layout in roughly fifteen places, including section 18's
+`scripts/test.sh` asserts the old layout in roughly fifteen places, including section 18's
 "done rolls the lane's state into trunk's" — that assertion is now false by design and its
 section becomes the pull-request round trip: prepare, merge by hand, `ls`, `prune`.
 
@@ -319,7 +319,7 @@ Then the docs: `README.md`'s memory layout block and the `done` line, `assets/sk
 the `AGENTS.md` protocol text, and `www/src`.
 
 **Verify**: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
-`./test_lane.sh` all clean; no doc mentions `state.json` or `.lane/branch/`.
+`./scripts/test.sh` all clean; no doc mentions `state.json` or `.lane/branch/`.
 
 ## Done criteria
 
@@ -333,15 +333,15 @@ the `AGENTS.md` protocol text, and `www/src`.
 - [x] `lane prune` refuses a dirty lane and one with commits trunk lacks
 - [x] `lane new <existing-branch>` works
 - [x] `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
-      `./test_lane.sh` all clean
+      `./scripts/test.sh` all clean
 
 Measured: `cargo test` 86 → 85 (six state-file tests deleted, five written);
-`./test_lane.sh` 120 → 150.
+`./scripts/test.sh` 120 → 150.
 
 ## Found in review, after the steps above
 
 Three bugs the step-level verifications missed, all in `prune`'s neighbourhood. Each has a
-regression in `test_lane.sh`.
+regression in `scripts/test.sh`.
 
 1. **The marker named the branch, and branch names are reused.** `fix` twice in a week is
    normal; the second lane matched the first one's marker, reported `landed`, and pruned
@@ -390,7 +390,7 @@ exactly one modified file, which is the invariant section 3 asserts for a new br
 - **A migration command.** No repository but this one has a store. `lane init` repairing a
   stale layout was considered and dropped for the same reason; nothing reads `.lane/branch/`
   after this plan, so a leftover is inert.
-- **Inverting `lane done`'s default to prepare.** Costs ~15 call sites in `test_lane.sh`,
+- **Inverting `lane done`'s default to prepare.** Costs ~15 call sites in `scripts/test.sh`,
   the skill, the protocol text, the README headline and the tour, to make the solo loop —
   the thing the tool is sold on — grow a mandatory flag. `--no-merge` is the same capability
   without the breaking change.

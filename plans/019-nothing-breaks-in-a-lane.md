@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat cb1ef6c..HEAD -- crates/lane/src/worktree.rs crates/lane/src/cow.rs scripts/check-linux.sh test_lane.sh`
+> `git diff --stat cb1ef6c..HEAD -- crates/lane/src/worktree.rs crates/lane/src/cow.rs scripts/check-linux.sh scripts/test.sh`
 
 ## Status
 
@@ -155,7 +155,7 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 | Unit + integration | `cargo test` | baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 | Linux gates | `./scripts/check-linux.sh` | see Step 5 |
 
 Record both baselines before starting; at `cb1ef6c` they are 69 and 108.
@@ -163,7 +163,7 @@ Record both baselines before starting; at `cb1ef6c` they are 69 and 108.
 ## Scope
 
 **In scope**: `crates/lane/src/worktree.rs`, `crates/lane/src/cow.rs`,
-`crates/lane/tests/cow.rs`, `scripts/check-linux.sh`, `test_lane.sh`, `README.md`, `USAGE.md`.
+`crates/lane/tests/cow.rs`, `scripts/check-linux.sh`, `scripts/test.sh`, `README.md`, `USAGE.md`.
 
 **Out of scope**:
 - The memory store: nothing under `store.rs`, `audit.rs`, `note.rs` or `.context/`.
@@ -302,11 +302,11 @@ main-checkout case is unverified, and the reviewer will run it.
 
 ### Step 6: Cover it, and say where lanes live
 
-Add to `test_lane.sh` as a new section before the summary, numbered one past the last. Note
+Add to `scripts/test.sh` as a new section before the summary, numbered one past the last. Note
 `setup` creates the repo at `$TMP/repo`, so lanes are now at `$TMP/repo/.lanes/<name>`, not
 `$TMP/.lanes-repo/<name>` — **every existing reference to the old path in this file must be
 updated too, or the suite will fail for reasons unrelated to your change.** There are 18 of
-them; find them with `grep -n 'lanes-repo' test_lane.sh` before you start, and expect that
+them; find them with `grep -n 'lanes-repo' scripts/test.sh` before you start, and expect that
 to be the bulk of the diff.
 
 Four new assertions:
@@ -331,12 +331,12 @@ Then update the docs: `README.md` and `USAGE.md` both show the old sibling layou
 names `.lanes-yourproject`. Say in one sentence that lanes live in `.lanes/` inside the
 repository and are excluded via `.git/info/exclude`, so nothing is committed.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4; `grep -rn 'lanes-' README.md USAGE.md`
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4; `grep -rn 'lanes-' README.md USAGE.md`
 → no matches.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes from the main checkout **and** from a lane
 - [ ] A second lane does not contain a copy of the first, with and without `--dirty`

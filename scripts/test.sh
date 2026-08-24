@@ -4,7 +4,7 @@
 # The clone layer and anchor resolution are covered by `cargo test`.
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cargo build --quiet --manifest-path "$ROOT/crates/lane/Cargo.toml" || exit 1
 TARGET=$(cargo metadata --no-deps --format-version 1 --manifest-path "$ROOT/crates/lane/Cargo.toml" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')

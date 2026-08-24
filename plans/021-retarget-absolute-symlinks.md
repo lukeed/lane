@@ -132,7 +132,7 @@ Commits, `type: verb object`, one short clause, no scope, detail in the body.
 | Just this file | `cargo test --test cow` | all pass |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline unchanged |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline unchanged |
 
 Record both baselines before starting; at `2855db6` they are 55 and 94.
 
@@ -145,8 +145,8 @@ of scope. Skip it and say so.
 **In scope**: `crates/lane/src/cow.rs`, `crates/lane/tests/cow.rs`.
 
 **Out of scope**:
-- `test_lane.sh`. The clone layer is covered by `cargo test` by design — see the comment at
-  the top of `test_lane.sh` — and plan 019 is rewriting that file in parallel.
+- `scripts/test.sh`. The clone layer is covered by `cargo test` by design — see the comment at
+  the top of `scripts/test.sh` — and plan 019 is rewriting that file in parallel.
 - `crates/lane/src/worktree.rs`, including where lanes are placed. That is plan 019.
 - Hardlinks, sockets, device files, and directory symlinks that form cycles.
 - Resolving `..` chains, or converting relative links to absolute ones. See the rule below.
@@ -191,17 +191,17 @@ Also update the comment on `fallback_tree_is_byte_identical_and_symlinks_survive
 the new tests read as one intent rather than a contradiction — "symlinks survive" is now
 "symlinks survive, and in-repo absolute ones follow the clone". Do not weaken its assertions.
 
-**Verify**: `cargo test` → baseline + 3, `./test_lane.sh` unchanged at baseline.
+**Verify**: `cargo test` → baseline + 3, `./scripts/test.sh` unchanged at baseline.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline unchanged
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline unchanged
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] An absolute in-repo symlink resolves to the destination's copy after a clone, asserted
       by content, on both the reflink and the fallback path
 - [ ] An absolute symlink outside the source root is byte-identical to the original
 - [ ] A relative symlink is byte-identical to the original
-- [ ] `git diff --stat -- crates/lane/src/worktree.rs test_lane.sh crates/lane/assets/skill.md AGENTS.md` → empty
+- [ ] `git diff --stat -- crates/lane/src/worktree.rs scripts/test.sh crates/lane/assets/skill.md AGENTS.md` → empty
 
 ## STOP conditions
 

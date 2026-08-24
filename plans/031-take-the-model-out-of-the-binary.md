@@ -103,8 +103,8 @@ Callers of the flags outside `crates/lane`:
 
 ```
 crates/lane-tour/src/scenes.rs:112,258,263,264,295,309   --review none
-test_lane.sh:159,185,580,589                             --review cmd --review-cmd "$FAKE"
-test_lane.sh:574,577,597,606,622 (and others)            --review none
+scripts/test.sh:159,185,580,589                             --review cmd --review-cmd "$FAKE"
+scripts/test.sh:574,577,597,606,622 (and others)            --review none
 ```
 
 `--review anthropic` and `LANE_REVIEW` appear nowhere outside `review.rs` and the docs.
@@ -122,7 +122,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 | Unit + integration | `cargo test` | baseline + 4, see Step 8 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 5 |
 | Linux gates | `./scripts/check-linux.sh` | exit 0 |
 | Site typecheck | `cd www && bun run build` | 0 errors (Step 7 only) |
 
@@ -135,7 +135,7 @@ reports `tail`'s status and has already masked a failure in this project.
 
 **In scope**: `crates/lane/src/{review.rs,cli.rs,audit.rs,note.rs,store.rs}`,
 `crates/lane/Cargo.toml`, `crates/lane/assets/skill.md`, `crates/lane-tour/src/scenes.rs`,
-`tests/fake-reviewer`, `test_lane.sh`, `README.md`, `USAGE.md`, `AGENTS.md`, and the site
+`tests/fake-reviewer`, `scripts/test.sh`, `README.md`, `USAGE.md`, `AGENTS.md`, and the site
 files listed in Step 7.
 
 **Out of scope**:
@@ -224,14 +224,14 @@ Now that the transitions are reachable, the model has no privileged position. Re
 - `ureq` from `crates/lane/Cargo.toml`, and `cargo update` so the lockfile drops rustls
   and its tree.
 - `tests/fake-reviewer`.
-- Every `--review*` flag from `crates/lane-tour/src/scenes.rs` and `test_lane.sh`. They
+- Every `--review*` flag from `crates/lane-tour/src/scenes.rs` and `scripts/test.sh`. They
   are no-ops once the flags are gone, not renames.
 
 `ANTHROPIC_API_KEY`, `LANE_REVIEW`, `LANE_REVIEW_CMD` and `LANE_REVIEW_MODEL` stop being
 read. Grep for each and confirm zero hits outside this plan.
 
 **Verify**: `cargo build` with no network feature reachable; `cargo tree | grep -c rustls`
-→ `0`; `lane audit --help` shows no review flag; `./test_lane.sh` → `failed: 0`.
+→ `0`; `lane audit --help` shows no review flag; `./scripts/test.sh` → `failed: 0`.
 
 ### Step 5: Teach the skill the loop
 
@@ -306,20 +306,20 @@ checked against it.
    its predecessor.
 4. `check --json` carries `span` for a drifted note and omits it for a fresh one.
 
-`test_lane.sh`, before the summary, numbered one past the last:
+`scripts/test.sh`, before the summary, numbered one past the last:
 
 5. End to end: drift a note, `lane holds`, confirm `lane check` reports it fresh and the
    change survives `lane done` onto trunk.
 
 Then delete the assertions that only existed to exercise the reviewer
-(`test_lane.sh:159,185` and their fixtures). Removing a feature should lower the count;
+(`scripts/test.sh:159,185` and their fixtures). Removing a feature should lower the count;
 say so in the commit body rather than padding it back.
 
 ## Done criteria
 
-- `rg -n 'review|ANTHROPIC|ureq' crates/ tests/ test_lane.sh` → no hits.
+- `rg -n 'review|ANTHROPIC|ureq' crates/ tests/ scripts/test.sh` → no hits.
 - `cargo tree | grep -c rustls` → `0`.
-- `cargo test` at baseline + 4, `./test_lane.sh` at `failed: 0` and baseline + 5 net of
+- `cargo test` at baseline + 4, `./scripts/test.sh` at `failed: 0` and baseline + 5 net of
   the reviewer assertions removed.
 - `lane holds`, `lane note --supersedes` and `lane check --json` documented in `README.md`,
   `USAGE.md` (or `www/src/pages/usage.md`), `www/src/data/commands.ts` and `skill.md`.

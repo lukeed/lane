@@ -48,9 +48,9 @@ export let commands: Command[] = [
 	{
 		name: "ls",
 		usage: "lane ls",
-		summary: "lists every lane with its branch, whether it has landed, dirty state, and pending note count.",
+		summary: "lists every lane's landing state, dirty state, and pending note count.",
 		options: [],
-		example: "$ lane ls\nagent-a    agent-a    open     clean   3 pending note(s)\nagent-b    agent-b    landed   dirty   1 pending note(s)",
+		example: "$ lane ls\nagent-a    open     clean   3 pending note(s)\nagent-b    landed   dirty   1 pending note(s)",
 	},
 	{
 		name: "path",

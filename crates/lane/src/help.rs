@@ -178,8 +178,8 @@ const NEW: &str = "
 
 const LS: &str = "
   Description
-    Every lane's name, the branch it carries, whether it is clean, and how
-    many notes it has yet to land.
+    Every lane's name, whether it has landed, whether it is clean, and how many
+    notes it has yet to land.
 
   Usage
     $ lane ls

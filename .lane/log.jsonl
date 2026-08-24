@@ -32,3 +32,5 @@
 {"anchor":"fn acquire","at":"2026-08-24T19:42:51Z","body_hash":"bac6a3e1e712e18d","branch":"perf-audit","id":"01M0G14CMHEQQ05FRZT0PZA5EG","kind":"holds","norm":"1","path":"crates/lane/src/cli.rs","raw_hash":"e484b52dcbe99ef9","sig":"0bff83f9aaa042a1"}
 {"anchor":"fn create","at":"2026-08-24T19:42:51Z","body_hash":"bfc1cf40b1329b34","branch":"perf-audit","id":"01M0EXNVCK4JP9328P47M4W2C1","kind":"holds","norm":"1","path":"crates/lane/src/worktree.rs","raw_hash":"00e7afe49321a755","sig":"2a21aaf08379e25a"}
 {"anchor":"@file","at":"2026-08-24T19:42:51Z","body_hash":"87beb9cf647e7c1b","branch":"perf-audit","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"a9e6a05f50ff68bb","sig":"e3b0c44298fc1c14"}
+{"at":"2026-08-24T19:55:20Z","branch":"fix-ls-duplicate-names","kind":"landing","lane":"01M0TNA3B11GDP1T6AXQRGXQQE"}
+{"at":"2026-08-24T20:02:30Z","branch":"fix-ls-duplicate-names","kind":"landing","lane":"01M0TNMTEVJ94A054C6Y8ESVPZ"}

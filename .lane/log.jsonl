@@ -35,3 +35,4 @@
 {"at":"2026-08-24T19:55:20Z","branch":"fix-ls-duplicate-names","kind":"landing","lane":"01M0TNA3B11GDP1T6AXQRGXQQE"}
 {"at":"2026-08-24T20:02:30Z","branch":"fix-ls-duplicate-names","kind":"landing","lane":"01M0TNMTEVJ94A054C6Y8ESVPZ"}
 {"at":"2026-08-24T20:12:00Z","branch":"rm-recovery","kind":"landing","lane":"01M0TN60MHQQ2VMY8BF0C0SRGR"}
+{"anchor":"@file","at":"2026-08-24T20:12:18Z","body_hash":"a05fa33c88d8a2f9","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"3868fbe078bd2906","sig":"e3b0c44298fc1c14"}

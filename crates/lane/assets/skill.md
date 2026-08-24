@@ -41,6 +41,8 @@ Notes are evicted oldest and stalest first, and only when an anchor is over budg
 
 ## Record what you learned
 
+IMPORTANT: Not every file nor every commit needs a memory and/or Why trailer! Only significant, non-obvious decisions should be recorded.
+
 You are already writing a commit message, so use it:
 
 ```

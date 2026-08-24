@@ -265,7 +265,6 @@ pub struct PendingNote {
     pub text: String,
     pub path: String,
     pub anchor: String,
-    pub branch: String,
     pub at: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub supersedes: String,
@@ -313,7 +312,6 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
             id: ulid(),
             anchor: rec.anchor.clone(),
             created: rec.at,
-            branch: rec.branch,
             norm: crate::syntax::NORM_VERSION.into(),
             supersedes: rec.supersedes.clone(),
             ..Default::default()
@@ -916,12 +914,16 @@ mod tests {
             text: "early return leaks token length".into(),
             path: "src/auth.rs".into(),
             anchor: "fn verify".into(),
-            branch: "main".into(),
             at: "2026-08-19T00:00:00Z".into(),
             supersedes: String::new(),
         };
 
         append_pending(root.path(), &pending).unwrap();
+        assert!(
+            !std::fs::read_to_string(pending_path(root.path()))
+                .unwrap()
+                .contains("\"branch\"")
+        );
         assert_eq!(promote_pending(root.path()).unwrap().len(), 1);
         append_pending(root.path(), &pending).unwrap();
         assert!(promote_pending(root.path()).unwrap().is_empty());
@@ -932,14 +934,12 @@ mod tests {
     fn pending_supersede_links_and_attics_its_predecessor() {
         let root = tempfile::tempdir().unwrap();
         let old = fixture(root.path(), "pub fn v() {}\n");
-        let branch = git::current_branch();
         append_pending(
             root.path(),
             &PendingNote {
                 text: "replacement note".into(),
                 path: "src/a.rs".into(),
                 anchor: "@file".into(),
-                branch,
                 at: "2026-08-21T00:00:00Z".into(),
                 supersedes: old.meta.id.clone(),
             },

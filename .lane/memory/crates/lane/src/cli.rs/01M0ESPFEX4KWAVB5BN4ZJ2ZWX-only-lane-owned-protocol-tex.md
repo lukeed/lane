@@ -2,7 +2,6 @@
 id: 01M0ESPFEX4KWAVB5BN4ZJ2ZWX
 anchor: write_protocol
 created: 2026-08-20T05:11:25Z
-branch: repair-protocol
 norm: '1'
 sig: a4bcd7d4c565b528
 body_hash: e28cfd34ac7069dc

@@ -128,16 +128,17 @@ command with no taxonomy decision.
 ```bash
 $ lane why src/auth.rs
 
-src/auth.rs#fn verify
+[fn verify]
+  - 01M0B4KQTX · 2026-07-30
+    callers rely on false-on-expiry, not an error
+  - 01M0B9MBYB · 2026-08-14
     must stay constant-time; early return leaks token length
-      01M0B9MBYB · fix-login · 2026-08-14
-  ~ callers rely on false-on-expiry, not an error
-      01M0B4KQTX · rate-limit · 2026-07-30   [content-changed]
 ```
 
-The leading mark is freshness: blank is fresh, `~` drifted, `!` the signature
-changed, `x` the anchor is gone. Reading a note is not a vote for it: you often
-read one to find out it is wrong.
+The path is omitted from headers because the command already names it. The whole-store
+form, `lane why`, keeps `path@anchor` in each header so groups remain unambiguous.
+`lane why` changes nothing and carries no branch provenance. Run `lane check` to see
+whether a note's anchored code has drifted and get the id needed to resolve it.
 
 ### Close the lane
 

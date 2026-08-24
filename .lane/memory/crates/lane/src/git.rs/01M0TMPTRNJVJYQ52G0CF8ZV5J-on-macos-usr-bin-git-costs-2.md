@@ -2,7 +2,6 @@
 id: 01M0TMPTRNJVJYQ52G0CF8ZV5J
 anchor: fn layout
 created: 2026-08-24T19:14:32Z
-branch: perf-audit
 norm: '1'
 sig: 8d764c9bac251436
 body_hash: 3626ff17a60c7fc3

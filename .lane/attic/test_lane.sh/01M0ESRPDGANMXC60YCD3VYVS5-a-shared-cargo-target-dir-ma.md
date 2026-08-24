@@ -2,7 +2,6 @@
 id: 01M0ESRPDGANMXC60YCD3VYVS5
 anchor: '@file'
 created: 2026-08-20T03:20:05Z
-branch: main
 norm: '1'
 sig: e3b0c44298fc1c14
 body_hash: 9da6b6636c9b2b1b

@@ -2,11 +2,11 @@
 id: 01M0TWCNXMN78W0QRM93WYJFDW
 anchor: '@file'
 created: 2026-08-24T21:56:26Z
-branch: scripts-and-readme
 norm: '1'
 sig: e3b0c44298fc1c14
-body_hash: c2c499ae45095bd2
-raw_hash: 0fabad15014070b4
+body_hash: 1155821ac057d4b6
+raw_hash: 05764211695c40fd
+vouched: 2026-08-24T23:11:25Z
 lines: 1-884
 ---
 

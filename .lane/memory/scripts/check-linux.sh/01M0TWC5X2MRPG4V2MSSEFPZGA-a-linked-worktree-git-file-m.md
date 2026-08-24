@@ -2,7 +2,6 @@
 id: 01M0TWC5X2MRPG4V2MSSEFPZGA
 anchor: '@file'
 created: 2026-08-24T21:56:09Z
-branch: scripts-and-readme
 norm: '1'
 sig: e3b0c44298fc1c14
 body_hash: 4739ec245ff7190e

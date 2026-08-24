@@ -162,9 +162,9 @@ noted -&gt; src/auth.rs#fn verify
 
 <span class="p">$ </span><b>lane why src/auth.rs</b>
 
-src/auth.rs#fn verify
-    must stay constant-time; early return leaks token length
-      01M0B9MBYB · fix-login · 2026-08-14</pre>
+[fn verify]
+  - 01M0B9MBYB · 2026-08-14
+    must stay constant-time; early return leaks token length</pre>
 
 				<p class="lede">
 					Or leave it in the commit you were already writing. <b>lane install hooks</b> reads one
@@ -238,11 +238,11 @@ src/auth.rs#fn verify
 				</p>
 				<pre class="block"><span class="p">$ </span><b>lane why src/auth.rs</b>
 
-src/auth.rs#fn verify
+[fn verify]
+  - 01M0B9MBYB · 2026-08-14
     must stay constant-time; early return leaks token length
-      01M0B9MBYB · agent-b · 2026-08-14
-    the token bytes must never reach a log, even at debug
-      01M0B9MZQ4 · agent-c · 2026-08-14</pre>
+  - 01M0B9MZQ4 · 2026-08-14
+    the token bytes must never reach a log, even at debug</pre>
 				<p class="note">
 					<b>lane init</b> writes a four-line protocol into <b>AGENTS.md</b> so the notes are already
 					in context. Notes are plain markdown at predictable paths — an agent finds them with no

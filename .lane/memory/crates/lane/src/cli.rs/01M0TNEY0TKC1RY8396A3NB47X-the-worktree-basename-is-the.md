@@ -2,7 +2,6 @@
 id: 01M0TNEY0TKC1RY8396A3NB47X
 anchor: fn ls
 created: 2026-08-24T19:55:15Z
-branch: fix-ls-duplicate-names
 norm: '1'
 sig: 5a116c9621df3b1f
 body_hash: 6297f131b8b3f00e

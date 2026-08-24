@@ -643,6 +643,18 @@ echo "== 29. reading context does not modify the tree =="
 setup
 "$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
+WHY_NOTE=$(find .lane/memory/src/auth.rs -type f -name '*.md' | head -n 1)
+WHY_ID=$(basename "$WHY_NOTE" | cut -c1-10)
+WHY_DATE=$(awk '/^created:/{print substr($2, 1, 10); exit}' "$WHY_NOTE")
+is "lane why uses the compact note format" \
+  "$("$LANE" why src/auth.rs)" \
+  "[fn verify]
+  - $WHY_ID · $WHY_DATE
+    must stay constant-time"
+is "the whole-store view keeps paths unambiguous" \
+  "$("$LANE" why | head -n 1)" "[src/auth.rs@fn verify]"
+is "new notes do not track their branch" \
+  "$(grep -R '^branch:' .lane/memory .lane/attic 2>/dev/null || true)" ""
 git add -A .lane && git commit -qm "memory" > /dev/null
 "$LANE" why src/auth.rs > /dev/null
 is "lane why leaves the tree clean" "$(git status --porcelain)" ""

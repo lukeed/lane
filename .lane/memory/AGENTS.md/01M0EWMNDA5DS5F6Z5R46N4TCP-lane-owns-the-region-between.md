@@ -2,7 +2,6 @@
 id: 01M0EWMNDA5DS5F6Z5R46N4TCP
 anchor: '@file'
 created: 2026-08-20T05:25:59Z
-branch: main
 norm: '1'
 sig: cd3ddeb4b8ef600f
 body_hash: 18b52311bd5a90fa

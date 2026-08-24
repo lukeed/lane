@@ -25,7 +25,8 @@ Where trunk is protected, `lane push` rebases, audits, commits memory, and sends
 lane why src/auth.rs
 ```
 
-Do this for every file you are about to change. The mark on a line is freshness: blank is current, `~` the implementation moved, `!` the described thing changed shape, `x` the symbol is gone, `?` the file's language has no grammar so nothing was checked. A `~` note is often still true — the words are what matter, not the hash.
+Do this for every file you are about to change. `lane why` is the compact reading view;
+run `lane check` when you need freshness and the ids of notes that require action.
 
 Before `lane merge`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 

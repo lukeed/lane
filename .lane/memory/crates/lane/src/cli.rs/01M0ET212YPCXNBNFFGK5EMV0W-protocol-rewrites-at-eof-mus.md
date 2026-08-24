@@ -2,7 +2,6 @@
 id: 01M0ET212YPCXNBNFFGK5EMV0W
 anchor: fn replace_protocol
 created: 2026-08-20T05:22:49Z
-branch: protocol-newline
 norm: '1'
 sig: 8a140faca048dedd
 body_hash: 2cfbfbeede2b42a2

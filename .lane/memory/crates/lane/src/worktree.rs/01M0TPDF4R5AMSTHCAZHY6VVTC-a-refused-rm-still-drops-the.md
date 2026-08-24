@@ -2,7 +2,6 @@
 id: 01M0TPDF4R5AMSTHCAZHY6VVTC
 anchor: fn remove
 created: 2026-08-24T19:56:19Z
-branch: rm-recovery
 norm: '1'
 sig: b349364829890348
 body_hash: cb9d736df47d72cd

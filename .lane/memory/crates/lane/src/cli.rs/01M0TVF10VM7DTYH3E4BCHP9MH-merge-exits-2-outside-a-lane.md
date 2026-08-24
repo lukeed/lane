@@ -2,7 +2,6 @@
 id: 01M0TVF10VM7DTYH3E4BCHP9MH
 anchor: fn merge
 created: 2026-08-24T21:39:42Z
-branch: rename-done-to-merge
 norm: '1'
 sig: beef067f589982b9
 body_hash: f1dfb7472ddc41b0

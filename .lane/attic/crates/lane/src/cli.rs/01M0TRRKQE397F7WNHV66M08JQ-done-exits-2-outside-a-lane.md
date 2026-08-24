@@ -2,7 +2,6 @@
 id: 01M0TRRKQE397F7WNHV66M08JQ
 anchor: fn done
 created: 2026-08-24T20:52:56Z
-branch: push-command
 norm: '1'
 sig: 52d46897eab5ba03
 body_hash: f1dfb7472ddc41b0

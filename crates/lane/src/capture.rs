@@ -110,7 +110,6 @@ fn capture_rev(rev: &str) -> Result<()> {
     let message = git(&["log", "-1", "--format=%B", rev], None)?;
     let subject = git(&["log", "-1", "--format=%s", rev], None)?;
     let root = git::repo_root()?;
-    let branch = git::current_branch();
 
     for result in parse_trailers(&message) {
         let captured = match result {
@@ -159,7 +158,6 @@ fn capture_rev(rev: &str) -> Result<()> {
             text: captured.text,
             path: rel.clone(),
             anchor: captured.anchor.clone(),
-            branch: branch.clone(),
             at: now_iso(),
             supersedes: String::new(),
         };

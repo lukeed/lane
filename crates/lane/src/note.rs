@@ -15,8 +15,6 @@ pub struct Meta {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub created: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub branch: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub norm: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sig: String,

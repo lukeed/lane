@@ -2,7 +2,6 @@
 id: 01M0G14CMAP84D2TJ2NJT6B87M
 anchor: 28. landings are serialized and marked
 created: 2026-08-20T16:41:06Z
-branch: landing-lock
 norm: '1'
 ---
 

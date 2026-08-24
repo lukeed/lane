@@ -2,7 +2,6 @@
 id: 01M0EXNVCK4JP9328P47M4W2C1
 anchor: fn create
 created: 2026-08-20T06:23:22Z
-branch: nested-lanes
 norm: '1'
 sig: 2a21aaf08379e25a
 body_hash: 32e7fbd5d02bd28d

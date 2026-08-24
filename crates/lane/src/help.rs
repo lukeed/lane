@@ -24,7 +24,7 @@ pub enum Help {
     Audit,
     Done,
     Push,
-    Sweep,
+    Prune,
     Rm,
     Shellenv,
 }
@@ -47,7 +47,7 @@ impl Help {
             Help::Audit => AUDIT,
             Help::Done => DONE,
             Help::Push => PUSH,
-            Help::Sweep => SWEEP,
+            Help::Prune => PRUNE,
             Help::Rm => RM,
             Help::Shellenv => SHELLENV,
         }
@@ -70,7 +70,7 @@ impl Help {
             Help::Audit => "lane audit [OPTIONS]",
             Help::Done => "lane done [OPTIONS]",
             Help::Push => "lane push [OPTIONS]",
-            Help::Sweep => "lane sweep [--dry-run]",
+            Help::Prune => "lane prune [--dry-run]",
             Help::Rm => "lane rm [--force] <NAME>",
             Help::Shellenv => "lane shellenv",
         }
@@ -105,7 +105,7 @@ impl Help {
             Help::Audit => "lane audit",
             Help::Done => "lane done",
             Help::Push => "lane push",
-            Help::Sweep => "lane sweep",
+            Help::Prune => "lane prune",
             Help::Rm => "lane rm",
             Help::Shellenv => "lane shellenv",
         }
@@ -134,7 +134,7 @@ const ROOT: &str = "
     audit        Promote, re-anchor, rank, evict
     done         Rebase, audit, fast-forward, remove
     push         Rebase, audit, push for a pull request
-    sweep        Remove lanes whose branch has landed
+    prune        Remove lanes whose branch has landed
     rm           Discard a lane without landing it
     shellenv     Print shell integration
 
@@ -349,14 +349,14 @@ const PUSH: &str = "
     $ lane push
 ";
 
-const SWEEP: &str = "
+const PRUNE: &str = "
   Description
     Remove every lane whose branch has landed in trunk. A pushed lane sits here
     until its pull request merges; this is
     what collects it. Work committed after the merge is never discarded.
 
   Usage
-    $ lane sweep [options]
+    $ lane prune [options]
 
   Options
     --dry-run     List what would go, remove nothing

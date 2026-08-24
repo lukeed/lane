@@ -24,7 +24,7 @@
 in the store is downstream of that one decision, and the tool grew four mechanisms to
 defend it: a per-branch split so two writers rarely touch one file, a landing lock so the
 one place they do is serialized, a rollup so the split does not accumulate, and a garbage
-collector so the rollup's leftovers get swept.
+collector so the rollup's leftovers get pruned.
 
 **1. The garbage collector destroys decisions.** `gc_state` (`store.rs:645`) deletes
 `state.json` for any branch with no local ref. `lane done` then stages that deletion with
@@ -235,20 +235,20 @@ that do something is surface to document and test forever. It earns a place the 
 **Verify**: `lane done --no-merge` → trunk unmoved, lane still present, branch has one
 `lane: sync` commit whose log contains the landing record.
 
-### Step 7: `lane sweep`, and `lane ls` state
+### Step 7: `lane prune`, and `lane ls` state
 
 `lane ls` gains a state column, read from `git show <trunk>:.lane/log.jsonl`: `landed` when
 that log holds a landing record for the lane's branch, else `open`. A week passes between
 preparing a lane and its pull request merging; `ls` is where the user goes to remember the
 lane exists, so it has to say so unprompted.
 
-`lane sweep` removes every landed lane. Skip dirty lanes and name them. Nothing implicit:
-`new`, `done` and `audit` never sweep.
+`lane prune` removes every landed lane. Skip dirty lanes and name them. Nothing implicit:
+`new`, `done` and `audit` never prune.
 
 **`wt::remove`'s `-d` cannot be the safety check, which this plan originally assumed.**
-`-d` is ancestor-only, so it refuses every squash and rebase merge — the two cases sweep
+`-d` is ancestor-only, so it refuses every squash and rebase merge — the two cases prune
 exists for. Worse, `wt::remove` deletes the worktree before it tries the branch, so a late
-refusal has already thrown the work away. Sweep needs its own gate, run first:
+refusal has already thrown the work away. Prune needs its own gate, run first:
 `merge-base --is-ancestor`, then a comparison of the branch's cumulative diff against trunk
 by patch-id. That answers all three merge buttons, and only then is `wt::remove` called with
 force. The refusal the ecosystem's `git branch -vv | awk '/gone]/' | xargs git branch -D`
@@ -261,14 +261,14 @@ When trunk has no landing record and `origin/<trunk>` is ahead, say so and stop 
 fetching. Lane has never touched a remote and this is not the place to start.
 
 **Verify**: prepare a lane, merge its branch into trunk by hand with `--squash`, then
-`lane ls` → `landed`, and `lane sweep` → removed. Repeat with an uncommitted change in the
+`lane ls` → `landed`, and `lane prune` → removed. Repeat with an uncommitted change in the
 lane → skipped, named, exit non-zero.
 
 ### Step 8: `lane new` adopts an existing branch
 
 `worktree.rs:270` and its sibling always pass `-b`, so there is no supported way to put a
 lane on a fetched pull-request branch — which blocks landing a collaborator's work and
-blocks getting back into a lane that was swept early. When `refs/heads/<name>` already
+blocks getting back into a lane that was pruned early. When `refs/heads/<name>` already
 exists, omit `-b`; error when `--base` is given alongside an existing branch, and when the
 branch is checked out in another worktree.
 
@@ -313,7 +313,7 @@ ten notes above and no others beyond what this branch's own edits drifted.
 
 `test_lane.sh` asserts the old layout in roughly fifteen places, including section 18's
 "done rolls the lane's state into trunk's" — that assertion is now false by design and its
-section becomes the pull-request round trip: prepare, merge by hand, `ls`, `sweep`.
+section becomes the pull-request round trip: prepare, merge by hand, `ls`, `prune`.
 
 Then the docs: `README.md`'s memory layout block and the `done` line, `assets/skill.md:17`,
 the `AGENTS.md` protocol text, and `www/src`.
@@ -329,8 +329,8 @@ the `AGENTS.md` protocol text, and `www/src`.
 - [x] 027's case still reports drift on trunk after `lane done`
 - [x] Two lanes prepared from the same base merge in either order with no conflict
 - [x] `lane done --no-merge` leaves trunk unmoved and the lane in place
-- [x] `lane ls` shows `landed` after a squash merge; `lane sweep` removes it
-- [x] `lane sweep` refuses a dirty lane and one with commits trunk lacks
+- [x] `lane ls` shows `landed` after a squash merge; `lane prune` removes it
+- [x] `lane prune` refuses a dirty lane and one with commits trunk lacks
 - [x] `lane new <existing-branch>` works
 - [x] `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
       `./test_lane.sh` all clean
@@ -340,16 +340,16 @@ Measured: `cargo test` 86 → 85 (six state-file tests deleted, five written);
 
 ## Found in review, after the steps above
 
-Three bugs the step-level verifications missed, all in `sweep`'s neighbourhood. Each has a
+Three bugs the step-level verifications missed, all in `prune`'s neighbourhood. Each has a
 regression in `test_lane.sh`.
 
 1. **The marker named the branch, and branch names are reused.** `fix` twice in a week is
-   normal; the second lane matched the first one's marker, reported `landed`, and swept
+   normal; the second lane matched the first one's marker, reported `landed`, and pruned
    clean because a lane with no commits is vacuously contained in trunk. Fixed by stamping
    a ULID per lane at `lane new` into `$GIT_DIR/lane/id` — per-worktree, never committed,
    the same resolution `pending.jsonl` uses — and keying the marker on it. A lane with no
-   id is never swept: `sweep` is destructive, so an unrecognised lane fails safe.
-2. **`sweep` and `rm` deleted the directory the caller was standing in.** `done` guards
+   id is never pruned: `prune` is destructive, so an unrecognised lane fails safe.
+2. **`prune` and `rm` deleted the directory the caller was standing in.** `done` guards
    this by chdir'ing to the root first; the other two had no reason to and so did not.
    That is plan 006's failure — a shell left in a path that no longer exists. The guard
    belongs in `wt::remove`, which all three go through.
@@ -373,7 +373,7 @@ exactly one modified file, which is the invariant section 3 asserts for a new br
 - Removing `state.json` makes an audit measurably slower. It should not — `check()` never
   read it to skip work. If it does, something was memoizing through it that this plan has
   not found.
-- `lane sweep` proposes removing a lane whose work is not in trunk. Report the merge
+- `lane prune` proposes removing a lane whose work is not in trunk. Report the merge
   strategy and the marker's contents; the detection is wrong, not the safety check.
 
 ## Rejected

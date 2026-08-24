@@ -5,8 +5,9 @@ created: 2026-08-24T19:14:40Z
 branch: perf-audit
 norm: '1'
 sig: e3b0c44298fc1c14
-body_hash: f618acf54c6f0860
-raw_hash: 990fc9f07f020906
+body_hash: 1a9b8c52682cd708
+raw_hash: 278689ced4fb72c8
+vouched: 2026-08-24T21:27:24Z
 lines: 1-286
 ---
 

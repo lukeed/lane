@@ -712,7 +712,7 @@ is "holds refuses damaged frontmatter" \
    "$("$LANE" holds "$ID" 2>&1 | grep -c 'frontmatter is unreadable')" "1"
 is "holds leaves damaged frontmatter byte-identical" "$(cksum < "$F")" "$BEFORE"
 
-echo "== 32. a pushed lane merges elsewhere, then sweeps =="
+echo "== 32. a pushed lane merges elsewhere, then prunes =="
 setup
 remote_setup
 "$LANE" new feat > /dev/null 2>&1
@@ -735,9 +735,9 @@ is "the note came with it" \
    "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "1"
 
 echo "x" >> .lane/trees/feat/src/auth.rs
-is "sweep skips a dirty lane" "$("$LANE" sweep 2>&1 | grep -c 'skipped feat')" "1"
+is "prune skips a dirty lane" "$("$LANE" prune 2>&1 | grep -c 'skipped feat')" "1"
 git -C .lane/trees/feat checkout -- src/auth.rs
-is "sweep removes it once clean" "$("$LANE" sweep 2>&1 | grep -c 'removed feat')" "1"
+is "prune removes it once clean" "$("$LANE" prune 2>&1 | grep -c 'removed feat')" "1"
 is "and the lane is gone" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "no"
 
 echo "== 33. two pushed lanes from one base merge in either order =="
@@ -758,9 +758,9 @@ MERGED_B=$(git merge --no-edit b > /tmp/merge-b.out 2>&1; echo $?)
 is "the second merges without conflict" "$MERGED_B" "0"
 is "both notes survive" \
    "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
-is "both prepared lanes remain individually sweepable" \
+is "both prepared lanes remain individually prunable" \
    "$("$LANE" ls | grep -c '^[ab] .*landed')" "2"
-is "sweep collects both" "$("$LANE" sweep 2>&1 | grep -c '^removed')" "2"
+is "prune collects both" "$("$LANE" prune 2>&1 | grep -c '^removed')" "2"
 
 echo "== 34. a lane can adopt a branch that already exists =="
 setup
@@ -775,7 +775,7 @@ git branch taken
 is "--base is refused for an existing branch" \
    "$("$LANE" new taken --base main 2>&1 | grep -c '^error:')" "1"
 
-echo "== 35. a rebase merge is seen, and unpushed work is not swept =="
+echo "== 35. a rebase merge is seen, and unpushed work is not pruned =="
 setup
 remote_setup
 "$LANE" new rb > /dev/null 2>&1
@@ -789,7 +789,7 @@ is "the branch is no longer an ancestor" \
    "$(git merge-base --is-ancestor rb main && echo yes || echo no)" "no"
 is "git itself refuses the branch" \
    "$(git branch -d rb > /dev/null 2>&1 && echo deleted || echo refused)" "refused"
-is "sweep sees through the replay" "$("$LANE" sweep 2>&1 | grep -c 'removed rb')" "1"
+is "prune sees through the replay" "$("$LANE" prune 2>&1 | grep -c 'removed rb')" "1"
 
 setup
 remote_setup
@@ -801,8 +801,8 @@ git merge -q --squash after && git commit -qm "squash after" > /dev/null
 # Work that arrived after the pull request merged never reached trunk.
 ( cd "$TMP/repo/.lane/trees/after" \
   && echo "// later" >> src/auth.rs && git add -A && git commit -qm later > /dev/null )
-is "sweep refuses work trunk does not have" \
-   "$("$LANE" sweep 2>&1 | grep -c 'skipped after: commits main does not have')" "1"
+is "prune refuses work trunk does not have" \
+   "$("$LANE" prune 2>&1 | grep -c 'skipped after: commits main does not have')" "1"
 is "and leaves the lane in place" \
    "$([ -d .lane/trees/after ] && echo yes || echo no)" "yes"
 
@@ -818,7 +818,7 @@ is "landing leaves no committed marker" \
 # `fix` twice in a week is normal, and the second one has landed nothing.
 "$LANE" new fix > /dev/null 2>&1
 is "a reused name is not landed" "$("$LANE" ls | grep -c 'fix .*open')" "1"
-is "sweep leaves it alone" "$("$LANE" sweep 2>&1 | grep -c 'no landed lanes')" "1"
+is "prune leaves it alone" "$("$LANE" prune 2>&1 | grep -c 'no landed lanes')" "1"
 is "and it is still on disk" "$([ -d .lane/trees/fix ] && echo yes || echo no)" "yes"
 
 echo "== 37. nothing removes the directory you are standing in =="
@@ -828,12 +828,12 @@ setup
   && "$LANE" note -p src/auth.rs -a "fn verify" "n" > /dev/null \
   && "$LANE" push > /dev/null 2>&1 )
 git merge -q --squash here && git commit -qm "squash here" > /dev/null
-is "sweep refuses from inside the lane" \
-   "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" sweep 2>&1 | grep -c 'cd out first')" "1"
+is "prune refuses from inside the lane" \
+   "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" prune 2>&1 | grep -c 'cd out first')" "1"
 is "rm refuses from inside the lane" \
    "$(cd "$TMP/repo/.lane/trees/here" && "$LANE" rm here --force 2>&1 | grep -c 'cd out first')" "1"
 is "the lane is untouched" "$([ -d .lane/trees/here ] && echo yes || echo no)" "yes"
-is "and sweep still works from the root" "$("$LANE" sweep 2>&1 | grep -c 'removed here')" "1"
+is "and prune still works from the root" "$("$LANE" prune 2>&1 | grep -c 'removed here')" "1"
 
 echo "== 38. push re-pushes safely and reports its state =="
 setup

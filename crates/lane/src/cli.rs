@@ -78,7 +78,7 @@ pub fn run() -> Result<i32> {
             &args.budget,
         ),
         Parsed::Push(args) => push(args.base.as_deref(), &args.budget),
-        Parsed::Sweep { dry_run } => sweep(dry_run),
+        Parsed::Prune { dry_run } => prune(dry_run),
         Parsed::Rm(args) => rm(&args.name, args.force),
         Parsed::Shellenv => shellenv(),
     }
@@ -556,7 +556,7 @@ fn ls() -> Result<i32> {
     Ok(0)
 }
 
-fn sweep(dry_run: bool) -> Result<i32> {
+fn prune(dry_run: bool) -> Result<i32> {
     let root = wt::main_root()?;
     let trunk = wt::trunk_name(&root);
     let lanes = wt::list_lanes(&root);
@@ -564,7 +564,7 @@ fn sweep(dry_run: bool) -> Result<i32> {
     let mut removed = 0;
     let mut skipped = 0;
     for lane in lanes {
-        // Identity, not name. A lane with no id was not made by `lane new`, and sweep is
+        // Identity, not name. A lane with no id was not made by `lane new`, and prune is
         // destructive, so an unrecognised lane is left alone rather than guessed at.
         if !store::is_landed(&lane.path) {
             continue;
@@ -881,7 +881,7 @@ fn prepare(
 
     // Per-worktree state: a reused branch name starts without this marker.
     if store::lane_id(&lane_path).is_empty() {
-        eprintln!("warning: lane has no id; `lane sweep` will not recognise this landing");
+        eprintln!("warning: lane has no id; `lane prune` will not recognise this landing");
     }
     store::mark_landed(&lane_path)?;
 

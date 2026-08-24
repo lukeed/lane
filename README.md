@@ -11,7 +11,7 @@ lane note -p src/auth.rs -a "fn verify" "..."
 lane why src/auth.rs                 read what earlier lanes learned
 lane done                            rebase, audit memory, fast-forward, remove
 lane push                            rebase, audit, and push for a pull request
-lane sweep                           remove lanes whose branch has landed
+lane prune                           remove lanes whose branch has landed
 ```
 
 Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`,
@@ -155,19 +155,19 @@ serializes two lanes on one machine.
 
 Then the lane sits on disk until the pull request merges, which may be a week. `lane ls`
 marks it `pushed` while the remote has its tip, then `landed` once trunk carries its
-landing record, and `lane sweep` removes it:
+landing record, and `lane prune` removes it:
 
 ```
 $ lane ls
 fix-login    landed   clean   0 pending note(s)
-$ lane sweep
+$ lane prune
 removed fix-login
 ```
 
 The marker is tree content, not a commit, so a squash or a rebase merge cannot hide it —
 `git branch -d` refuses both even when the trees are identical. It names the lane rather
 than the branch, because `fix` twice in a week is normal and the second one has landed
-nothing. Sweep still checks that nothing on the branch is missing from trunk, so work
+nothing. Prune still checks that nothing on the branch is missing from trunk, so work
 committed to the lane after the pull request merged is never discarded, and it removes
 nothing you are standing in.
 

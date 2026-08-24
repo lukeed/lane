@@ -53,7 +53,7 @@ tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 ulid = "3.0.0"
-usage = { package = "usage-rs", version = "6.0.0" }
+usage = { package = "usage-rs", version = "6.3.0" }
 walkdir = "2.5.0"
 
 [lints]

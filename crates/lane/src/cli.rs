@@ -119,7 +119,7 @@ enum Command {
         #[usage(long)]
         cd: bool,
         /// squash lane commits into one landing commit
-        #[usage(long, conflicts_with = "no_merge")]
+        #[usage(long, conflicts = "no_merge")]
         squash: bool,
         /// stop after the memory commit, for a pull request to carry
         #[usage(long)]

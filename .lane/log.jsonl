@@ -38,4 +38,3 @@
 {"anchor":"@file","at":"2026-08-24T20:12:18Z","body_hash":"a05fa33c88d8a2f9","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"3868fbe078bd2906","sig":"e3b0c44298fc1c14"}
 {"anchor":"@file","at":"2026-08-24T20:15:14Z","body_hash":"38059e5f8380d98f","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"47d9ae805256e65c","sig":"e3b0c44298fc1c14"}
 {"anchor":"@file","at":"2026-08-24T20:19:56Z","body_hash":"d3c8284476d947c8","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"363754b43c93b55b","sig":"e3b0c44298fc1c14"}
-{"anchor":"@file","at":"2026-08-24T20:36:53Z","body_hash":"4285d0551f29c61e","branch":"symlink-skill","id":"01M0ER1X7801FW524YV2G8TNQQ","kind":"holds","norm":"1","path":"crates/lane/assets/skill.md","raw_hash":"58f162072ef56049","sig":"cb3f91d54eee30e5"}

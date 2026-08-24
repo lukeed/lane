@@ -32,12 +32,46 @@ pub fn trunk_name(root: &Path) -> String {
 }
 
 fn trunk_name_uncached(root: &Path) -> String {
-    for candidate in ["main", "master", "trunk"] {
+    let origin = try_git(
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+        Some(root),
+    );
+    let named = origin.strip_prefix("origin/").into_iter();
+    for candidate in named.chain(["main", "master", "trunk"]) {
         if git_ok(&["rev-parse", "--verify", "--quiet", candidate], Some(root)) {
             return candidate.into();
         }
     }
     try_git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(root))
+}
+
+fn new_base(root: &Path) -> String {
+    let branch = try_git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(root));
+    if !branch.is_empty() && branch != "HEAD" {
+        branch
+    } else {
+        trunk_name(root)
+    }
+}
+
+pub fn lane_base(root: &Path, branch: &str) -> String {
+    let key = format!("lane.{branch}.base");
+    let base = try_git(&["config", "--get", &key], Some(root));
+    if !base.is_empty() && git_ok(&["rev-parse", "--verify", "--quiet", &base], Some(root)) {
+        return base;
+    }
+    trunk_name(root)
+}
+
+fn record_base(root: &Path, branch: &str, base: &str) -> Result<()> {
+    let key = format!("lane.{branch}.base");
+    git(&["config", "--local", &key, base], Some(root))?;
+    Ok(())
 }
 
 pub fn lanes_dir(root: &Path) -> PathBuf {
@@ -266,9 +300,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     if adopt && base.is_some() {
         bail!("branch {name} already exists; --base applies only to a new branch");
     }
-    let base = base
-        .map(str::to_string)
-        .unwrap_or_else(|| trunk_name(&root));
+    let base = base.map(str::to_string).unwrap_or_else(|| new_base(&root));
     let dest = lanes_dir(&root).join(name);
     if dest.exists() {
         bail!("lane {name} already exists at {}", dest.display());
@@ -370,6 +402,9 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     };
 
     crate::store::stamp_lane_id(&dest)?;
+    if !adopt {
+        record_base(&root, name, &base)?;
+    }
 
     Ok(Created {
         path: dest,
@@ -681,5 +716,63 @@ mod tests {
             tracked_changes("## main\0R  src/new.rs\0src/old.rs\0"),
             vec!["src/new.rs", "src/old.rs"]
         );
+    }
+
+    fn repository(branch: &str) -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let run = |args: &[&str]| git(args, Some(root.path())).unwrap();
+        run(&["init", "-qb", branch]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(root.path().join("file"), "one\n").unwrap();
+        run(&["add", "file"]);
+        run(&["commit", "-qm", "base"]);
+        root
+    }
+
+    #[test]
+    fn new_base_prefers_the_main_worktree_branch() {
+        let root = repository("develop");
+        git(&["branch", "main"], Some(root.path())).unwrap();
+
+        assert_eq!(new_base(root.path()), "develop");
+    }
+
+    #[test]
+    fn trunk_name_resolves_origin_head() {
+        let root = repository("develop");
+        git(
+            &["update-ref", "refs/remotes/origin/develop", "HEAD"],
+            Some(root.path()),
+        )
+        .unwrap();
+        git(
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/develop",
+            ],
+            Some(root.path()),
+        )
+        .unwrap();
+
+        assert_eq!(trunk_name(root.path()), "develop");
+    }
+
+    #[test]
+    fn trunk_name_probes_when_origin_head_is_absent() {
+        let root = repository("develop");
+        git(&["branch", "main"], Some(root.path())).unwrap();
+        git(&["checkout", "--detach"], Some(root.path())).unwrap();
+
+        assert_eq!(trunk_name(root.path()), "main");
+    }
+
+    #[test]
+    fn trunk_name_ignores_a_different_checked_out_branch() {
+        let root = repository("main");
+        git(&["checkout", "-qb", "develop"], Some(root.path())).unwrap();
+
+        assert_eq!(trunk_name(root.path()), "main");
     }
 }

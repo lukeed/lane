@@ -30,6 +30,7 @@ const COMMANDS: &[&str] = &[
     "check",
     "audit",
     "done",
+    "push",
     "sweep",
     "rm",
     "shellenv",
@@ -89,11 +90,16 @@ pub struct AuditArgs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoneArgs {
-    pub trunk: Option<String>,
+    pub base: Option<String>,
     pub keep: bool,
     pub cd: bool,
     pub squash: bool,
-    pub no_merge: bool,
+    pub budget: Budget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PushArgs {
+    pub base: Option<String>,
     pub budget: Budget,
 }
 
@@ -120,6 +126,7 @@ pub enum Parsed {
     Check { json: bool },
     Audit(AuditArgs),
     Done(DoneArgs),
+    Push(PushArgs),
     Sweep { dry_run: bool },
     Rm(RmArgs),
     Shellenv,
@@ -153,6 +160,7 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("check") => parse_check(rest(raw)),
         Some("audit") => parse_audit(rest(raw)),
         Some("done") => parse_done(rest(raw)),
+        Some("push") => parse_push(rest(raw)),
         Some("sweep") => parse_sweep(rest(raw)),
         Some("rm") => parse_rm(rest(raw)),
         Some("shellenv") => bare(rest(raw), Help::Shellenv, Parsed::Shellenv),
@@ -382,26 +390,31 @@ fn parse_done(raw: Vec<OsString>) -> Result<Parsed> {
     if pargs.contains(["-h", "--help"]) {
         return Ok(Parsed::Help(Help::Done));
     }
-    let trunk = pargs.opt_value_from_str("--trunk")?;
+    let base = pargs.opt_value_from_str("--base")?;
     let keep = pargs.contains("--keep");
     let cd = pargs.contains("--cd");
     let squash = pargs.contains("--squash");
-    let no_merge = pargs.contains("--no-merge");
     let budget = budget(&mut pargs)?;
     none(positionals(pargs, after, Help::Done)?, Help::Done)?;
-    // `--squash` writes the merge commit `--no-merge` exists to leave to the pull
-    // request, so asking for both asks for opposite things.
-    if squash && no_merge {
-        return Err(conflict("--squash", "--no-merge", Help::Done));
-    }
     Ok(Parsed::Done(DoneArgs {
-        trunk,
+        base,
         keep,
         cd,
         squash,
-        no_merge,
         budget,
     }))
+}
+
+fn parse_push(raw: Vec<OsString>) -> Result<Parsed> {
+    let (flags, after) = terminated(raw);
+    let mut pargs = pico_args::Arguments::from_vec(flags);
+    if pargs.contains(["-h", "--help"]) {
+        return Ok(Parsed::Help(Help::Push));
+    }
+    let base = pargs.opt_value_from_str("--base")?;
+    let budget = budget(&mut pargs)?;
+    none(positionals(pargs, after, Help::Push)?, Help::Push)?;
+    Ok(Parsed::Push(PushArgs { base, budget }))
 }
 
 fn parse_sweep(raw: Vec<OsString>) -> Result<Parsed> {
@@ -448,14 +461,6 @@ fn unexpected(token: &str, help: Help) -> anyhow::Error {
     };
     anyhow::anyhow!(
         "unexpected argument '{token}' found{tip}\n\nUsage: {}\n\nFor more information, try '{} --help'.",
-        help.usage(),
-        help.invocation()
-    )
-}
-
-fn conflict(one: &str, other: &str, help: Help) -> anyhow::Error {
-    anyhow::anyhow!(
-        "the argument '{one}' cannot be used with '{other}'\n\nUsage: {}\n\nFor more information, try '{} --help'.",
         help.usage(),
         help.invocation()
     )

@@ -10,7 +10,7 @@ lane ls
 lane note -p src/auth.rs -a "fn verify" "..."
 lane why src/auth.rs                 read what earlier lanes learned
 lane done                            rebase, audit memory, fast-forward, remove
-lane done --no-merge                 stop at the commit, for a pull request to carry
+lane push                            rebase, audit, and push for a pull request
 lane sweep                           remove lanes whose branch has landed
 ```
 
@@ -144,12 +144,11 @@ unnecessary and squash semantics never come up.
 ## Pull requests
 
 `lane done` lands the lane itself: it fast-forwards trunk and removes the worktree.
-Where trunk is protected, `lane done --no-merge` stops one step earlier — rebase,
-audit, commit — and leaves the merge to wherever the pull request is merged.
+Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the
+lane to its remote for the pull request to carry.
 
 ```bash
-lane done --no-merge
-git push -u origin fix-login
+lane push
 ```
 
 Turn on **"Require branches to be up to date before merging."** The audit fingerprints
@@ -158,7 +157,8 @@ a tree nobody has. That setting is what serializes two clones, the way the landi
 serializes two lanes on one machine.
 
 Then the lane sits on disk until the pull request merges, which may be a week. `lane ls`
-marks it `landed` once trunk carries its landing record, and `lane sweep` removes it:
+marks it `pushed` while the remote has its tip, then `landed` once trunk carries its
+landing record, and `lane sweep` removes it:
 
 ```
 $ lane ls

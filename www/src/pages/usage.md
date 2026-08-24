@@ -151,19 +151,17 @@ $ lane done
 ```
 
 `done` never touches the network for git. Add `--keep` to preserve the
-worktree, `--squash` to land one commit, `--trunk <name>` for a non-default
-trunk, and `--no-merge` to stop before the merge so a pull request can carry it
-— see [Pull requests](#pull-requests).
+worktree, `--squash` to land one commit, or `--base <name>` to use a different
+base. Use `lane push` for a pull request — see [Pull requests](#pull-requests).
 
 ---
 
 ### Pull requests
 
-Where trunk is protected, `lane done --no-merge` stops one step before the merge:
+Where trunk is protected, `lane push` rebases, audits, commits memory, and pushes the lane:
 
 ```
-$ lane done --no-merge
-$ git push -u origin fix-login
+$ lane push
 ```
 
 Turn on **Require branches to be up to date before merging**. The audit fingerprints
@@ -171,8 +169,8 @@ spans against the post-rebase tree, so a pull request merged on a stale base des
 tree nobody has. That setting serializes two clones the way the landing lock serializes
 two lanes on one machine.
 
-The lane stays on disk until the pull request merges. `lane ls` marks it `landed` once
-trunk carries its landing record; `lane sweep` removes it. The marker is tree content
+The lane stays on disk until the pull request merges. `lane ls` marks it `pushed` while the
+remote has its tip, then `landed` once trunk carries its landing record; `lane sweep` removes it. The marker is tree content
 rather than a commit, so neither a squash nor a rebase merge can hide it — `git branch -d`
 refuses both even when the trees are identical. It names the lane rather than the branch,
 because `fix` twice in a week is normal and the second one has landed nothing. Sweep still
@@ -316,8 +314,8 @@ The short version. See [commands](/commands) for full information.
 | `lane holds <id>` | re-vouch for a resolved note |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
-| `lane done [--keep] [--trunk <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
-| `lane done --no-merge` | stop after the memory commit, for a pull request to carry |
+| `lane done [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
+| `lane push [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
 | `lane sweep [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |

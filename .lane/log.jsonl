@@ -38,3 +38,19 @@
 {"anchor":"@file","at":"2026-08-24T20:12:18Z","body_hash":"a05fa33c88d8a2f9","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"3868fbe078bd2906","sig":"e3b0c44298fc1c14"}
 {"anchor":"@file","at":"2026-08-24T20:15:14Z","body_hash":"38059e5f8380d98f","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"47d9ae805256e65c","sig":"e3b0c44298fc1c14"}
 {"anchor":"@file","at":"2026-08-24T20:19:56Z","body_hash":"d3c8284476d947c8","branch":"rm-recovery","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"363754b43c93b55b","sig":"e3b0c44298fc1c14"}
+{"anchor":"Pull requests","at":"2026-08-24T20:38:43Z","branch":"push-command","id":"01M0TQYBP05J73Z1BW5C038WZT","kind":"evict","path":"README.md","reason":"anchor missing"}
+{"at":"2026-08-24T20:38:43Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"anchor":"@file","at":"2026-08-24T20:42:37Z","body_hash":"14ec44778a1e9cc1","branch":"push-command","id":"01M0ER1X7801FW524YV2G8TNQQ","kind":"holds","norm":"1","path":"crates/lane/assets/skill.md","raw_hash":"02a100503011e105","sig":"cb3f91d54eee30e5"}
+{"anchor":"fn ls","at":"2026-08-24T20:42:37Z","body_hash":"1022d36f52169961","branch":"push-command","id":"01M0TMPTS17M4SC4911BATBKA3","kind":"holds","norm":"1","path":"crates/lane/src/cli.rs","raw_hash":"bb591d74fb973088","sig":"5a116c9621df3b1f"}
+{"anchor":"fn ls","at":"2026-08-24T20:42:37Z","body_hash":"1022d36f52169961","branch":"push-command","id":"01M0TNEY0TKC1RY8396A3NB47X","kind":"holds","norm":"1","path":"crates/lane/src/cli.rs","raw_hash":"bb591d74fb973088","sig":"5a116c9621df3b1f"}
+{"anchor":"fn usage","at":"2026-08-24T20:42:38Z","body_hash":"0279e018c0b5aa43","branch":"push-command","id":"01M0RP8141K78K4HX605TH4W8E","kind":"holds","norm":"1","path":"crates/lane/src/help.rs","raw_hash":"949279899481dcc8","sig":"b118a8f064d37898"}
+{"anchor":"fn create","at":"2026-08-24T20:42:38Z","body_hash":"32e7fbd5d02bd28d","branch":"push-command","id":"01M0EXNVCK4JP9328P47M4W2C1","kind":"holds","norm":"1","path":"crates/lane/src/worktree.rs","raw_hash":"82db18eda0c37edb","sig":"2a21aaf08379e25a"}
+{"anchor":"@file","at":"2026-08-24T20:42:38Z","body_hash":"37c9e2f1de422a53","branch":"push-command","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"545f690dc88fc61b","sig":"e3b0c44298fc1c14"}
+{"at":"2026-08-24T20:43:02Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"at":"2026-08-24T20:47:31Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"anchor":"@file","at":"2026-08-24T20:47:40Z","body_hash":"577f4cb14f43c3be","branch":"push-command","id":"01M0ER1X7801FW524YV2G8TNQQ","kind":"holds","norm":"1","path":"crates/lane/assets/skill.md","raw_hash":"9690cfa84af0ab5c","sig":"cb3f91d54eee30e5"}
+{"at":"2026-08-24T20:47:48Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"anchor":"fn done","at":"2026-08-24T20:53:02Z","branch":"push-command","id":"01M0TQYBPCHTWG41WA1PMS1G4Y","kind":"evict","path":"crates/lane/src/cli.rs","reason":"superseded by 01M0TRRKQE397F7WNHV66M08JQ"}
+{"anchor":"fn trunk_name","at":"2026-08-24T20:53:02Z","branch":"push-command","id":"01M0TQYBQVSRHXXA7M83H5GE1A","kind":"evict","path":"crates/lane/src/worktree.rs","reason":"superseded by 01M0TRRKSWK26RY06J8DX6AQEY"}
+{"at":"2026-08-24T20:53:03Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"at":"2026-08-24T20:55:19Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}

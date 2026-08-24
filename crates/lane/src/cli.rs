@@ -599,10 +599,10 @@ fn skill_uninstall() -> Result<i32> {
     std::fs::remove_file(&path)?;
     println!("removed {}", path.display());
     // Only the lane/ dir we just emptied; never .agents/ or .agents/skills/, which may hold others.
-    if let Some(dir) = path.parent() {
-        if std::fs::read_dir(dir)?.next().is_none() {
-            std::fs::remove_dir(dir)?;
-        }
+    if let Some(dir) = path.parent()
+        && std::fs::read_dir(dir)?.next().is_none()
+    {
+        std::fs::remove_dir(dir)?;
     }
     Ok(0)
 }

@@ -25,3 +25,4 @@
 {"anchor":"fn write_state_file","at":"2026-08-22T18:23:07Z","branch":"state-out-of-git","id":"01M0GFVWN31756XJ6E56B8N99V","kind":"evict","path":"crates/lane/src/store.rs","reason":"anchor missing"}
 {"anchor":"fn create","at":"2026-08-22T20:52:05Z","body_hash":"97bc6a740125f84b","branch":"state-out-of-git","id":"01M0EXNVCK4JP9328P47M4W2C1","kind":"holds","norm":"1","path":"crates/lane/src/worktree.rs","raw_hash":"7d27fd0bd69499c0","sig":"2a21aaf08379e25a"}
 {"anchor":"@file","at":"2026-08-22T20:52:05Z","body_hash":"c48edff8d22ea483","branch":"state-out-of-git","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"61108909a406b19a","sig":"e3b0c44298fc1c14"}
+{"at":"2026-08-24T01:30:32Z","branch":"usage-migration","kind":"landing","lane":"01M0RP72P6CSKWM9DM64CP3X8B"}

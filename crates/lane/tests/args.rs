@@ -51,7 +51,7 @@ fn every_command_answers_its_own_help_flag() {
         ("check", Help::Check),
         ("audit", Help::Audit),
         ("done", Help::Done),
-        ("sweep", Help::Sweep),
+        ("prune", Help::Prune),
         ("rm", Help::Rm),
         ("shellenv", Help::Shellenv),
     ] {
@@ -468,7 +468,7 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::Audit,
         Help::Done,
         Help::Push,
-        Help::Sweep,
+        Help::Prune,
         Help::Rm,
         Help::Shellenv,
     ] {
@@ -498,10 +498,11 @@ fn push_takes_a_base_and_budget() {
 }
 
 #[test]
-fn sweep_takes_only_its_dry_run() {
-    assert_eq!(ok(&["sweep"]), Parsed::Sweep { dry_run: false });
-    assert_eq!(ok(&["sweep", "--dry-run"]), Parsed::Sweep { dry_run: true });
-    assert_eq!(ok(&["sweep", "--help"]), Parsed::Help(Help::Sweep));
-    assert!(err(&["sweep", "extra"]).contains("unexpected argument 'extra' found"));
-    assert!(err(&["sweep", "--dry"]).contains("unexpected argument '--dry' found"));
+fn prune_takes_only_its_dry_run() {
+    assert_eq!(ok(&["prune"]), Parsed::Prune { dry_run: false });
+    assert_eq!(ok(&["prune", "--dry-run"]), Parsed::Prune { dry_run: true });
+    assert_eq!(ok(&["prune", "--help"]), Parsed::Help(Help::Prune));
+    assert!(err(&["prune", "extra"]).contains("unexpected argument 'extra' found"));
+    assert!(err(&["prune", "--dry"]).contains("unexpected argument '--dry' found"));
+    assert!(err(&["sweep"]).contains("unrecognized subcommand 'sweep'"));
 }

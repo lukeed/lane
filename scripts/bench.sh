@@ -153,7 +153,7 @@ PY
   "$BIN" audit >/dev/null 2>&1
   git add -A && git commit -qm "notes" >/dev/null
 
-  # Three lanes, so `ls` and `sweep` have something to walk.
+  # Three lanes, so `ls` and `prune` have something to walk.
   for name in alpha beta gamma; do "$BIN" new "$name" >/dev/null 2>&1; done
 
   NOTES=$(find .lane/memory -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
@@ -178,7 +178,7 @@ check-json|check --json
 why-hot|why src/mod_0.rs
 why-cold|why src/mod_7.rs
 audit|audit
-sweep|sweep --dry-run
+prune|prune --dry-run
 shellenv|shellenv
 CASES
 )

@@ -17,7 +17,7 @@ lane done              # rebase, audit memory, fast-forward trunk, delete the la
 
 `lane new` prints the path. Work there, not in the parent tree. `lane done` rebases, so commit or stash tracked changes first; untracked files are fine.
 
-Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the lane to the remote. Once it merges run `lane sweep` to remove the lane. `lane ls` marks a lane `pushed` while the remote has its tip and `landed` when trunk carries its landing record.
+Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the lane to the remote. Once it merges run `lane prune` to remove the lane. `lane ls` marks a lane `pushed` while the remote has its tip and `landed` when trunk carries its landing record.
 
 ## Read before you edit
 

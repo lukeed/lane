@@ -170,10 +170,10 @@ tree nobody has. That setting serializes two clones the way the landing lock ser
 two lanes on one machine.
 
 The lane stays on disk until the pull request merges. `lane ls` marks it `pushed` while the
-remote has its tip, then `landed` once trunk carries its landing record; `lane sweep` removes it. The marker is tree content
+remote has its tip, then `landed` once trunk carries its landing record; `lane prune` removes it. The marker is tree content
 rather than a commit, so neither a squash nor a rebase merge can hide it — `git branch -d`
 refuses both even when the trees are identical. It names the lane rather than the branch,
-because `fix` twice in a week is normal and the second one has landed nothing. Sweep still
+because `fix` twice in a week is normal and the second one has landed nothing. Prune still
 checks that nothing on the branch is missing from trunk, so work committed after the merge
 is never discarded, and it removes nothing you are standing in.
 
@@ -316,7 +316,7 @@ The short version. See [commands](/commands) for full information.
 | `lane audit [--base <ref>]` | run the memory pass alone |
 | `lane done [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
 | `lane push [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
-| `lane sweep [--dry-run]` | remove lanes whose branch has landed in trunk |
+| `lane prune [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |
 

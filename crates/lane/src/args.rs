@@ -31,7 +31,7 @@ const COMMANDS: &[&str] = &[
     "audit",
     "done",
     "push",
-    "sweep",
+    "prune",
     "rm",
     "shellenv",
 ];
@@ -127,7 +127,7 @@ pub enum Parsed {
     Audit(AuditArgs),
     Done(DoneArgs),
     Push(PushArgs),
-    Sweep { dry_run: bool },
+    Prune { dry_run: bool },
     Rm(RmArgs),
     Shellenv,
     Help(Help),
@@ -161,7 +161,7 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("audit") => parse_audit(rest(raw)),
         Some("done") => parse_done(rest(raw)),
         Some("push") => parse_push(rest(raw)),
-        Some("sweep") => parse_sweep(rest(raw)),
+        Some("prune") => parse_prune(rest(raw)),
         Some("rm") => parse_rm(rest(raw)),
         Some("shellenv") => bare(rest(raw), Help::Shellenv, Parsed::Shellenv),
         Some("-h" | "--help") => Ok(Parsed::Help(Help::Root)),
@@ -417,15 +417,15 @@ fn parse_push(raw: Vec<OsString>) -> Result<Parsed> {
     Ok(Parsed::Push(PushArgs { base, budget }))
 }
 
-fn parse_sweep(raw: Vec<OsString>) -> Result<Parsed> {
+fn parse_prune(raw: Vec<OsString>) -> Result<Parsed> {
     let (flags, after) = terminated(raw);
     let mut pargs = pico_args::Arguments::from_vec(flags);
     if pargs.contains(["-h", "--help"]) {
-        return Ok(Parsed::Help(Help::Sweep));
+        return Ok(Parsed::Help(Help::Prune));
     }
     let dry_run = pargs.contains("--dry-run");
-    none(positionals(pargs, after, Help::Sweep)?, Help::Sweep)?;
-    Ok(Parsed::Sweep { dry_run })
+    none(positionals(pargs, after, Help::Prune)?, Help::Prune)?;
+    Ok(Parsed::Prune { dry_run })
 }
 
 fn parse_rm(raw: Vec<OsString>) -> Result<Parsed> {

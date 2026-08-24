@@ -133,13 +133,13 @@ export let commands: Command[] = [
 		example: "$ lane push\nrebased onto main\npushed fix-login to origin",
 	},
 	{
-		name: "sweep",
-		usage: "lane sweep [--dry-run]",
+		name: "prune",
+		usage: "lane prune [--dry-run]",
 		summary: "removes every lane that has landed in trunk, seen through a squash or rebase merge, skipping any that is dirty, holds work trunk does not have, or is the directory you are in.",
 		options: [
 			{ flag: "--dry-run", arg: null, about: "list what would go, remove nothing." },
 		],
-		example: "$ lane sweep\nremoved fix-login\nskipped rate-limit: uncommitted changes",
+		example: "$ lane prune\nremoved fix-login\nskipped rate-limit: uncommitted changes",
 	},
 	{
 		name: "rm",

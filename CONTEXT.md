@@ -32,4 +32,4 @@ A lane whose branch is on the remote at exactly its local tip. Committing again 
 to open, because the remote no longer has everything.
 
 **Landed**:
-A lane whose landing record has reached its base. Collectable by sweep.
+A lane whose landing record has reached its base. Collectable by prune.

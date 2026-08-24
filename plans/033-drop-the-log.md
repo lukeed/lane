@@ -29,7 +29,7 @@ The log holds three unrelated things:
 | kind | read by | needs to be shared? |
 |---|---|---|
 | `evict` | nothing at all | no |
-| `landing` | `sweep`, `ls` — both local operations on local worktrees | no |
+| `landing` | `prune`, `ls` — both local operations on local worktrees | no |
 | `holds` / `rebaseline` | `Checker`, for a note's baseline | **yes** |
 
 Only the third is real, and it is per-note. Notes are already one file each and have never
@@ -90,7 +90,7 @@ meaning and never changes.
 - `store::LANDING`, `store::landings`, and `cli::landed_lanes` are deleted.
 - `prepare`, which both `lane push` and `lane done` run through, writes a file next to the lane id, in the
   worktree's own git dir (`git_dir/lane/landed`), holding the lane id and an ISO stamp.
-- `sweep` gates on that file existing instead of on the trunk log. The second gate,
+- `prune` gates on that file existing instead of on the trunk log. The second gate,
   `wt::contained_in`, is unchanged and remains the authoritative merge check — it already
   sees through squash and rebase merges.
 - `ls` shows `landed` only for a lane that is BOTH marked and `contained_in` trunk.
@@ -131,12 +131,12 @@ and `Confirmation` all go. Grep for each and confirm no caller survives.
                                               correct and must not be papered over. No
                                               merge driver, no union rule.
 
-  L1. Lane created, never prepared      → no marker; `sweep` leaves it; `ls` says `open`
+  L1. Lane created, never prepared      → no marker; `prune` leaves it; `ls` says `open`
   L2. Lane prepared, PR not yet merged  → marker present, `contained_in` false → `ls` says
-                                           `open`, `sweep` skips with today's message
-  L3. Lane prepared, PR merged normally → `ls` says `landed`, `sweep` collects
+                                           `open`, `prune` skips with today's message
+  L3. Lane prepared, PR merged normally → `ls` says `landed`, `prune` collects
   L4. Lane prepared, PR squash-merged   → same as L3; `contained_in` sees the patch id
-  L5. Branch name reused by a NEW lane  → the new lane has no marker, so it is never swept.
+  L5. Branch name reused by a NEW lane  → the new lane has no marker, so it is never pruned.
       This is the bug the committed marker existed to prevent; the local marker must
       prevent it too. `test_lane.sh` §36 covers it and must keep passing.
   L6. Worktree removed by hand          → no marker to read; no panic

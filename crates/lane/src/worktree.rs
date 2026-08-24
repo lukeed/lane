@@ -287,7 +287,7 @@ fn branch_args<'a>(adopt: bool, name: &'a str, dest: &'a str, base: &'a str) -> 
 pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     let root = main_root()?;
     // An existing branch is adopted, not recreated: a fetched pull request needs a lane
-    // to be reviewed or landed in, and a lane swept early needs one to come back to.
+    // to be reviewed or landed in, and a lane pruned early needs one to come back to.
     let adopt = git_ok(
         &[
             "rev-parse",
@@ -461,7 +461,7 @@ pub fn remove(name: &str) -> Result<()> {
 
     // Deleting the directory the caller is standing in leaves their shell in a path that no
     // longer exists, which is the failure plan 006 exists to prevent. `done` chdirs to the
-    // root before it gets here; `rm` and `sweep` have no reason to, so refuse instead.
+    // root before it gets here; `rm` and `prune` have no reason to, so refuse instead.
     let inside = std::env::current_dir()
         .ok()
         .and_then(|cwd| cwd.canonicalize().ok())

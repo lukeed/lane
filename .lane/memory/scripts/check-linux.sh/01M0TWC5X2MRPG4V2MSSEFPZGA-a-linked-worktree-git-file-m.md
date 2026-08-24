@@ -5,8 +5,9 @@ created: 2026-08-24T21:56:09Z
 branch: scripts-and-readme
 norm: '1'
 sig: e3b0c44298fc1c14
-body_hash: 999817dc23b59e30
-raw_hash: 52d096a671130973
+body_hash: 4739ec245ff7190e
+raw_hash: 905b26cf89989ba7
+vouched: 2026-08-24T22:41:28Z
 lines: 1-27
 supersedes: 01M0EY6QRYZN40BQYKQW99NN9Y
 ---

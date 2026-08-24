@@ -158,8 +158,8 @@ lane note -p <path> -a <anchor> --supersedes <id> '<replacement>'
 ```bash
 ./scripts/build.sh        # release-build and install the local lane binary
 cargo fmt --all --check
-cargo clippy --all-targets -- -D warnings
-cargo test               # unit and integration tests
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace   # unit and integration tests
 ./scripts/test.sh         # end to end against temporary Git repositories
 ./scripts/check-linux.sh  # the same gates in Linux without reflink support
 ```

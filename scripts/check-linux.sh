@@ -21,7 +21,7 @@ podman run --rm --tmpfs /scratch:size=2g -v "$ROOT":/w:ro -w /w docker.io/librar
   git config --global init.defaultBranch main
   rustc --version
   cargo fmt --all --check
-  cargo clippy --all-targets -- -D warnings
-  TMPDIR=/scratch cargo test
+  cargo clippy --workspace --all-targets -- -D warnings
+  TMPDIR=/scratch cargo test --workspace
   TMPDIR=/scratch ./scripts/test.sh
 '

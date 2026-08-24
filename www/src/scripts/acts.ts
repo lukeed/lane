@@ -119,7 +119,7 @@ export let list: Act[] = [
 		why: 'Three trees, three warm caches, one set of extents. Each agent writes only the blocks it touches, and every note is a new file — so two of them can annotate the same function in the same second.',
 	},
 	{
-		label: 'lane done',
+		label: 'lane merge',
 		claim: 'The worktree goes. What it learned lands on main.',
 		cwd: '~/…/fix-login',
 		from: 'fanout',
@@ -129,7 +129,7 @@ export let list: Act[] = [
 			{ kind: 'con', text: '"constant-time; no early return"' },
 			{ kind: 'out', text: 'noted -> src/auth.rs#fn verify' },
 			{ kind: 'gap', text: '' },
-			{ kind: 'cmd', text: 'lane done   # in each lane, in any order' },
+			{ kind: 'cmd', text: 'lane merge   # in each lane, in any order' },
 			{ kind: 'out', text: 'rebased onto main' },
 			{ kind: 'out', text: 'memory: +1 new; checked 8' },
 			{ kind: 'out', text: '  7 fresh, 1 content-changed' },

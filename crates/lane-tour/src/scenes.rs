@@ -49,7 +49,7 @@ under a note changes, the note is flagged and stays flagged until someone resolv
 it — because a confidently wrong note is worse than no note.
 
 The commands worth remembering are `lane new`, `lane why` before you edit, and
-`lane done`. Everything else is bookkeeping lane does for you.";
+`lane merge`. Everything else is bookkeeping lane does for you.";
 
 pub const SCENES: &[Scene] = &[
     Scene {
@@ -255,13 +255,13 @@ pub const SCENES: &[Scene] = &[
         title: "Land them, in any order",
         why: "Each landing rebases onto whatever trunk has become.",
         steps: &[
-            In(".lane/trees/agent-b", "lane done"),
+            In(".lane/trees/agent-b", "lane merge"),
             Say(
                 "Rebased, memory folded in, trunk fast-forwarded, lane deleted. Trunk's history\n\
                  stays linear and ends with a marker naming what landed.",
             ),
-            In(".lane/trees/agent-c", "lane done"),
-            In(".lane/trees/agent-a", "lane done"),
+            In(".lane/trees/agent-c", "lane merge"),
+            In(".lane/trees/agent-a", "lane merge"),
             Do("git log --oneline -6"),
             Say(
                 "Landed in a different order than they were opened, with no conflicts and no\n\
@@ -292,7 +292,7 @@ pub const SCENES: &[Scene] = &[
                  it for three seconds while a landing is attempted underneath.",
             ),
             Do(
-                "python3 -c \"import fcntl,time;f=open('.git/lane/main.lock','w');fcntl.flock(f,fcntl.LOCK_EX);time.sleep(3)\" & sleep 1; ( cd .lane/trees/fix-empty-token && lane done ); wait",
+                "python3 -c \"import fcntl,time;f=open('.git/lane/main.lock','w');fcntl.flock(f,fcntl.LOCK_EX);time.sleep(3)\" & sleep 1; ( cd .lane/trees/fix-empty-token && lane merge ); wait",
             ),
             Say(
                 "It refuses at once and says why, rather than blocking or corrupting the\n\
@@ -306,7 +306,7 @@ pub const SCENES: &[Scene] = &[
         title: "Land the last lane and read the result",
         why: "Where the memory ends up, and what it looks like to the next person.",
         steps: &[
-            In(".lane/trees/fix-empty-token", "lane done"),
+            In(".lane/trees/fix-empty-token", "lane merge"),
             Do("lane why src/auth.rs"),
             Say(
                 "Landing the fix changed `verify`, so every note about it is flagged at once —\n\

@@ -29,14 +29,14 @@ const COMMANDS: &[&str] = &[
     "holds",
     "check",
     "audit",
-    "done",
+    "merge",
     "push",
     "prune",
     "rm",
     "shellenv",
 ];
 
-/// How much memory one `(path, anchor)` may keep. Shared by `audit` and `done`,
+/// How much memory one `(path, anchor)` may keep. Shared by `audit` and `merge`,
 /// which is why it is a type rather than two pairs of fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Budget {
@@ -89,7 +89,7 @@ pub struct AuditArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DoneArgs {
+pub struct MergeArgs {
     pub base: Option<String>,
     pub keep: bool,
     pub cd: bool,
@@ -125,7 +125,7 @@ pub enum Parsed {
     Holds { id: String },
     Check { json: bool },
     Audit(AuditArgs),
-    Done(DoneArgs),
+    Merge(MergeArgs),
     Push(PushArgs),
     Prune { dry_run: bool },
     Rm(RmArgs),
@@ -159,7 +159,7 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("holds") => parse_one(rest(raw), Help::Holds, "<ID>", |id| Parsed::Holds { id }),
         Some("check") => parse_check(rest(raw)),
         Some("audit") => parse_audit(rest(raw)),
-        Some("done") => parse_done(rest(raw)),
+        Some("merge") => parse_merge(rest(raw)),
         Some("push") => parse_push(rest(raw)),
         Some("prune") => parse_prune(rest(raw)),
         Some("rm") => parse_rm(rest(raw)),
@@ -384,19 +384,19 @@ fn parse_audit(raw: Vec<OsString>) -> Result<Parsed> {
     }))
 }
 
-fn parse_done(raw: Vec<OsString>) -> Result<Parsed> {
+fn parse_merge(raw: Vec<OsString>) -> Result<Parsed> {
     let (flags, after) = terminated(raw);
     let mut pargs = pico_args::Arguments::from_vec(flags);
     if pargs.contains(["-h", "--help"]) {
-        return Ok(Parsed::Help(Help::Done));
+        return Ok(Parsed::Help(Help::Merge));
     }
     let base = pargs.opt_value_from_str("--base")?;
     let keep = pargs.contains("--keep");
     let cd = pargs.contains("--cd");
     let squash = pargs.contains("--squash");
     let budget = budget(&mut pargs)?;
-    none(positionals(pargs, after, Help::Done)?, Help::Done)?;
-    Ok(Parsed::Done(DoneArgs {
+    none(positionals(pargs, after, Help::Merge)?, Help::Merge)?;
+    Ok(Parsed::Merge(MergeArgs {
         base,
         keep,
         cd,
@@ -439,7 +439,7 @@ fn parse_rm(raw: Vec<OsString>) -> Result<Parsed> {
     Ok(Parsed::Rm(RmArgs { name, force }))
 }
 
-/// The budget flags `audit` and `done` share.
+/// The budget flags `audit` and `merge` share.
 fn budget(pargs: &mut pico_args::Arguments) -> Result<Budget> {
     let default = Budget::default();
     Ok(Budget {

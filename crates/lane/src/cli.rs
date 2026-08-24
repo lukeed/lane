@@ -70,7 +70,7 @@ pub fn run() -> Result<i32> {
         Parsed::Holds { id } => holds(&id),
         Parsed::Check { json } => check(json),
         Parsed::Audit(args) => audit_cmd(&args.base, &args.budget, args.json),
-        Parsed::Done(args) => done(
+        Parsed::Merge(args) => merge(
             args.base.as_deref(),
             args.keep,
             args.cd,
@@ -110,7 +110,7 @@ const PROTOCOL: &str = "\n<!-- lane:protocol -->\n\
 ## Context memory\n\n\
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note -p <path> -a <anchor> \"...\"`.\n\
-- Do not edit `.lane/` by hand; `lane done` manages it.\n\
+- Do not edit `.lane/` by hand; `lane merge` manages it.\n\
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n\
 <!-- /lane:protocol -->\n";
 
@@ -907,7 +907,7 @@ fn prepare(
     }))
 }
 
-fn done(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget) -> Result<i32> {
+fn merge(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget) -> Result<i32> {
     let info: &mut dyn Write = if cd {
         &mut std::io::stderr()
     } else {
@@ -1068,10 +1068,10 @@ fn shellenv() -> Result<i32> {
     println!(
         r#"lane() {{
   case "$1" in
-    new)  shift; local p; p=$(command lane new --cd "$@")  || return; cd "$p" ;;
-    cd)   shift; local p; p=$(command lane path "$1")      || return; cd "$p" ;;
-    done) shift; local p; p=$(command lane done --cd "$@") || return; cd "$p" ;;
-    *)    command lane "$@" ;;
+    new)   shift; local p; p=$(command lane new --cd "$@")   || return; cd "$p" ;;
+    cd)    shift; local p; p=$(command lane path "$1")       || return; cd "$p" ;;
+    merge) shift; local p; p=$(command lane merge --cd "$@") || return; cd "$p" ;;
+    *)     command lane "$@" ;;
   esac
 }}"#
     );

@@ -5,9 +5,7 @@ description: Use lane in this repository — open a worktree with `lane new`, re
 
 # lane
 
-This repository keeps memory about its own code in `.lane/`. Notes are plain markdown,
-written once and never rewritten. Read them before you edit, and leave one behind when you
-learn something the next agent would otherwise rediscover.
+This repository keeps memory about its own code in `.lane/`. Notes are plain markdown, written once and never rewritten. Read them before you edit, and leave one behind when you learn something the next agent would otherwise rediscover.
 
 ## The loop
 
@@ -17,12 +15,9 @@ lane new fix-login     # branch + worktree; the build cache arrives by reference
 lane done              # rebase, audit memory, fast-forward trunk, delete the lane
 ```
 
-`lane new` prints the path. Work there, not in the parent tree. `lane done` rebases, so
-commit or stash tracked changes first; untracked files are fine.
+`lane new` prints the path. Work there, not in the parent tree. `lane done` rebases, so commit or stash tracked changes first; untracked files are fine.
 
-Where trunk is protected, `lane done --no-merge` stops after the memory commit and leaves
-the merge to the pull request. Push the branch, and once it merges run `lane sweep` to
-remove the lane. `lane ls` marks a lane `landed` when trunk carries its landing record.
+Where trunk is protected, `lane done --no-merge` stops after the memory commit and leaves the merge to the pull request. Push the branch, and once it merges run `lane sweep` to remove the lane. `lane ls` marks a lane `landed` when trunk carries its landing record.
 
 ## Read before you edit
 
@@ -30,27 +25,17 @@ remove the lane. `lane ls` marks a lane `landed` when trunk carries its landing 
 lane why src/auth.rs
 ```
 
-Do this for every file you are about to change. The mark on a line is freshness: blank is
-current, `~` the implementation moved, `!` the described thing changed shape, `x` the symbol
-is gone, `?` the file's language has no grammar so nothing was checked. A `~` note is often
-still true — the words are what matter, not the hash.
+Do this for every file you are about to change. The mark on a line is freshness: blank is current, `~` the implementation moved, `!` the described thing changed shape, `x` the symbol is gone, `?` the file's language has no grammar so nothing was checked. A `~` note is often still true — the words are what matter, not the hash.
 
-Before `lane done`, run `lane check`. It lists every note that is not fresh, each with
-the id you need next. Read the note and its current span, then take exactly one action:
+Before `lane done`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 
-- `lane holds <id>` when the note is still true. This appends a record to
-  `.lane/log.jsonl`, so commit it — a confirmation you do not commit is one nobody else
-  gets.
-- `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is
-  still right but the sentence is wrong.
-
-Any unambiguous prefix of an id works, so the ten characters `lane check` and `lane why`
-print are enough. `lane check --json` carries the same rows plus each note's body and
-current span, for when you would rather not open the files.
+- `lane holds <id>` when the note is still true. This appends a record to `.lane/log.jsonl`, so commit it — a confirmation you do not commit is one nobody else gets.
+- `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is still right but the sentence is wrong.
 - Delete the note file and commit when the constraint is gone.
 
-A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone;
-let audit move that note to the attic instead of vouching for it.
+Any unambiguous prefix of an id works, so the ten characters `lane check` and `lane why` print are enough. `lane check --json` carries the same rows plus each note's body and current span, for when you would rather not open the files.
+
+A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone; let audit move that note to the attic instead of vouching for it.
 
 Notes are evicted oldest and stalest first, and only when an anchor is over budget.
 
@@ -64,9 +49,7 @@ make verify constant-time
 Why: src/auth.rs#fn verify | early return leaks token length
 ```
 
-The form is `Why: <path>[#<anchor>] | <text>`, in the trailer block at the end. The ` | `
-and the path are required; omitting `#<anchor>` means the whole file. If nothing is
-captured, run `lane install hooks` once.
+The form is `Why: <path>[#<anchor>] | <text>`, in the trailer block at the end. The ` | ` and the path are required; omitting `#<anchor>` means the whole file. If nothing is captured, run `lane install hooks` once.
 
 When the insight does not arrive at a commit boundary:
 
@@ -80,9 +63,7 @@ lane note -p src/auth.rs -a "fn verify" "must stay constant-time"
 
 **Record what must stay true, not what you did.**
 
-The subject above already says `make verify constant-time`; the note says why that has to
-hold. A subject describes a change, a note describes a constraint that outlives it. A
-trailer that mostly restates its own subject is rejected rather than stored.
+The subject above already says `make verify constant-time`; the note says why that has to hold. A subject describes a change, a note describes a constraint that outlives it. A trailer that mostly restates its own subject is rejected rather than stored.
 
 ## Anchors
 

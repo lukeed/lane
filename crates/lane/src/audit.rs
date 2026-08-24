@@ -26,8 +26,11 @@ pub struct Outcome {
 }
 
 pub fn holds(root: &Path, id: &str) -> Result<String> {
-    let note = store::resolve_id(root, id)?;
+    let mut note = store::resolve_id(root, id)?;
     let id = note.meta.id.clone();
+    if note.unreadable {
+        anyhow::bail!("cannot hold note {id}: frontmatter is unreadable");
+    }
     let mut checker = store::Checker::new(root);
     let res = checker.check(&note);
     if res.span.is_none() {
@@ -37,14 +40,7 @@ pub fn holds(root: &Path, id: &str) -> Result<String> {
         );
     }
 
-    store::append_confirmation(
-        root,
-        store::HOLDS,
-        &note,
-        &res.sig,
-        &res.body_hash,
-        &res.raw_hash,
-    )?;
+    store::confirm(&mut note, &res.sig, &res.body_hash, &res.raw_hash)?;
     Ok(id)
 }
 
@@ -62,6 +58,7 @@ fn eviction_key(
 }
 
 pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
+    store::fold_legacy_log(root)?;
     let created = store::promote_pending(root)?;
     let touched: HashSet<String> = if opts.base.is_empty() {
         HashSet::new()
@@ -99,17 +96,9 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
         if res.rebaselined {
             rebaselined += 1;
         }
-        // Frontmatter cannot be rewritten, so a normalization change is adopted by
-        // recording it. Marked `rebaseline`, never `holds`: nobody vouched for this.
+        // A normalization change adopts a new baseline without claiming a person vouched.
         if res.adopted {
-            store::append_confirmation(
-                root,
-                store::REBASELINE,
-                note,
-                &res.sig,
-                &res.body_hash,
-                &res.raw_hash,
-            )?;
+            store::rebaseline(note, &res.sig, &res.body_hash, &res.raw_hash)?;
         }
         // Seeing drift is not enough to vouch for the new fingerprint, and there is
         // nowhere to vouch it into: the baseline stays whatever was last confirmed.
@@ -236,15 +225,6 @@ mod tests {
         std::fs::write(root.join("src/auth.rs"), body).unwrap();
     }
 
-    fn log_kinds(root: &Path) -> Vec<String> {
-        std::fs::read_to_string(store::log_path(root))
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-            .map(|e| e["kind"].as_str().unwrap_or_default().to_string())
-            .collect()
-    }
-
     #[test]
     fn unresolved_drift_never_adopts_the_shape_it_reported() {
         let root = tempfile::tempdir().unwrap();
@@ -257,11 +237,11 @@ mod tests {
         assert_eq!(first.tier, BODY);
         assert_eq!(second.tier, BODY, "drift must stay flagged until resolved");
         assert_eq!(second.base, first.base, "the baseline must not move");
-        assert!(log_kinds(root.path()).is_empty(), "a check writes nothing");
+        assert!(note.meta.vouched.is_empty(), "a check writes nothing");
     }
 
     #[test]
-    fn holds_records_the_fingerprint_it_vouched_for() {
+    fn holds_rewrites_the_note_with_the_fingerprint_it_vouched_for() {
         let root = tempfile::tempdir().unwrap();
         let note = note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
         edit(root.path(), "pub fn verify() {\n    new();\n}\n");
@@ -270,12 +250,15 @@ mod tests {
 
         holds(root.path(), &note.meta.id).unwrap();
 
-        let confirmed = store::confirmations(root.path())[&note.meta.id].clone();
-        assert_eq!(confirmed.sig, drifted.sig);
-        assert_eq!(confirmed.body_hash, drifted.body_hash);
-        assert_eq!(confirmed.raw_hash, drifted.raw_hash);
-        assert_eq!(log_kinds(root.path()), vec![store::HOLDS]);
-        assert_eq!(store::Checker::new(root.path()).check(&note).tier, FRESH);
+        let confirmed = store::resolve_id(root.path(), &note.meta.id).unwrap();
+        assert_eq!(confirmed.meta.sig, drifted.sig);
+        assert_eq!(confirmed.meta.body_hash, drifted.body_hash);
+        assert_eq!(confirmed.meta.raw_hash, drifted.raw_hash);
+        assert!(!confirmed.meta.vouched.is_empty());
+        assert_eq!(
+            store::Checker::new(root.path()).check(&confirmed).tier,
+            FRESH
+        );
     }
 
     #[test]
@@ -285,9 +268,13 @@ mod tests {
         edit(root.path(), "pub fn verify() {\n    new();\n}\n");
         holds(root.path(), &note.meta.id).unwrap();
 
-        // The log is the whole record: nothing per-branch is left to garbage-collect.
+        // The note is the whole record: nothing per-branch is left to garbage-collect.
         assert!(!root.path().join(store::LANE_DIR).join("branch").exists());
-        assert_eq!(store::Checker::new(root.path()).check(&note).tier, FRESH);
+        let confirmed = store::resolve_id(root.path(), &note.meta.id).unwrap();
+        assert_eq!(
+            store::Checker::new(root.path()).check(&confirmed).tier,
+            FRESH
+        );
     }
 
     #[test]
@@ -299,11 +286,11 @@ mod tests {
         let error = holds(root.path(), &note.meta.id).unwrap_err();
 
         assert!(error.to_string().contains(MISSING));
-        assert!(log_kinds(root.path()).is_empty());
+        assert!(note.meta.vouched.is_empty());
     }
 
     #[test]
-    fn a_fresh_audit_writes_no_record() {
+    fn a_fresh_audit_does_not_rewrite_the_note() {
         let root = tempfile::tempdir().unwrap();
         note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
 
@@ -318,7 +305,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(out.stats[FRESH], 1);
-        assert!(log_kinds(root.path()).is_empty());
+        let note = store::load_notes(root.path(), None).pop().unwrap();
+        assert!(note.meta.vouched.is_empty());
     }
 
     #[test]

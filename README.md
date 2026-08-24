@@ -59,9 +59,8 @@ git config --add lane.exclude packages/legacy/node_modules
 
 ```
 .lane/
-  memory/<path>/<ulid>-<slug>.md the note; written once, never rewritten
+  memory/<path>/<ulid>-<slug>.md the note and its confirmed baseline
   attic/<path>/<ulid>-<slug>.md  the same file, retired, byte-identical
-  log.jsonl                      the record: evictions, holds, landings
   trees/<name>/                  the lane worktree
 ```
 
@@ -78,10 +77,8 @@ and stored nowhere.
 `memory/` is reserved. Everything under it mirrors your paths, which is why a repo may
 have its own `attic/` without colliding with ours.
 
-The only `merge=union` rule is for `log.jsonl`, the one genuinely append-only
-file — which is what union merge is actually for. Notes need no rule because
-they never change; a conflict on one means two people disagreed about `pinned`,
-and that should be loud.
+Notes need no merge rule. A conflict on one means two people disagreed about its
+current baseline or `pinned`, and that should be loud.
 
 Staleness is computed per anchor, not per file, against a normalized hash of
 that anchor's span only:

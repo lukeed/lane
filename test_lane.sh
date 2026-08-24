@@ -230,8 +230,8 @@ is "and the branch goes with it" "$(git branch --list gone | wc -l | tr -d ' ')"
 
 echo "== 12. init scaffolding and the per-anchor budget =="
 setup
-is "gitattributes has one union rule, for the log" \
-   "$(grep -c '^\.lane/log\.jsonl merge=union$' .gitattributes)" "1"
+is "init creates no merge driver" \
+   "$([ -e .gitattributes ] && echo yes || echo no)" "no"
 is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
 is "init does not touch .gitignore" "$(grep -c 'pending.jsonl' .gitignore)" "0"
 
@@ -344,8 +344,8 @@ is "the note carries no path field" "$(grep -c '^path:' "$N")" "0"
 is "the baseline is the note's own frontmatter" "$(grep -c '^body_hash:' "$N")" "1"
 is "nothing derived is written" \
    "$([ -e .lane/branch ] && echo yes || echo no)" "no"
-is "an audit that finds drift writes no record" \
-   "$([ -e .lane/log.jsonl ] && echo yes || echo no)" "no"
+is "an audit that finds drift creates no shared log" \
+   "$(find .lane -name 'log.jsonl' | wc -l | tr -d ' ')" "0"
 
 mkdir -p attic && echo "user content" > attic/f.txt
 git add -A && git commit -qm user-attic
@@ -360,11 +360,8 @@ git add -A && git commit -qm memory
   && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
   && "$LANE" done > /dev/null 2>&1 )
 cd "$TMP/repo"
-is "done lands one log and nothing per-branch" \
-   "$(find .lane -maxdepth 1 -name 'log.jsonl' | wc -l | tr -d ' '):$([ -e .lane/branch ] && echo yes || echo no)" \
-   "1:no"
-is "the landing is marked in trunk's log" \
-   "$(python3 -c 'import json;print(sum(1 for l in open(".lane/log.jsonl") if json.loads(l)["kind"]=="landing" and json.loads(l)["branch"]=="land"))')" "1"
+is "done leaves no shared landing record" \
+   "$(find .lane -name 'log.jsonl' | wc -l | tr -d ' ')" "0"
 
 echo "== 18. anchors we cannot resolve are kept, not discarded =="
 setup
@@ -606,8 +603,8 @@ setup
 "$LANE" new solo > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/solo" && echo "work" > src/new.rs && git add -A && git commit -qm "add work" )
 ( cd "$TMP/repo/.lane/trees/solo" && "$LANE" done > /dev/null 2>&1 )
-is "trunk ends with the sync marker" \
-  "$(git log -1 --format=%s | grep -c '^lane: sync solo memory$')" "1"
+is "a landing with no memory change needs no sync commit" \
+  "$(git log -1 --format=%s | grep -c '^add work$')" "1"
 is "history stayed linear" "$(git log -1 --format=%P | wc -w | tr -d ' ')" "1"
 
 "$LANE" new sq > /dev/null 2>&1
@@ -677,6 +674,23 @@ cd "$TMP/repo"
 is "fresh state and change survive done" \
    "$("$LANE" check | awk '/^fresh/{print $2}'):$(grep -c '&& true' src/auth.rs)" "1:1"
 
+echo "== 31b. damaged frontmatter is never re-vouched =="
+setup
+"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" audit > /dev/null
+F=$(find .lane/memory -name '*.md' | head -1)
+ID=$(basename "$F" | cut -d- -f1)
+python3 - "$F" <<'DUP'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+io.open(p, "w", encoding="utf-8").write(s.replace("created:", "created: broken\ncreated:", 1))
+DUP
+BEFORE=$(cksum < "$F")
+is "holds refuses damaged frontmatter" \
+   "$("$LANE" holds "$ID" 2>&1 | grep -c 'frontmatter is unreadable')" "1"
+is "holds leaves damaged frontmatter byte-identical" "$(cksum < "$F")" "$BEFORE"
+
 echo "== 32. a pushed lane merges elsewhere, then sweeps =="
 setup
 remote_setup
@@ -723,8 +737,8 @@ MERGED_B=$(git merge --no-edit b > /tmp/merge-b.out 2>&1; echo $?)
 is "the second merges without conflict" "$MERGED_B" "0"
 is "both notes survive" \
    "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "2"
-is "both landings are recorded" \
-   "$(python3 -c 'import json;print(sum(1 for l in open(".lane/log.jsonl") if json.loads(l)["kind"]=="landing"))')" "2"
+is "both prepared lanes remain individually sweepable" \
+   "$("$LANE" ls | grep -c '^[ab] .*landed')" "2"
 is "sweep collects both" "$("$LANE" sweep 2>&1 | grep -c '^removed')" "2"
 
 echo "== 34. a lane can adopt a branch that already exists =="
@@ -778,8 +792,8 @@ remote_setup
 ( cd "$TMP/repo/.lane/trees/fix" \
   && "$LANE" note -p src/auth.rs -a "fn verify" "first time round" > /dev/null \
   && "$LANE" done > /dev/null 2>&1 )
-is "the marker carries a lane id" \
-   "$(python3 -c 'import json;print(*[len(json.loads(l)["lane"]) for l in open(".lane/log.jsonl") if json.loads(l)["kind"]=="landing"])')" "26"
+is "landing leaves no committed marker" \
+   "$(find .lane -name 'log.jsonl' | wc -l | tr -d ' ')" "0"
 # `fix` twice in a week is normal, and the second one has landed nothing.
 "$LANE" new fix > /dev/null 2>&1
 is "a reused name is not landed" "$("$LANE" ls | grep -c 'fix .*open')" "1"

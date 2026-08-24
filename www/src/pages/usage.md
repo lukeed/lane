@@ -242,7 +242,7 @@ the note to the attic instead of vouching for it.
 
 Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by
 `pinned > touched by this lane > freshness > age` and moves the rest to
-`.lane/attic/` with the reason recorded in `.lane/log.jsonl`.
+`.lane/attic/`; its location is the retirement record.
 Nothing is deleted.
 
 Keep something permanently:
@@ -325,12 +325,10 @@ The short version. See [commands](/commands) for full information.
 ```
 yourproject/
   .lane/
-    memory/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note, never rewritten
+    memory/src/auth.rs/01M0B9MBYB-must-stay-constant-time.md   the note and its baseline
     attic/                        evicted, recoverable
-    log.jsonl                     holds, evictions and landings
     trees/
       fix-login/                  the lane worktree
-  .gitattributes                  one union rule, for log.jsonl
   AGENTS.md
   .git/lane/pending.jsonl         notes not yet promoted, per worktree
 ```

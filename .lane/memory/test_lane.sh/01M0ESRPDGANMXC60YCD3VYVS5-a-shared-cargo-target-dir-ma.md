@@ -5,8 +5,9 @@ created: 2026-08-20T03:20:05Z
 branch: main
 norm: '1'
 sig: e3b0c44298fc1c14
-body_hash: 0498c072a23d59c9
-raw_hash: 946f591df3aed085
+body_hash: b11d5967f099ebcf
+raw_hash: 9776274792ed9c8a
+vouched: 2026-08-24T21:04:42Z
 lines: 1-514
 ---
 

@@ -196,6 +196,20 @@ is "git itself refuses the squashed branch" \
 is "rm sees the squash and needs no --force" "$?" "0"
 is "the squashed branch is gone" "$(git branch --list squashed | wc -l | tr -d ' ')" "0"
 
+# The other half of the same question: a rebase merge replays each commit on its own,
+# so a branch of several is landed by patch while no single collapsed diff matches.
+"$LANE" new replayed > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/replayed" \
+  && echo "fn one() {}" > src/one.rs && git add -A && git commit -qm one > /dev/null \
+  && echo "fn two() {}" > src/two.rs && git add -A && git commit -qm two > /dev/null )
+git cherry-pick "$(git merge-base main replayed)..replayed" > /dev/null 2>&1
+echo "// moved on" >> src/auth.rs && git add -A && git commit -qm "trunk moved" > /dev/null
+is "git itself refuses the replayed branch" \
+   "$(git branch -d replayed > /dev/null 2>&1 && echo deleted || echo refused)" "refused"
+"$LANE" rm replayed > /tmp/replay.out 2>&1
+is "rm sees a multi-commit rebase merge" "$?" "0"
+is "the replayed branch is gone" "$(git branch --list replayed | wc -l | tr -d ' ')" "0"
+
 "$LANE" rm ghost > /tmp/ghost.out 2>&1
 is "rm rejects a name that is neither lane nor branch" "$?" "1"
 is "rm says so plainly" "$(grep -c 'no lane ghost' /tmp/ghost.out)" "1"

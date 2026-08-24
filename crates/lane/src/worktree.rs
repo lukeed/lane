@@ -524,6 +524,12 @@ pub fn contained_in(root: &Path, trunk: &str, branch: &str) -> bool {
     if git_ok(&["merge-base", "--is-ancestor", branch, trunk], Some(root)) {
         return true;
     }
+    // A rebase merge replays the commits one for one, so their patches land separately.
+    // The collapsed probe below is the squash answer and matches none of them.
+    let replayed = try_git(&["cherry", trunk, branch], Some(root));
+    if !replayed.is_empty() && replayed.lines().all(|line| line.starts_with('-')) {
+        return true;
+    }
     let Ok(base) = git(&["merge-base", trunk, branch], Some(root)) else {
         return false;
     };

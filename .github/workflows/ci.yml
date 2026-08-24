@@ -43,3 +43,23 @@ jobs:
 
       # Builds the binary itself and drives real git repos in a tmpdir.
       - run: ./test_lane.sh
+
+  # Every main push whose manifests move writes a new entry and leaves the old one behind
+  # until GitHub's own eviction. Keep the newest entry per restore key, drop the rest.
+  prune:
+    needs: gates
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --limit 100 --json id,key,createdAt \
+            | jq -r 'group_by(.key | sub("-[^-]+$"; ""))
+                     | map(sort_by(.createdAt) | reverse | .[1:])
+                     | flatten | .[].id' \
+            | while read -r id; do
+                gh cache delete --repo "$GITHUB_REPOSITORY" "$id"
+              done

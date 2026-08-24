@@ -88,14 +88,14 @@ Conventions: one-line comments, `anyhow::Result`, command functions return an ex
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 2 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 3 |
 
 At `43e404f` the baselines are 40 and 72.
 
 ## Scope
 
 **In scope**: `crates/lane/src/worktree.rs` (the new check), `cli.rs` (`done`),
-`test_lane.sh`, and `USAGE.md`'s "When things go wrong" section.
+`scripts/test.sh`, and `USAGE.md`'s "When things go wrong" section.
 
 **Out of scope**:
 - The rebase-then-audit ordering. The preflight goes *before* the rebase; the ordering of
@@ -155,7 +155,7 @@ Exit 1, before the rebase, before the audit, before any commit.
 
 ### Step 3: Cover it
 
-Add to `test_lane.sh` before the summary:
+Add to `scripts/test.sh` before the summary:
 
 ```bash
 echo "== N. done refuses before it writes =="
@@ -177,7 +177,7 @@ git checkout -- src/auth.rs
 The third assertion is the point: the old behaviour made a memory commit before failing.
 Confirm it fails against the current code before implementing.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 3.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 3.
 
 ### Step 4: Document the new refusal
 
@@ -188,7 +188,7 @@ and that nothing in the lane was touched.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` passes, baseline + 2; `./scripts/test.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] The traced scenario exits 1 with no rebase, no audit and no memory commit
 - [ ] `lane done` still succeeds normally when the main worktree is clean, and when it is

@@ -5,7 +5,7 @@
 > stop and report. The reviewer who dispatched you maintains `plans/README.md`; do not
 > edit it.
 >
-> **Drift check (run first)**: `git diff --stat bdc3fac..HEAD -- crates/ test_lane.sh`
+> **Drift check (run first)**: `git diff --stat bdc3fac..HEAD -- crates/ scripts/test.sh`
 
 ## Status
 
@@ -93,7 +93,7 @@ the `--dirty` arm's `skip` closure — and the structural destination guard insi
 rather than a name.
 
 Fifteen files mention the old names. `grep -rIl '\.context\|\.lanes\|CONTEXT_DIR\|LANES_DIRNAME'`
-finds them; the list includes `test_lane.sh`, `.gitattributes`, `README.md`, `USAGE.md`,
+finds them; the list includes `scripts/test.sh`, `.gitattributes`, `README.md`, `USAGE.md`,
 `explainer.md`, `AGENTS.md`, `crates/lane/assets/skill.md` and `crates/example/src/scenes.rs`.
 
 Conventions: comments only where the reason is not obvious, one line. Commit subjects are
@@ -106,7 +106,7 @@ Conventional Commits, under 28 characters, describing WHAT; the reason belongs i
 | Unit + integration | `cargo test` | 80, unchanged |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, 128, unchanged |
+| End to end | `./scripts/test.sh` | `failed: 0`, 128, unchanged |
 | Linux gates | `./scripts/check-linux.sh` | exit 0 |
 
 Both counts must be **unchanged**. This plan renames things; it adds no behaviour. If a
@@ -117,7 +117,7 @@ Capture every exit code without a pipe (`cmd > /tmp/out 2>&1; echo $?`).
 ## Scope
 
 **In scope**: `crates/lane/src/*.rs`, `crates/example/src/scenes.rs`,
-`crates/example/src/main.rs`, `test_lane.sh`, `.gitattributes`, `README.md`, `USAGE.md`,
+`crates/example/src/main.rs`, `scripts/test.sh`, `.gitattributes`, `README.md`, `USAGE.md`,
 `explainer.md`, `AGENTS.md`, `crates/lane/assets/skill.md`, and this repository's existing
 store data.
 
@@ -195,7 +195,7 @@ string. It is still the only rule.
 
 Update the remaining files. `AGENTS.md`'s `PROTOCOL` and
 `crates/lane/assets/skill.md` both reference `.context/`; so do `README.md`, `USAGE.md`,
-`explainer.md`, `test_lane.sh` and the tour's `scenes.rs`.
+`explainer.md`, `scripts/test.sh` and the tour's `scenes.rs`.
 
 `README.md` also gains a short section — after **Memory** — giving the two snippets for
 keeping the store out of editor pickers:
@@ -234,7 +234,7 @@ Then reinstall the skill, whose asset now differs from the installed copy:
 
 ## Done criteria
 
-- [ ] `cargo test` 80 and `./test_lane.sh` 128 — both unchanged
+- [ ] `cargo test` 80 and `./scripts/test.sh` 128 — both unchanged
 - [ ] `cargo clippy --all-targets` zero warnings; `cargo fmt --all --check` exit 0
 - [ ] `./scripts/check-linux.sh` exit 0
 - [ ] A fresh `lane init` produces `.lane/` and nothing named `.context` or `.lanes`
@@ -248,7 +248,7 @@ Then reinstall the skill, whose asset now differs from the installed copy:
 
 - A newly created lane contains a `.lane/trees` directory. Stop at once — that is the
   recursion the guards exist to prevent.
-- `cargo test` or `./test_lane.sh` changes count in either direction.
+- `cargo test` or `./scripts/test.sh` changes count in either direction.
 - `lane check` on this repository reports anything other than 25 fresh once the code is
   renamed. The data is already in place; a wrong count means a path builder is wrong, and
   guessing at it risks writing a second store beside the real one.

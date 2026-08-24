@@ -37,12 +37,12 @@ jobs:
 
       - run: cargo fmt --all --check
 
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - run: cargo test
+      - run: cargo test --workspace
 
       # Builds the binary itself and drives real git repos in a tmpdir.
-      - run: ./test_lane.sh
+      - run: ./scripts/test.sh
 
   # Every main push whose manifests move writes a new entry and leaves the old one behind
   # until GitHub's own eviction. Keep the newest entry per restore key, drop the rest.

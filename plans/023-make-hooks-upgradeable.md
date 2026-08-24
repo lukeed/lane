@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat c62f2d6..HEAD -- crates/lane/src/cli.rs test_lane.sh`
+> `git diff --stat c62f2d6..HEAD -- crates/lane/src/cli.rs scripts/test.sh`
 
 ## Status
 
@@ -122,7 +122,7 @@ V1 and current text are identical today.
 - `write_protocol()` and `PROTOCOL_V1` in the same file are the pattern to follow. Read them
   first; this plan is the same idea applied to a different file format.
 
-`test_lane.sh` section 22 covers capture and the hooks. The harness gives you `setup`, `is`
+`scripts/test.sh` section 22 covers capture and the hooks. The harness gives you `setup`, `is`
 and `sedi` (use `sedi`, never `sed -i`, so the suite stays portable to BSD sed).
 
 Conventions: one-line comments, and only where the reason is not obvious; `anyhow::Result`;
@@ -136,7 +136,7 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 | Unit + integration | `cargo test` | baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 
 Record both baselines before starting; at `c62f2d6` they are 65 and 104.
 
@@ -144,7 +144,7 @@ Record both baselines before starting; at `c62f2d6` they are 65 and 104.
 
 ## Scope
 
-**In scope**: `crates/lane/src/cli.rs`, `test_lane.sh`.
+**In scope**: `crates/lane/src/cli.rs`, `scripts/test.sh`.
 
 **Out of scope**:
 - What the hooks *do*. The post-commit body stays exactly as plan 022 left it; only its
@@ -215,7 +215,7 @@ cat .git/hooks/post-commit          # expect: current body, both markers
 Add unit tests to the existing `mod tests` in `cli.rs` for the classification: delimited and
 identical, delimited and differing, legacy exact, foreign. Four tests.
 
-Add to `test_lane.sh` in or after section 22:
+Add to `scripts/test.sh` in or after section 22:
 
 ```bash
 echo "== N. hooks can be upgraded and really removed =="
@@ -239,11 +239,11 @@ is "a hook that was only lane's is deleted" \
 
 Confirm each fails against the pre-Step-2 binary.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `sh -n` exits 0 on both generated hooks
 - [ ] `lane uninstall hooks` never prints success without having changed the file

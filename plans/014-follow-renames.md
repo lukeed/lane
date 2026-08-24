@@ -70,11 +70,11 @@ Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at fi
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 2 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 
 ## Scope
 
-**In scope**: `crates/lane/src/git.rs`, `store.rs`, `audit.rs`, `test_lane.sh`, and the
+**In scope**: `crates/lane/src/git.rs`, `store.rs`, `audit.rs`, `scripts/test.sh`, and the
 `README.md` / `USAGE.md` lines describing the `anchor-missing` tier.
 
 **Out of scope**:
@@ -153,7 +153,7 @@ renames when that is not resolvable.
 
 ### Step 4: Cover it
 
-Add to `test_lane.sh` before the summary. Four assertions:
+Add to `scripts/test.sh` before the summary. Four assertions:
 
 ```bash
 echo "== N. a renamed file keeps its memory =="
@@ -177,7 +177,7 @@ is "a genuine deletion still evicts" \
 The last assertion is the one that keeps this honest: following renames must not turn into
 never evicting. Confirm the first three fail against the current code before changing it.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ### Step 5: Say so in the docs
 
@@ -189,7 +189,7 @@ that eviction means the file or symbol is genuinely gone.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 2; `./scripts/test.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `git mv` of a noted file followed by `lane audit` leaves the attic empty and
       `lane why <new path>` showing the note

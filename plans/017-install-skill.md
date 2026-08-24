@@ -5,7 +5,7 @@
 > stop and report. Update this plan's row in `plans/README.md` when done.
 >
 > **Drift check (run first)**:
-> `git diff --stat 828ba60..HEAD -- crates/lane/src/cli.rs test_lane.sh explainer.md USAGE.md`
+> `git diff --stat 828ba60..HEAD -- crates/lane/src/cli.rs scripts/test.sh explainer.md USAGE.md`
 
 ## Status
 
@@ -107,7 +107,7 @@ exist in the repositories this skill installs into.
   routine that refuses to touch a foreign hook.
 - `crates/lane/src/cli.rs` — `PROTOCOL`, the three lines `init()` appends to `AGENTS.md`.
 - `crates/lane/Cargo.toml` — no `assets/` directory exists yet.
-- `test_lane.sh` — section 22 exercises capture; it calls `lane hooks install` and will
+- `scripts/test.sh` — section 22 exercises capture; it calls `lane hooks install` and will
   need the new spelling.
 - Four other places name the old spelling and all are in scope: `cli.rs:344` (the closing
   line `init()` prints), `README.md:148`, `USAGE.md:80` and its Reference rows at 250-251,
@@ -126,7 +126,7 @@ Commit subject: Conventional Commits, one short clause, no scope.
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 2 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 5 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 5 |
 | Linux gates | `./scripts/check-linux.sh` | all pass |
 
 Record both counts before you start and express your result as a delta. At `828ba60` they
@@ -134,7 +134,7 @@ are 53 and 86, but plan 018 lands ahead of this one and adds an assertion.
 
 ## Scope
 
-**In scope**: `crates/lane/src/cli.rs`, `crates/lane/assets/skill.md` (new), `test_lane.sh`,
+**In scope**: `crates/lane/src/cli.rs`, `crates/lane/assets/skill.md` (new), `scripts/test.sh`,
 `README.md`, `USAGE.md`, `explainer.md`.
 
 **Out of scope**:
@@ -166,12 +166,12 @@ Replace the `Hooks` variant with two variants, each taking what to act on:
 with `Installable { Hooks, Skill }`. Keep the existing hook install and uninstall bodies
 exactly as they are; only the dispatch changes.
 
-Update `test_lane.sh` section 22's `lane hooks install` call in the same commit.
+Update `scripts/test.sh` section 22's `lane hooks install` call in the same commit.
 
 **Verify**:
 - `lane install hooks` and `lane uninstall hooks` behave as `lane hooks install`/`uninstall` did
 - `lane hooks install` now exits non-zero with an unrecognised-subcommand error
-- `./test_lane.sh` → `failed: 0` at the baseline count
+- `./scripts/test.sh` → `failed: 0` at the baseline count
 
 ### Step 2: Confirm the skill asset is present
 
@@ -241,7 +241,7 @@ already the reason this defect went unnoticed.
 
 ### Step 5: Cover it
 
-Add a new section to `test_lane.sh` immediately before the summary, numbered one past the
+Add a new section to `scripts/test.sh` immediately before the summary, numbered one past the
 last existing section. Six assertions:
 
 ```bash
@@ -269,7 +269,7 @@ what is wrong; fix the assertion and say so in your report.
 
 Confirm the whole section fails against the pre-Step-3 binary before you rely on it.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 6.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 6.
 
 ### Step 6: Document it
 
@@ -284,13 +284,13 @@ agents" section should mention the skill as the fuller version of the `AGENTS.md
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 6
+- [ ] `cargo test` passes, baseline + 2; `./scripts/test.sh` passes, baseline + 6
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` passes
 - [ ] `lane install skill` writes `.agents/skills/lane/SKILL.md`; a second run is a no-op;
       an edited file is refused
 - [ ] `lane hooks install` no longer exists
-- [ ] `grep -rn 'hooks install' crates/lane/src/ README.md USAGE.md explainer.md test_lane.sh`
+- [ ] `grep -rn 'hooks install' crates/lane/src/ README.md USAGE.md explainer.md scripts/test.sh`
       → no matches
 - [ ] `git diff --stat main -- crates/lane/assets/skill.md` → empty; the asset is untouched
 - [ ] the `lane note` line in a freshly-initialised `AGENTS.md` runs and exits 0

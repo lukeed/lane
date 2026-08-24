@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat 6391059..HEAD -- crates/lane/src/cli.rs test_lane.sh`
+> `git diff --stat 6391059..HEAD -- crates/lane/src/cli.rs scripts/test.sh`
 
 ## Status
 
@@ -93,7 +93,7 @@ That is the exact text this repository's `AGENTS.md` holds today, confirmed byte
 - `crates/lane/src/cli.rs` — `append_line()` is used for `.gitattributes`. It is not
   suitable here and must not be reused for the protocol; a marked region is replaced, not
   appended.
-- `test_lane.sh` — section 12 asserts `AGENTS.md` has the protocol
+- `scripts/test.sh` — section 12 asserts `AGENTS.md` has the protocol
   (`grep -c 'Context memory' AGENTS.md` → `1`). The harness gives you `setup`, `is`, `ok`,
   `bad` and `sedi` (use `sedi`, not `sed -i`, so the suite stays portable to BSD sed).
 
@@ -109,7 +109,7 @@ in the body.
 | Unit + integration | `cargo test` | baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 | Linux gates | `./scripts/check-linux.sh` | **cannot run from a lane** — see below |
 
 Record both baselines before starting; at `6391059` they are 55 and 94.
@@ -121,7 +121,7 @@ the reviewer will run it from the main checkout.
 
 ## Scope
 
-**In scope**: `crates/lane/src/cli.rs`, `test_lane.sh`.
+**In scope**: `crates/lane/src/cli.rs`, `scripts/test.sh`.
 
 **Out of scope**:
 - `AGENTS.md` in this repository. It is the Step 4 fixture. Do not edit it by hand, at any
@@ -174,7 +174,7 @@ Add unit tests to `cli.rs`'s existing `mod tests` for the classification logic �
 contents, which of the five cases applies. Three tests: marked-and-differing, legacy-exact,
 legacy-modified.
 
-Add to `test_lane.sh`, as a new section before the summary, numbered one past the last:
+Add to `scripts/test.sh`, as a new section before the summary, numbered one past the last:
 
 ```bash
 echo "== N. init repairs a protocol it wrote earlier =="
@@ -203,7 +203,7 @@ is "and the bullet the user wrote is still there" \
 
 Confirm all four fail against the pre-Step-2 binary.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ### Step 4: Prove it on the real fixture
 
@@ -229,7 +229,7 @@ reviewer will.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] All five cases from the design table behave as specified, each verified in a scratch repo
 - [ ] A `## Context memory` section that differs from `PROTOCOL_V1` is left byte-identical
@@ -243,7 +243,7 @@ reviewer will.
   Silently rewriting a user's own text is the one outcome this plan exists to prevent.
 - You find that `PROTOCOL_V1` as written here does not match this repository's `AGENTS.md`.
   Report the difference; do not adjust the constant to fit, and do not edit `AGENTS.md`.
-- Implementing the five cases needs changes outside `cli.rs` and `test_lane.sh`.
+- Implementing the five cases needs changes outside `cli.rs` and `scripts/test.sh`.
 - You are tempted to edit `AGENTS.md` in this repository for any reason. Stop and report.
 
 ## Maintenance notes

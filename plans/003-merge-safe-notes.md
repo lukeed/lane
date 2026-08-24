@@ -85,11 +85,11 @@ the end of the file.
 | Unit + integration | `cargo test` | all pass, baseline + 3 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 4 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 4 |
 
 ## Scope
 
-**In scope**: `crates/lane/src/audit.rs`, `note.rs`, `test_lane.sh`.
+**In scope**: `crates/lane/src/audit.rs`, `note.rs`, `scripts/test.sh`.
 
 **Out of scope**:
 - The `merge=union` rule itself. It is the design, and this plan removes the spurious
@@ -151,7 +151,7 @@ not `#`.
 
 ### Step 4: Cover it
 
-Add to `test_lane.sh` before the summary, modelled on section 13:
+Add to `scripts/test.sh` before the summary, modelled on section 13:
 
 ```bash
 echo "== N. audit is idempotent and a merged note stays readable =="
@@ -180,11 +180,11 @@ parsed-then-unmodified note equals its `raw`.
 
 Confirm all three shell assertions fail against the current code first.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 4.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 4.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 3; `./test_lane.sh` passes, baseline + 4
+- [ ] `cargo test` passes, baseline + 3; `./scripts/test.sh` passes, baseline + 4
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] Two consecutive `lane audit` runs leave `git status --porcelain -- .context` empty
 - [ ] A note with a duplicated frontmatter key is still listed by `lane why`

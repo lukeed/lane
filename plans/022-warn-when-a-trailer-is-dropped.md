@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat 34e74cc..HEAD -- crates/lane/src/cli.rs test_lane.sh`
+> `git diff --stat 34e74cc..HEAD -- crates/lane/src/cli.rs scripts/test.sh`
 
 ## Status
 
@@ -91,7 +91,7 @@ on the block text matching byte for byte.
 `crates/lane/src/capture.rs` — `parse_trailers` runs `git interpret-trailers --parse` and
 matches keys with `eq_ignore_ascii_case("why")`.
 
-`test_lane.sh` section 22 covers capture. The harness gives you `setup`, `is`, and `sedi`
+`scripts/test.sh` section 22 covers capture. The harness gives you `setup`, `is`, and `sedi`
 (use `sedi`, never `sed -i`, so the suite stays portable to BSD sed).
 
 Conventions: one-line comments, and only where the reason is not obvious; `anyhow::Result`;
@@ -105,7 +105,7 @@ Conventional Commits, `type: verb object`, one short clause, no scope, detail in
 | Unit + integration | `cargo test` | baseline unchanged |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 3 |
 
 Record both baselines before starting; at `34e74cc` they are 65 and 101.
 
@@ -115,7 +115,7 @@ of scope. Skip it and say so.
 
 ## Scope
 
-**In scope**: `crates/lane/src/cli.rs`, `test_lane.sh`.
+**In scope**: `crates/lane/src/cli.rs`, `scripts/test.sh`.
 
 **Out of scope**:
 - `crates/lane/src/capture.rs`. The parser is correct; this is about the hook that calls it.
@@ -166,7 +166,7 @@ kept as-is, and exits 0.
 
 ### Step 4: Cover it
 
-Add to `test_lane.sh`, in or immediately after section 22:
+Add to `scripts/test.sh`, in or immediately after section 22:
 
 ```bash
 git commit -q --allow-empty -m "silent commit
@@ -183,11 +183,11 @@ is "a commit without a trailer stays silent" "$(wc -c < /tmp/nolane3.err | tr -d
 
 Confirm all three fail against the pre-Step-1 binary.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 3.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 3.
 
 ## Done criteria
 
-- [ ] `cargo test` unchanged at baseline; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` unchanged at baseline; `./scripts/test.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `sh -n` on the generated `post-commit` exits 0
 - [ ] With lane off `PATH`: a trailer warns, no trailer is silent, and the commit succeeds

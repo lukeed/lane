@@ -6,7 +6,7 @@
 > edit it.
 >
 > **Drift check (run first)**:
-> `git diff --stat 1f4f1ac..HEAD -- crates/lane/src/store.rs crates/lane/src/audit.rs test_lane.sh`
+> `git diff --stat 1f4f1ac..HEAD -- crates/lane/src/store.rs crates/lane/src/audit.rs scripts/test.sh`
 
 ## Status
 
@@ -161,7 +161,7 @@ tests in `#[cfg(test)] mod tests` at file end. Commit subjects are Conventional 
 | Unit + integration | `cargo test` | baseline + 1 |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 3 |
 | Linux gates | `./scripts/check-linux.sh` | exit 0 from this lane |
 
 Record both baselines before starting; at `1f4f1ac` they are 77 and 125.
@@ -170,7 +170,7 @@ Capture every exit code without a pipe (`cmd > /tmp/out 2>&1; echo $?`).
 
 ## Scope
 
-**In scope**: `crates/lane/src/store.rs`, `crates/lane/src/audit.rs`, `test_lane.sh`.
+**In scope**: `crates/lane/src/store.rs`, `crates/lane/src/audit.rs`, `scripts/test.sh`.
 
 **Out of scope**:
 - `roll_up`'s merge rule, `own_state`, and `load_state`. None of them are wrong.
@@ -215,7 +215,7 @@ Expected: `body-drift 1`, not 0.
 
 ### Step 3: Cover the branch boundary
 
-Add to `test_lane.sh` before the summary, numbered one past the last. The assertions must
+Add to `scripts/test.sh` before the summary, numbered one past the last. The assertions must
 cross a branch boundary — a single-branch test cannot fail against the current code, which
 is precisely why this shipped:
 
@@ -245,7 +245,7 @@ intent.
 
 Confirm all three fail against the pre-Step-1 binary.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 3.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 3.
 
 ### Step 4: Keep the resolved paths working
 
@@ -258,7 +258,7 @@ still updates it; a no-op audit still writes nothing.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 1; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` passes, baseline + 1; `./scripts/test.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `./scripts/check-linux.sh` exit 0 from this lane
 - [ ] A lane's state entry for a drifted note carries a non-empty fingerprint

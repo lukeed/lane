@@ -77,11 +77,11 @@ pub fn is_dirty(path: &Path) -> bool {
 |---|---|---|
 | Unit + integration | `cargo test` | baseline, all pass |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline |
 
 ## Scope
 
-**In scope**: `crates/lane/src/cli.rs`, `audit.rs`, `worktree.rs`, `test_lane.sh` and
+**In scope**: `crates/lane/src/cli.rs`, `audit.rs`, `worktree.rs`, `scripts/test.sh` and
 `USAGE.md` where they mention `--allow-dirty`.
 
 **Out of scope**: the `.wt/pending.jsonl` gitignore line, which is live; the JSON shape of
@@ -143,12 +143,12 @@ pub fn is_dirty(path: &Path) -> bool {
 ```
 
 **Verify**: `lane audit | head -1` matches `^memory: \+[0-9]+ new; checked [0-9]+:`.
-Check `grep -n 'memory:' test_lane.sh` before and after; update any assertion in the same
+Check `grep -n 'memory:' scripts/test.sh` before and after; update any assertion in the same
 commit.
 
 ## Done criteria
 
-- [ ] `./test_lane.sh` passes at the baseline count; `cargo test` unchanged and passing
+- [ ] `./scripts/test.sh` passes at the baseline count; `cargo test` unchanged and passing
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `grep -c 'lanes-\*' crates/lane/src/cli.rs` → `0`
 - [ ] `grep -rc 'allow_dirty' crates/lane/src/` → `0`

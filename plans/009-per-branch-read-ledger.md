@@ -61,12 +61,12 @@ Helpers available: `git::current_branch()`, `util::slug`, `store::load_notes`.
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 2 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 3 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 3 |
 
 ## Scope
 
 **In scope**: `crates/lane/src/store.rs`, `cli.rs` (the `.gitattributes` rules and
-section 12's expectation of two rules), `test_lane.sh`, `USAGE.md`'s Layout section.
+section 12's expectation of two rules), `scripts/test.sh`, `USAGE.md`'s Layout section.
 
 **Out of scope**: the ranking itself; the `*.md` union rule, which is correct; making
 reads a signal anywhere other than retention.
@@ -114,7 +114,7 @@ ends up with that id at count 3 in `.context/.reads/<branch>.json`, and the old 
 Per-branch files never collide, so the rule is not merely unnecessary — union-merging two
 JSON objects produces invalid JSON. Reduce `init()` to the notes rule alone.
 
-Section 12 of `test_lane.sh` asserts two `merge=union` rules; change it to one in the same
+Section 12 of `scripts/test.sh` asserts two `merge=union` rules; change it to one in the same
 commit and say why in the message. Do not rewrite existing users' `.gitattributes`;
 appending is safe, editing is not.
 
@@ -129,7 +129,7 @@ appending is safe, editing is not.
 
 ### Step 6: Cover it
 
-Add to `test_lane.sh` before the summary:
+Add to `scripts/test.sh` before the summary:
 
 ```bash
 echo "== N. read counts are bounded and merge-stable =="
@@ -156,11 +156,11 @@ for f in glob.glob(".context/.reads/*.json"):
 print(bad)')" "0"
 ```
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 3.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 3.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 2; `./test_lane.sh` passes, baseline + 3
+- [ ] `cargo test` passes, baseline + 2; `./scripts/test.sh` passes, baseline + 3
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] `grep -rc 'reads.jsonl' crates/lane/src/ USAGE.md README.md` → `0` for all
 - [ ] After 20 `lane why` runs over 2 notes, `.context/.reads/` holds one file with 2 keys

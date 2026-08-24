@@ -162,14 +162,14 @@ Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at fi
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 7 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 7 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 7 |
 
 At `43e404f` the baselines are 28 and 50.
 
 ## Scope
 
 **In scope**: `crates/lane/src/note.rs`, `store.rs`, `audit.rs`, `cli.rs`, `syntax.rs`,
-`worktree.rs`, `test_lane.sh`, `README.md`, `USAGE.md`.
+`worktree.rs`, `scripts/test.sh`, `README.md`, `USAGE.md`.
 
 **Out of scope**: rename following (plan 014); the anchor grammar; tier semantics, ranking
 weights and the budget; `lane done`'s rebase-then-audit ordering; deleting plan 003's
@@ -305,13 +305,13 @@ file, named for the trunk.
 
 `cli::init` writes `.context/log/*.jsonl merge=union` and nothing else.
 
-Section 12 of `test_lane.sh` asserts two rules — change it to one in the same commit.
+Section 12 of `scripts/test.sh` asserts two rules — change it to one in the same commit.
 
 **Verify**: `lane init` in a fresh repo → `grep -c 'merge=union' .gitattributes` → `1`.
 
 ### Step 8: Cover it
 
-Add to `test_lane.sh` before the summary. Seven assertions:
+Add to `scripts/test.sh` before the summary. Seven assertions:
 
 ```bash
 echo "== N. notes are immutable; state and log are per-branch and roll up =="
@@ -342,7 +342,7 @@ is "and its log too" "$(find .context/log -name '*.jsonl' | wc -l | tr -d ' ')" 
 
 Confirm the first, third and fifth fail against the current code before changing it.
 
-**Verify**: `./test_lane.sh` → `failed: 0`, baseline + 7.
+**Verify**: `./scripts/test.sh` → `failed: 0`, baseline + 7.
 
 ### Step 9: Update the docs
 
@@ -355,7 +355,7 @@ repo may have its own `attic/`.
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 7; `./test_lane.sh` passes, baseline + 7
+- [ ] `cargo test` passes, baseline + 7; `./scripts/test.sh` passes, baseline + 7
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] An audit that finds drift modifies no existing `.md` file
 - [ ] `grep -c 'pub path' crates/lane/src/note.rs` → `0`
@@ -373,7 +373,7 @@ repo may have its own `attic/`.
   not derived and belongs in the note.
 - The rollup in step 6 conflicts when two lanes land back to back. It should not — `done`
   rebases before it audits, so lanes serialise. If it does, report the sequence.
-- Removing `merge=union` from note files produces a conflict in `test_lane.sh` sections 6
+- Removing `merge=union` from note files produces a conflict in `scripts/test.sh` sections 6
   or 13, which land two branches of memory. Those should be pure adds. A conflict means
   something is still being mutated — report which file.
 - GC of orphaned `state/` files deletes one belonging to a branch that exists only on a

@@ -52,7 +52,7 @@ where the lane id already lives and is already never committed.
 ## Scope
 
 In: `store.rs`, `audit.rs`, `cli.rs`, `note.rs`, `.gitattributes`, `README.md`,
-`www/src/pages/usage.md`, `crates/lane/assets/skill.md`, `test_lane.sh`.
+`www/src/pages/usage.md`, `crates/lane/assets/skill.md`, `scripts/test.sh`.
 
 Out: `syntax.rs`, `cow.rs`, `worktree.rs` clone paths, `git.rs`. Do not touch the
 benchmark harness in `scripts/bench.sh`.
@@ -138,7 +138,7 @@ and `Confirmation` all go. Grep for each and confirm no caller survives.
   L4. Lane prepared, PR squash-merged   → same as L3; `contained_in` sees the patch id
   L5. Branch name reused by a NEW lane  → the new lane has no marker, so it is never pruned.
       This is the bug the committed marker existed to prevent; the local marker must
-      prevent it too. `test_lane.sh` §36 covers it and must keep passing.
+      prevent it too. `scripts/test.sh` §36 covers it and must keep passing.
   L6. Worktree removed by hand          → no marker to read; no panic
 
   M1. Repo with a legacy log holding holds → folded into notes, log deleted
@@ -150,12 +150,12 @@ and `Confirmation` all go. Grep for each and confirm no caller survives.
 
 - `rg 'log\.jsonl'` returns hits in **no** Rust source file
 - `.gitattributes` is gone
-- `cargo test`, `./test_lane.sh`, clippy `-D warnings`, fmt all clean
+- `cargo test`, `./scripts/test.sh`, clippy `-D warnings`, fmt all clean
 - Two lanes that re-vouch different notes both land with no conflict
 
 ## STOP conditions
 
 - If removing `confirmations` changes what `lane check` reports for any note in THIS
   repository, stop. Fold the legacy log first and compare again; the tiers must match.
-- If `test_lane.sh` §36 fails, the local marker is not preventing the reused-name case.
+- If `scripts/test.sh` §36 fails, the local marker is not preventing the reused-name case.
   Stop and report rather than weakening the test.

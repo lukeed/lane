@@ -173,12 +173,12 @@ Conventions: one-line comments, and only where the reason is not obvious; tests 
 | Unit + integration | `cargo test` | baseline, plus any you add |
 | Lint | `cargo clippy --all-targets` | zero warnings |
 | Format | `cargo fmt --all --check` | exit 0 |
-| Lane's own suite | `./test_lane.sh` | `failed: 0`, baseline unchanged |
+| Lane's own suite | `./scripts/test.sh` | `failed: 0`, baseline unchanged |
 | Linux gates | `./scripts/check-linux.sh` | exit 0 |
 
-Baselines at `aea5887`: `cargo test` 78, `./test_lane.sh` 128.
+Baselines at `aea5887`: `cargo test` 78, `./scripts/test.sh` 128.
 
-`./test_lane.sh` must be **unchanged** — this plan adds a crate, it does not alter lane.
+`./scripts/test.sh` must be **unchanged** — this plan adds a crate, it does not alter lane.
 
 ## Scope
 
@@ -188,7 +188,7 @@ Baselines at `aea5887`: `cargo test` 78, `./test_lane.sh` 128.
 **Out of scope**:
 - `crates/example/src/scenes.rs` — supplied, see above.
 - Everything under `crates/lane/`. If the tour needs a lane change to work, STOP and report.
-- `test_lane.sh`, `scripts/`, `USAGE.md`, `AGENTS.md`, `crates/lane/assets/skill.md`.
+- `scripts/test.sh`, `scripts/`, `USAGE.md`, `AGENTS.md`, `crates/lane/assets/skill.md`.
 - Publishing, packaging, or a `cargo install` story for the tour.
 
 ## Steps
@@ -258,7 +258,7 @@ to start it, and that it builds a throwaway sandbox. Put it after "Install".
 - [ ] `cargo build --release` produces `example`; `lane`'s release binary size is byte-identical
       to before this plan
 - [ ] `cargo test`, `cargo clippy --all-targets`, `cargo fmt --all --check` all clean
-- [ ] `./test_lane.sh` passes at exactly its previous count, 128
+- [ ] `./scripts/test.sh` passes at exactly its previous count, 128
 - [ ] `./scripts/check-linux.sh` exit 0
 - [ ] `example start` builds a sandbox and prints its absolute path
 - [ ] Every scene from `1` to the last plays in order, transcript included in the report
@@ -273,7 +273,7 @@ to start it, and that it builds a throwaway sandbox. Put it after "Install".
   `scenes.rs`.
 - Making the tour work needs a change under `crates/lane/`.
 - You want to add a dependency.
-- `./test_lane.sh` count changes. This plan does not touch lane's behaviour.
+- `./scripts/test.sh` count changes. This plan does not touch lane's behaviour.
 
 ## Maintenance notes
 

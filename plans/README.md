@@ -94,14 +94,14 @@ immutable-notes design forced the question of what a note's path really is.
   downstream knows where a pending note came from.
 - Everything else is independent. 010 is a good warm-up.
 
-Assertion counts are expressed as deltas from whatever `cargo test` and `./test_lane.sh`
+Assertion counts are expressed as deltas from whatever `cargo test` and `./scripts/test.sh`
 report before you start, so this ordering can change without invalidating a done criterion.
 
 ## Closed by the Rust rewrite
 
 Verified against the tree, not assumed. The plan files were deleted; this is the record.
 
-- **001 — portable test suites, verified reflink.** `test_lane.sh` has a `sedi` helper, so
+- **001 — portable test suites, verified reflink.** `scripts/test.sh` has a `sedi` helper, so
   it runs on BSD sed. The clone layer moved into `cargo test`, where it gained the
   assertion the shell suite could not make: a 64 MiB clone must cost under 16 MiB of free
   space. Extent sharing on APFS is now verified rather than claimed.
@@ -153,7 +153,7 @@ Verified against the tree, not assumed. The plan files were deleted; this is the
 - **Keeping `ctx` as a shim.** An undocumented alias for a subset of `lane`; a second CLI
   surface to test and document forever.
 - **CI.** Still a real gap — `cargo test`, `cargo clippy`, `cargo fmt --check` and
-  `./test_lane.sh` are the whole gate and nothing runs them automatically. Choosing a
+  `./scripts/test.sh` are the whole gate and nothing runs them automatically. Choosing a
   provider is the maintainer's call, not an executor's.
 
 ## Not audited

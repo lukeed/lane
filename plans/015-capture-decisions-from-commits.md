@@ -114,14 +114,14 @@ Conventions: one-line comments, `anyhow::Result`, `#[cfg(test)] mod tests` at fi
 |---|---|---|
 | Unit + integration | `cargo test` | baseline + 6 |
 | Lint / format | `cargo clippy --all-targets` / `cargo fmt --all --check` | clean |
-| End to end | `./test_lane.sh` | `failed: 0`, baseline + 6 |
+| End to end | `./scripts/test.sh` | `failed: 0`, baseline + 6 |
 
 At `43e404f` the baselines are 34 and 64.
 
 ## Scope
 
 **In scope**: `crates/lane/src/capture.rs` (new), `cli.rs`, `store.rs`, `lib.rs`,
-`test_lane.sh`, `README.md`, `USAGE.md`.
+`scripts/test.sh`, `README.md`, `USAGE.md`.
 
 **Out of scope**:
 - Inferring notes from a diff, a commit body, or an agent session. This plan reads one
@@ -246,7 +246,7 @@ prints the snippet.
 
 ### Step 7: Cover it end to end
 
-Add a section to `test_lane.sh` before the summary. Six assertions:
+Add a section to `scripts/test.sh` before the summary. Six assertions:
 
 ```bash
 echo "== N. decisions are captured from commit trailers =="
@@ -292,7 +292,7 @@ README's "No session distillation" bullet with what now exists and what still do
 
 ## Done criteria
 
-- [ ] `cargo test` passes, baseline + 6; `./test_lane.sh` passes, baseline + 6
+- [ ] `cargo test` passes, baseline + 6; `./scripts/test.sh` passes, baseline + 6
 - [ ] `cargo clippy --all-targets` → zero warnings; `cargo fmt --all --check` → exit 0
 - [ ] A commit with no `Why:` trailer creates no pending file
 - [ ] A malformed or subject-restating trailer warns, records nothing, and exits 0

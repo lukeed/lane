@@ -345,7 +345,8 @@ const SWEEP: &str = "
 const RM: &str = "
   Description
     Discard a lane without landing it, with its per-branch state and record.
-    Commits the trunk does not have are refused unless --force.
+    The worktree always goes. A branch holding commits the trunk does not have
+    is kept unless --force, and `lane new <name>` opens a lane on it again.
 
   Usage
     $ lane rm <name> [options]

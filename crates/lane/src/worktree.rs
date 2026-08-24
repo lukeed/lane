@@ -378,6 +378,14 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     })
 }
 
+/// True while git still has a worktree registered at this path, prunable ones included.
+fn registered(root: &Path, dest: &Path) -> bool {
+    let target = dest.canonicalize().ok();
+    list_lanes(root).iter().any(|lane| {
+        lane.path == dest || (target.is_some() && lane.path.canonicalize().ok() == target)
+    })
+}
+
 /// Remove a lane's worktree, and its branch when that is safe. True if the branch went too.
 ///
 /// `-d` not `-D`: an unlanded lane holds the only reference to its commits, so discarding
@@ -398,18 +406,27 @@ pub fn remove(name: &str, force: bool) -> Result<bool> {
         bail!("cannot remove lane {name} from inside it; cd out first");
     }
 
-    let dest_str = dest.to_string_lossy().to_string();
-
-    let mut args = vec!["worktree", "remove"];
-    if force {
-        args.push("--force");
-    }
-    args.push(&dest_str);
-    git(&args, Some(&root))?;
-
     let refname = format!("refs/heads/{name}");
+    let branch = git_ok(&["rev-parse", "--verify", "--quiet", &refname], Some(&root));
+    let worktree = registered(&root, &dest);
+    if !branch && !worktree {
+        bail!("no lane {name}");
+    }
+
+    // The refusal keeps the branch but still drops the worktree, so the `--force` it asks
+    // for arrives with nothing left to remove, and git calls an absent worktree fatal.
+    if worktree {
+        let dest_str = dest.to_string_lossy().to_string();
+        let mut args = vec!["worktree", "remove"];
+        if force {
+            args.push("--force");
+        }
+        args.push(&dest_str);
+        git(&args, Some(&root))?;
+    }
+
     let mut deleted = true;
-    if git_ok(&["rev-parse", "--verify", "--quiet", &refname], Some(&root)) {
+    if branch {
         deleted = git_ok(
             &["branch", if force { "-D" } else { "-d" }, name],
             Some(&root),

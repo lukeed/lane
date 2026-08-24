@@ -983,8 +983,8 @@ fn rm(name: &str, force: bool) -> Result<i32> {
     }
     let trunk = wt::trunk_name(&wt::main_root()?);
     eprintln!("removed lane {name}; kept branch {name}, it has commits {trunk} does not");
-    eprintln!("  git worktree add <path> {name}   to get back to them");
-    eprintln!("  lane rm {name} --force            to discard them");
+    eprintln!("  lane new {name}          to open a lane on it again");
+    eprintln!("  lane rm {name} --force   to discard them");
     Ok(1)
 }
 

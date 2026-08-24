@@ -147,6 +147,27 @@ is "unlanded branch survives" "$(git branch --list scrap | wc -l | tr -d ' ')" "
 is "unlanded commit still reachable" "$(git rev-parse scrap)" "$SHA"
 is "worktree is gone either way" \
    "$([ -d "$TMP/repo/.lane/trees/scrap" ] && echo yes || echo no)" "no"
+is "rm names the command that reopens the lane" "$(grep -c 'lane new scrap' /tmp/rm.out)" "1"
+
+# The refusal already took the worktree, so the --force it offered has only a branch left.
+"$LANE" new scrap > /dev/null 2>&1
+is "the offered lane new adopts the kept branch" "$(git rev-parse scrap)" "$SHA"
+is "and carries the unlanded work" \
+   "$([ -f "$TMP/repo/.lane/trees/scrap/src/work.rs" ] && echo yes || echo no)" "yes"
+"$LANE" rm scrap > /dev/null 2>&1
+"$LANE" rm scrap --force > /tmp/force.out 2>&1
+is "the offered --force exits zero with no worktree left" "$?" "0"
+is "the offered --force discards the branch" "$(git branch --list scrap | wc -l | tr -d ' ')" "0"
+is "the offered --force reports no git error" "$(grep -c 'not a working tree' /tmp/force.out)" "0"
+
+"$LANE" rm ghost > /tmp/ghost.out 2>&1
+is "rm rejects a name that is neither lane nor branch" "$?" "1"
+is "rm says so plainly" "$(grep -c 'no lane ghost' /tmp/ghost.out)" "1"
+
+"$LANE" new gone > /dev/null 2>&1
+rm -rf "$TMP/repo/.lane/trees/gone"
+"$LANE" rm gone --force > /dev/null 2>&1
+is "rm cleans up a hand-deleted worktree" "$(git branch --list gone | wc -l | tr -d ' ')" "0"
 
 "$LANE" new scrap2 > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/scrap2" && echo "fn work() {}" > src/work2.rs \

@@ -47,3 +47,4 @@
 {"anchor":"fn create","at":"2026-08-24T20:42:38Z","body_hash":"32e7fbd5d02bd28d","branch":"push-command","id":"01M0EXNVCK4JP9328P47M4W2C1","kind":"holds","norm":"1","path":"crates/lane/src/worktree.rs","raw_hash":"82db18eda0c37edb","sig":"2a21aaf08379e25a"}
 {"anchor":"@file","at":"2026-08-24T20:42:38Z","body_hash":"37c9e2f1de422a53","branch":"push-command","id":"01M0ESRPDGANMXC60YCD3VYVS5","kind":"holds","norm":"1","path":"test_lane.sh","raw_hash":"545f690dc88fc61b","sig":"e3b0c44298fc1c14"}
 {"at":"2026-08-24T20:43:02Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}
+{"at":"2026-08-24T20:47:31Z","branch":"push-command","kind":"landing","lane":"01M0TJ1BEQ3GK60DASEJ8WCV48"}

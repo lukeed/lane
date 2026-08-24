@@ -5,8 +5,9 @@ created: 2026-08-20T18:38:40Z
 branch: tour
 norm: '1'
 sig: e3b0c44298fc1c14
-body_hash: 579f2d97977bb5f2
-raw_hash: c05c7b15bba23d3b
+body_hash: a9665da4fd1a95da
+raw_hash: e9cb04af0572499f
+vouched: 2026-08-22T18:23:00Z
 lines: 1-340
 ---
 

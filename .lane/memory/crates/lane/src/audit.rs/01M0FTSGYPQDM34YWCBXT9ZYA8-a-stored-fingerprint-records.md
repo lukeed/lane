@@ -4,9 +4,10 @@ anchor: run
 created: 2026-08-20T14:48:26Z
 branch: drift-stays-flagged
 norm: '1'
-sig: f2409b92e972e731
-body_hash: ae7ff3de7d81819b
-raw_hash: 525e96274148ad24
+sig: 2f3bd298b9e785b1
+body_hash: 5fec05df659bd1aa
+raw_hash: 290c2d0c304a599b
+vouched: 2026-08-22T18:23:00Z
 lines: 80-221
 ---
 

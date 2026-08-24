@@ -5,8 +5,9 @@ created: 2026-08-24T01:30:25Z
 branch: argv-manual
 norm: '1'
 sig: b118a8f064d37898
-body_hash: 5813c3a56ee99991
-raw_hash: 4259161586c45c1f
+body_hash: 0279e018c0b5aa43
+raw_hash: 949279899481dcc8
+vouched: 2026-08-24T20:42:38Z
 lines: 55-74
 ---
 

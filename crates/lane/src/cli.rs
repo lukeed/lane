@@ -109,9 +109,6 @@ enum Command {
         keep: bool,
         #[arg(long)]
         cd: bool,
-        /// fast-forward trunk to the lane; the default
-        #[arg(long, conflicts_with_all = ["squash", "no_merge"])]
-        ff: bool,
         /// squash lane commits into one landing commit
         #[arg(long, conflicts_with = "no_merge")]
         squash: bool,
@@ -192,7 +189,6 @@ pub fn run() -> Result<i32> {
             trunk,
             keep,
             cd,
-            ff: _,
             squash,
             no_merge,
             budget,

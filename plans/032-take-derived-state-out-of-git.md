@@ -226,8 +226,11 @@ means the branch merged, whichever of GitHub's three buttons was pressed, becaus
 content rather than commit identity. That is the signal git itself cannot give: `git branch -d`
 is ancestor-only and refuses after a squash or rebase merge even when the trees are identical.
 
-Add `--ff` as the explicit spelling of the default. Do **not** add `--rebase` — the rebase
-happens in every mode, so the flag would name the wrong half of the operation.
+Do **not** add `--rebase` — the rebase happens in every mode, so the flag would name the
+wrong half of the operation. `--ff` was added as an explicit spelling of the default and
+then removed: it did nothing, and a flag whose only job is to be refused alongside the two
+that do something is surface to document and test forever. It earns a place the day
+`lane.done` becomes configurable and there is a default worth overriding.
 
 **Verify**: `lane done --no-merge` → trunk unmoved, lane still present, branch has one
 `lane: sync` commit whose log contains the landing record.

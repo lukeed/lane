@@ -109,12 +109,11 @@ export let commands: Command[] = [
 	},
 	{
 		name: "done",
-		usage: "lane done [--trunk <ref>] [--keep] [--ff | --squash | --no-merge]",
+		usage: "lane done [--trunk <ref>] [--keep] [--squash | --no-merge]",
 		summary: "rebases the lane onto trunk, audits memory, commits it, fast-forwards trunk, and removes the lane.",
 		options: [
 			{ flag: "--trunk", arg: "<ref>", about: "branch to rebase onto and advance; defaults to the repo's trunk." },
 			{ flag: "--keep", arg: null, about: "keep the lane worktree and branch after landing." },
-			{ flag: "--ff", arg: null, about: "fast-forward trunk to the lane; the default." },
 			{ flag: "--squash", arg: null, about: "squash the lane's commits into one landing commit." },
 			{ flag: "--no-merge", arg: null, about: "stop after the memory commit, leaving the merge to a pull request." },
 			{ flag: "--cd", arg: null, about: "print the main root path last on stdout, for the shell function." },

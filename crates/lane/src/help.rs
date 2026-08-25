@@ -184,8 +184,7 @@ const ROOT: &str = "
 const INIT: &str = "
   Description
     Scaffold .lane/, the merge rule, and the AGENTS.md protocol, and report
-    whether this filesystem can reflink and whether the installed hooks match
-    this release. Safe to re-run.
+    whether this filesystem can reflink. Safe to re-run.
 
   Usage
     $ lane init
@@ -426,9 +425,7 @@ const WHY: &str = "
 
 const CHECK: &str = "
   Description
-    Every note that is not fresh, each with the id you need next. A hook block
-    an older release installed is named on stderr, where it cannot reach a
-    --json reader.
+    Every note that is not fresh, each with the id you need next.
 
   Usage
     $ lane check [options]

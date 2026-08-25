@@ -47,9 +47,8 @@ That covers every lane, because worktrees share the hooks directory. Nothing
 before it reads a `Why:` trailer — without the hooks, git carries the line in
 the commit message forever and lane never sees it.
 
-The hook file is a copy, not a link, so a release that changes what the hook
-does reaches an existing repository only through another `lane install hooks`.
-`lane check` and `lane init` name a block an older release left behind:
+A hook is a copy, not a link. `lane check` and `lane init` name one an older
+release wrote:
 
 ```
 $ lane check

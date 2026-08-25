@@ -14,7 +14,8 @@ pub enum Help {
     Init,
     New,
     Ls,
-    Path,
+    Enter,
+    Exit,
     Anchors,
     Note,
     NoteAdd,
@@ -45,7 +46,8 @@ impl Help {
             Help::Init => INIT,
             Help::New => NEW,
             Help::Ls => LS,
-            Help::Path => PATH,
+            Help::Enter => ENTER,
+            Help::Exit => EXIT,
             Help::Anchors => ANCHORS,
             Help::Note => NOTE,
             Help::NoteAdd => NOTE_ADD,
@@ -76,7 +78,8 @@ impl Help {
             Help::Init => "lane init",
             Help::New => "lane new [OPTIONS] <NAME>",
             Help::Ls => "lane ls [--json]",
-            Help::Path => "lane path <NAME>",
+            Help::Enter => "lane enter <NAME>",
+            Help::Exit => "lane exit",
             Help::Anchors => "lane anchors [--json] <PATH>",
             Help::Note => "lane note <COMMAND>",
             Help::NoteAdd => "lane note add [OPTIONS] <PATH> [TEXT]",
@@ -119,7 +122,8 @@ impl Help {
             Help::Init => "lane init",
             Help::New => "lane new",
             Help::Ls => "lane ls",
-            Help::Path => "lane path",
+            Help::Enter => "lane enter",
+            Help::Exit => "lane exit",
             Help::Anchors => "lane anchors",
             Help::Note => "lane note",
             Help::NoteAdd => "lane note add",
@@ -155,8 +159,9 @@ const ROOT: &str = "
   Commands
     init         Scaffold memory + merge rules, probe reflink
     new          Create a CoW lane
+    enter        Change directory into a lane
+    exit         Change directory back to the main worktree
     ls           List lanes
-    path         Print a lane's path
     anchors      List addressable anchors in a file
     note         Manage memory notes
     install      Install lane's agent integrations
@@ -204,7 +209,6 @@ const NEW: &str = "
   Options
     --base <rev>    Branch from <rev> instead of the default base
     --dirty         Carry uncommitted work into the lane
-    --cd            Print the path last, for the shell function
     -h, --help      Display this message
 
   Examples
@@ -226,12 +230,27 @@ const LS: &str = "
     -h, --help    Display this message
 ";
 
-const PATH: &str = "
+const ENTER: &str = "
   Description
-    Print one lane's worktree path.
+    Change directory into a lane. Or `switch` alias.
 
   Usage
-    $ lane path <name>
+    $ lane enter <name>
+
+  Options
+    -h, --help    Display this message
+
+  Examples
+    $ lane enter fix-login
+    $ lane switch fix-login
+";
+
+const EXIT: &str = "
+  Description
+    Change directory back to the main worktree.
+
+  Usage
+    $ lane exit
 
   Options
     -h, --help    Display this message
@@ -465,7 +484,6 @@ const MERGE: &str = "
     --base <ref>        Rebase onto <ref> instead of the recorded base
     --squash            Squash the lane's commits into one landing commit
     --keep              Leave the worktree in place after landing
-    --cd                Print the path last, for the shell function
     --max-notes <n>     Notes kept per anchor (default: 5)
     --max-chars <n>     Characters kept per anchor (default: 1200)
     -h, --help          Display this message
@@ -524,8 +542,8 @@ const RM: &str = "
 
 const SHELLENV: &str = "
   Description
-    Print the shell function that leaves you in the right directory after
-    `lane new` and `lane merge`, and adds `lane cd <name>`.
+    Print the shell function that makes `lane enter`, `lane exit`, `lane new`
+    and `lane merge` leave the shell in the right directory.
 
   Usage
     $ eval \"$(lane shellenv)\"

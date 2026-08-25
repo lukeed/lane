@@ -428,9 +428,27 @@ setup
 PATH="$(dirname "$LANE"):$PATH"
 eval "$(command lane shellenv)"
 
-is "new --cd puts only the path on stdout" \
-   "$(command lane new probe --cd 2>/dev/null | wc -l | tr -d ' ')" "1"
+is "new puts only the path on stdout" \
+   "$(command lane new probe 2>/dev/null | wc -l | tr -d ' ')" "1"
+is "enter puts only the path on stdout" \
+   "$(command lane enter probe 2>/dev/null | wc -l | tr -d ' ')" "1"
+is "switch is the same command as enter" \
+   "$(command lane switch probe 2>/dev/null)" "$(command lane enter probe 2>/dev/null)"
+is "exit prints the main worktree" \
+   "$(command lane exit 2>/dev/null)" "$(cd "$TMP/repo" && pwd -P)"
 command lane rm probe --force > /dev/null 2>&1
+
+cd "$TMP/repo"
+lane new hop > /dev/null 2>&1
+cd "$TMP/repo"
+lane enter hop
+is "enter moves the shell into the lane" \
+   "$PWD" "$(cd "$TMP/repo/.lane/trees/hop" && pwd -P)"
+lane exit
+is "exit moves the shell back to the main worktree" "$PWD" "$(cd "$TMP/repo" && pwd -P)"
+lane enter nosuchlane > /dev/null 2>&1
+is "a failed enter leaves the shell where it was" "$PWD" "$(cd "$TMP/repo" && pwd -P)"
+lane rm hop --force > /dev/null 2>&1
 
 cd "$TMP/repo"
 lane new dup > /dev/null 2>&1

@@ -46,7 +46,7 @@ Lane requires Rust 1.85 or newer.
 
 ## Set up a repository
 
-Enable the shell wrapper once in `.zshrc` or `.bashrc`; it leaves the shell in the new lane after `lane new` and returns it to the main worktree after `lane merge`:
+Enable the shell wrapper once in `.zshrc` or `.bashrc`; it is what lets `lane new`, `lane enter`, `lane exit` and `lane merge` move the shell:
 
 ```bash
 eval "$(lane shellenv)"

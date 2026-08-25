@@ -227,7 +227,7 @@ fn cloning_onto_an_existing_path_is_not_reported_as_unsupported() {
             let (supported, _) = cow::probe(dir.path());
             assert!(!supported, "unsupported here is only valid without reflink");
         }
-        Err(CloneError::Io(_)) | Ok(()) => {}
+        Err(CloneError::Io(_) | CloneError::Exists) | Ok(_) => {}
     }
 }
 

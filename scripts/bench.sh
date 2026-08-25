@@ -60,6 +60,11 @@ if [ "$MODE" = cargo ]; then
   git config user.name bench
   git add -A && git commit -qm base
   cargo build --release --all-targets --quiet 2>/dev/null || cargo build --release --all-targets 2>&1 | tail -5
+  # The other half of a real checkout, and the opposite shape: many tiny files and the
+  # symlinks that go with them, where target/ is a few large archives.
+  if [ -f www/package.json ] && command -v npm >/dev/null 2>&1; then
+    (cd www && npm install --silent --no-audit --no-fund >/dev/null 2>&1) || echo "npm install failed" >&2
+  fi
 else
   git init -qb main .
   git config user.email bench@example.com
@@ -84,8 +89,8 @@ fs=$(df -PT . 2>/dev/null | awk 'NR==2{print $2}')
 [ -n "$fs" ] || fs=$(mount | awk -v m="$(df -P . | awk 'NR==2{print $NF}')" '$3==m{print $4}' | tr -d '(,' | head -1)
 echo "filesystem=${fs:-unknown}"
 echo "mode=$MODE"
-echo "ignored_files=$(find target node_modules -type f 2>/dev/null | wc -l | tr -d ' ')"
-echo "ignored_bytes=$(du -sk target node_modules 2>/dev/null | awk '{s+=$1} END{printf "%.0fMiB", s/1024}')"
+echo "ignored_files=$(find target node_modules www/node_modules -type f 2>/dev/null | wc -l | tr -d ' ')"
+echo "ignored_bytes=$(du -sk target node_modules www/node_modules 2>/dev/null | awk '{s+=$1} END{printf "%.0fMiB", s/1024}')"
 
 "$LANE" new probe > /tmp/bench-probe.out 2>&1
 echo "reflink=$(awk '/reflink:/{print $2; exit}' /tmp/bench-probe.out)"

@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 pub enum CloneError {
     /// The filesystem cannot share extents; the caller should fall back.
     Unsupported(String),
+    /// The destination is already there. Cheaper to be told than to ask first.
+    Exists,
     Io(std::io::Error),
 }
 
@@ -19,6 +21,7 @@ impl fmt::Display for CloneError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CloneError::Unsupported(why) => write!(f, "{why}"),
+            CloneError::Exists => write!(f, "destination exists"),
             CloneError::Io(e) => write!(f, "{e}"),
         }
     }
@@ -37,6 +40,9 @@ const UNSUPPORTED: &[i32] = &[];
 
 /// Separate "fall back to a byte copy" from real failures like ENOSPC.
 fn classify(err: std::io::Error) -> CloneError {
+    if err.kind() == std::io::ErrorKind::AlreadyExists {
+        return CloneError::Exists;
+    }
     match err.raw_os_error() {
         Some(e) if UNSUPPORTED.contains(&e) => CloneError::Unsupported(err.to_string()),
         _ => CloneError::Io(err),
@@ -70,7 +76,7 @@ fn root_spellings(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 
 /// Clone one regular file by reference.
 #[cfg(target_os = "macos")]
-pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
+pub fn clone_file(src: &Path, dst: &Path) -> Result<u64, CloneError> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
@@ -81,30 +87,27 @@ pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
     // CLONE_NOFOLLOW: clone the symlink itself, never its target.
     let rc = unsafe { libc::clonefile(c_src.as_ptr(), c_dst.as_ptr(), 1) };
     if rc == 0 {
-        return Ok(());
+        return Ok(fs::symlink_metadata(dst).map(|m| m.len()).unwrap_or(0));
     }
     Err(classify(std::io::Error::last_os_error()))
 }
 
 #[cfg(target_os = "linux")]
-pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
+pub fn clone_file(src: &Path, dst: &Path) -> Result<u64, CloneError> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     let source = fs::File::open(src).map_err(CloneError::Io)?;
-    let mode = source
-        .metadata()
-        .map_err(CloneError::Io)?
-        .permissions()
-        .mode();
+    let info = source.metadata().map_err(CloneError::Io)?;
+    let (mode, size) = (info.permissions().mode(), info.len());
     let target = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(mode)
         .open(dst)
-        .map_err(CloneError::Io)?;
+        .map_err(classify)?;
 
     match rustix::fs::ioctl_ficlone(&target, &source) {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(size),
         Err(e) => {
             drop(target);
             let _ = fs::remove_file(dst);
@@ -121,7 +124,7 @@ pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
 /// a file alone, which is why the per-file walk exists at all.
 #[cfg(target_os = "macos")]
 fn clone_dir(src: &Path, dst: &Path) -> Result<(), CloneError> {
-    clone_file(src, dst)
+    clone_file(src, dst).map(|_| ())
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -132,7 +135,7 @@ fn clone_dir(_src: &Path, _dst: &Path) -> Result<(), CloneError> {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub fn clone_file(_src: &Path, _dst: &Path) -> Result<(), CloneError> {
+pub fn clone_file(_src: &Path, _dst: &Path) -> Result<u64, CloneError> {
     Err(CloneError::Unsupported(
         "no clone primitive on this platform".into(),
     ))
@@ -153,7 +156,7 @@ pub fn probe(path: &Path) -> (bool, String) {
         return (false, e.to_string());
     }
     match clone_file(&a, &b) {
-        Ok(()) => (true, "reflink available".into()),
+        Ok(_) => (true, "reflink available".into()),
         Err(e) => (false, e.to_string()),
     }
 }
@@ -211,7 +214,7 @@ pub fn clone_dir_tree(
     }
     match clone_dir(src, dst) {
         Ok(()) => {}
-        Err(CloneError::Unsupported(_)) => return walk(),
+        Err(CloneError::Unsupported(_) | CloneError::Exists) => return walk(),
         Err(CloneError::Io(e)) => return Err(e),
     }
 
@@ -355,33 +358,32 @@ pub fn clone_tree_rooted(
             fs::create_dir_all(&target)?;
             continue;
         }
-        if fs::symlink_metadata(&target).is_ok() {
-            continue;
-        }
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        // No `create_dir_all` and no existence check per file: the walk yields a directory
+        // before its contents, so the parent is already made, and the create below reports
+        // an existing destination for free. Both cost a syscall each, per file.
         if entry.file_type().is_symlink() {
             let dest = fs::read_link(entry.path())?;
             let dest = retarget(&dest, &src_roots, dst_root).unwrap_or(dest);
-            std::os::unix::fs::symlink(dest, &target)?;
-            stats.links += 1;
+            match std::os::unix::fs::symlink(dest, &target) {
+                Ok(()) => stats.links += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
             continue;
         }
         if !entry.file_type().is_file() {
             continue;
         }
 
-        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
         match clone_file(entry.path(), &target) {
-            Ok(()) => {
+            Ok(size) => {
                 stats.cloned += 1;
                 stats.bytes_shared += size;
             }
+            Err(CloneError::Exists) => continue,
             Err(CloneError::Unsupported(_)) => {
-                fs::copy(entry.path(), &target)?;
+                stats.bytes_copied += fs::copy(entry.path(), &target)?;
                 stats.copied += 1;
-                stats.bytes_copied += size;
             }
             Err(CloneError::Io(e)) => return Err(e),
         }

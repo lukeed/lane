@@ -158,7 +158,7 @@ const ROOT: &str = "
     ls           List lanes
     path         Print a lane's path
     anchors      List addressable anchors in a file
-    note         Record a finding
+    note         Manage memory notes
     install      Install lane's agent integrations
     uninstall    Remove lane's agent integrations
     why          Show context for a path

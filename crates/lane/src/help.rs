@@ -17,10 +17,16 @@ pub enum Help {
     Path,
     Anchors,
     Note,
+    NoteAdd,
+    NoteReplace,
+    NoteConfirm,
+    NoteRetire,
+    NoteRestore,
+    NotePin,
+    NoteUnpin,
     Install,
     Uninstall,
     Why,
-    Holds,
     Check,
     Audit,
     Merge,
@@ -41,10 +47,16 @@ impl Help {
             Help::Path => PATH,
             Help::Anchors => ANCHORS,
             Help::Note => NOTE,
+            Help::NoteAdd => NOTE_ADD,
+            Help::NoteReplace => NOTE_REPLACE,
+            Help::NoteConfirm => NOTE_CONFIRM,
+            Help::NoteRetire => NOTE_RETIRE,
+            Help::NoteRestore => NOTE_RESTORE,
+            Help::NotePin => NOTE_PIN,
+            Help::NoteUnpin => NOTE_UNPIN,
             Help::Install => INSTALL,
             Help::Uninstall => UNINSTALL,
             Help::Why => WHY,
-            Help::Holds => HOLDS,
             Help::Check => CHECK,
             Help::Audit => AUDIT,
             Help::Merge => MERGE,
@@ -64,11 +76,17 @@ impl Help {
             Help::Ls => "lane ls [--json]",
             Help::Path => "lane path <NAME>",
             Help::Anchors => "lane anchors [--json] <PATH>",
-            Help::Note => "lane note [OPTIONS] --path <PATH> <TEXT>",
+            Help::Note => "lane note <COMMAND>",
+            Help::NoteAdd => "lane note add [OPTIONS] <PATH> [TEXT]",
+            Help::NoteReplace => "lane note replace [OPTIONS] <ID> [TEXT]",
+            Help::NoteConfirm => "lane note confirm <ID>",
+            Help::NoteRetire => "lane note retire <ID>",
+            Help::NoteRestore => "lane note restore <ID>",
+            Help::NotePin => "lane note pin <ID>",
+            Help::NoteUnpin => "lane note unpin <ID>",
             Help::Install => "lane install <hooks|skill>",
             Help::Uninstall => "lane uninstall <hooks|skill>",
             Help::Why => "lane why [OPTIONS] [PATH]",
-            Help::Holds => "lane holds <ID>",
             Help::Check => "lane check [--json]",
             Help::Audit => "lane audit [OPTIONS]",
             Help::Merge => "lane merge [OPTIONS]",
@@ -101,10 +119,16 @@ impl Help {
             Help::Path => "lane path",
             Help::Anchors => "lane anchors",
             Help::Note => "lane note",
+            Help::NoteAdd => "lane note add",
+            Help::NoteReplace => "lane note replace",
+            Help::NoteConfirm => "lane note confirm",
+            Help::NoteRetire => "lane note retire",
+            Help::NoteRestore => "lane note restore",
+            Help::NotePin => "lane note pin",
+            Help::NoteUnpin => "lane note unpin",
             Help::Install => "lane install",
             Help::Uninstall => "lane uninstall",
             Help::Why => "lane why",
-            Help::Holds => "lane holds",
             Help::Check => "lane check",
             Help::Audit => "lane audit",
             Help::Merge => "lane merge",
@@ -134,7 +158,6 @@ const ROOT: &str = "
     install      Install lane's agent integrations
     uninstall    Remove lane's agent integrations
     why          Show context for a path
-    holds        Re-vouch for a drifted note
     check        Staleness report
     audit        Promote, re-anchor, rank, evict
     merge        Rebase, audit, fast-forward, remove
@@ -149,7 +172,7 @@ const ROOT: &str = "
 
   Examples
     $ lane new fix-login
-    $ lane note -p src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
+    $ lane note add src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
     $ lane why src/auth.rs
     $ lane merge
 ";
@@ -228,22 +251,112 @@ const ANCHORS: &str = "
 
 const NOTE: &str = "
   Description
-    Record one finding about one anchor. An anchor is `fn verify`, `#script`,
-    `## Heading`, or `@file` for the whole file.
+    Add, replace, confirm, retire, restore, pin, or unpin a note.
 
   Usage
-    $ lane note -p <path> [options] <text>
+    $ lane note <command>
+
+  Commands
+    add        Record a finding
+    replace    Queue a replacement
+    confirm    Confirm a drifted note is still true
+    retire     Move a live note to the attic
+    restore    Restore a retired note
+    pin        Protect a live note from eviction
+    unpin      Remove eviction protection
 
   Options
-    -p, --path <path>      The file the finding is about (required)
-    -a, --anchor <anchor>  The symbol within it (default: @file)
-        --supersedes <id>  Retire this note, which the new one replaces
+    -h, --help    Display this message
+";
+
+const NOTE_ADD: &str = "
+  Description
+    Record one finding about a file or anchor. Supplying text never prompts;
+    omit it to select an anchor and enter the note interactively.
+
+  Usage
+    $ lane note add [options] <path> [text]
+
+  Options
+    -a, --anchor <anchor>  The symbol within the file (default: @file)
     -h, --help             Display this message
 
   Examples
-    $ lane note -p src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
-    $ lane note -p README.md -a '## Install' 'the tarball is flat, not nested'
-    $ lane note -p src/auth.rs -a 'fn verify' --supersedes 01M0G2 'and only once'
+    $ lane note add src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
+    $ lane note add README.md
+";
+
+const NOTE_REPLACE: &str = "
+  Description
+    Queue a successor for a live note, inheriting its path and anchor unless
+    either is overridden. The predecessor retires when audit promotes it.
+
+  Usage
+    $ lane note replace [options] <id> [text]
+
+  Options
+    -p, --path <path>      Override the predecessor's file
+    -a, --anchor <anchor>  Override the predecessor's anchor
+    -h, --help             Display this message
+
+  Examples
+    $ lane note replace 01M0G2 'tokens rotate exactly once'
+";
+
+const NOTE_CONFIRM: &str = "
+  Description
+    Confirm that a drifted live note is still true. Any unambiguous id prefix
+    works.
+
+  Usage
+    $ lane note confirm <id>
+
+  Options
+    -h, --help    Display this message
+";
+
+const NOTE_RETIRE: &str = "
+  Description
+    Retire a live note by moving it to the attic unchanged.
+
+  Usage
+    $ lane note retire <id>
+
+  Options
+    -h, --help    Display this message
+";
+
+const NOTE_RESTORE: &str = "
+  Description
+    Restore a retired note from the attic unchanged.
+
+  Usage
+    $ lane note restore <id>
+
+  Options
+    -h, --help    Display this message
+";
+
+const NOTE_PIN: &str = "
+  Description
+    Protect a live note from eviction.
+
+  Usage
+    $ lane note pin <id>
+
+  Options
+    -h, --help    Display this message
+";
+
+const NOTE_UNPIN: &str = "
+  Description
+    Remove eviction protection from a live note.
+
+  Usage
+    $ lane note unpin <id>
+
+  Options
+    -h, --help    Display this message
 ";
 
 const INSTALL: &str = "
@@ -290,18 +403,6 @@ const WHY: &str = "
   Examples
     $ lane why src/auth.rs
     $ lane why src/auth.rs -a 'fn verify'
-";
-
-const HOLDS: &str = "
-  Description
-    Re-vouch for a drifted note: its span changed and you say it is still
-    true. Any unambiguous prefix of the id works.
-
-  Usage
-    $ lane holds <id>
-
-  Options
-    -h, --help    Display this message
 ";
 
 const CHECK: &str = "

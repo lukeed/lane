@@ -6,6 +6,7 @@ pub mod cow;
 pub mod git;
 pub mod help;
 pub mod note;
+pub(crate) mod prompt;
 pub mod store;
 pub mod syntax;
 pub mod util;

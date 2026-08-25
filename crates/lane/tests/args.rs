@@ -48,7 +48,6 @@ fn every_command_answers_its_own_help_flag() {
         ("install", Help::Install),
         ("uninstall", Help::Uninstall),
         ("why", Help::Why),
-        ("holds", Help::Holds),
         ("check", Help::Check),
         ("audit", Help::Audit),
         ("merge", Help::Merge),
@@ -181,54 +180,41 @@ fn absent(words: &[&str]) -> Vec<String> {
 
 #[test]
 fn note_requires_both_its_text_and_its_path() {
-    assert_eq!(absent(&["note"]), ["--path <PATH>", "<TEXT>"]);
-    assert_eq!(absent(&["note", "a finding"]), ["--path <PATH>"]);
-    assert_eq!(absent(&["note", "-p", "src/auth.rs"]), ["<TEXT>"]);
+    assert_eq!(absent(&["note"]), ["<COMMAND>"]);
+    assert_eq!(absent(&["note", "add"]), ["<PATH>"]);
+    assert_eq!(absent(&["note", "replace"]), ["<ID>"]);
 }
 
 #[test]
 fn note_defaults_the_anchor_to_the_whole_file() {
     assert_eq!(
-        ok(&["note", "-p", "src/auth.rs", "a finding"]),
-        Parsed::Note(NoteArgs {
-            text: "a finding".into(),
+        ok(&["note", "add", "src/auth.rs", "a finding"]),
+        Parsed::Note(NoteCommand::Add(NoteAddArgs {
             path: "src/auth.rs".into(),
-            anchor: "@file".into(),
-            supersedes: None,
-        })
+            text: Some("a finding".into()),
+            anchor: None,
+        }))
     );
 }
 
 #[test]
 fn note_takes_the_long_and_short_spellings_alike() {
-    let expected = Parsed::Note(NoteArgs {
-        text: "a finding".into(),
+    let expected = Parsed::Note(NoteCommand::Add(NoteAddArgs {
         path: "src/auth.rs".into(),
-        anchor: "fn verify".into(),
-        supersedes: Some("01M0G2".into()),
-    });
+        text: Some("a finding".into()),
+        anchor: Some("fn verify".into()),
+    }));
     assert_eq!(
-        ok(&[
-            "note",
-            "-p",
-            "src/auth.rs",
-            "-a",
-            "fn verify",
-            "--supersedes",
-            "01M0G2",
-            "a finding",
-        ]),
+        ok(&["note", "add", "src/auth.rs", "-a", "fn verify", "a finding",]),
         expected
     );
     assert_eq!(
         ok(&[
             "note",
-            "--path",
+            "add",
             "src/auth.rs",
             "--anchor",
             "fn verify",
-            "--supersedes",
-            "01M0G2",
             "a finding",
         ]),
         expected
@@ -236,24 +222,177 @@ fn note_takes_the_long_and_short_spellings_alike() {
 }
 
 #[test]
-fn joined_values_parse_the_way_clap_read_them() {
+fn note_family_and_leaf_help_route_to_their_own_screens() {
+    assert_eq!(ok(&["note", "--help"]), Parsed::Help(Help::Note));
+    for (verb, screen) in [
+        ("add", Help::NoteAdd),
+        ("replace", Help::NoteReplace),
+        ("confirm", Help::NoteConfirm),
+        ("retire", Help::NoteRetire),
+        ("restore", Help::NoteRestore),
+        ("pin", Help::NotePin),
+        ("unpin", Help::NoteUnpin),
+    ] {
+        assert_eq!(
+            ok(&["note", verb, "ignored", "--help"]),
+            Parsed::Help(screen)
+        );
+    }
+}
+
+#[test]
+fn note_add_parses_a_path_optional_text_and_anchor() {
     assert_eq!(
-        ok(&["note", "--path=src/auth.rs", "--anchor=fn verify", "text"]),
-        Parsed::Note(NoteArgs {
-            text: "text".into(),
+        ok(&["note", "add", "src/auth.rs"]),
+        Parsed::Note(NoteCommand::Add(NoteAddArgs {
             path: "src/auth.rs".into(),
-            anchor: "fn verify".into(),
-            supersedes: None,
-        })
+            text: None,
+            anchor: None,
+        }))
     );
     assert_eq!(
-        ok(&["note", "-psrc/auth.rs", "text"]),
-        Parsed::Note(NoteArgs {
-            text: "text".into(),
+        ok(&[
+            "note",
+            "add",
+            "src/auth.rs",
+            "--anchor",
+            "fn verify",
+            "finding",
+        ]),
+        Parsed::Note(NoteCommand::Add(NoteAddArgs {
             path: "src/auth.rs".into(),
-            anchor: "@file".into(),
-            supersedes: None,
-        })
+            text: Some("finding".into()),
+            anchor: Some("fn verify".into()),
+        }))
+    );
+}
+
+#[test]
+fn note_replace_parses_an_id_optional_text_and_overrides() {
+    assert_eq!(
+        ok(&["note", "replace", "01M0G2"]),
+        Parsed::Note(NoteCommand::Replace(NoteReplaceArgs {
+            id: "01M0G2".into(),
+            text: None,
+            path: None,
+            anchor: None,
+        }))
+    );
+    assert_eq!(
+        ok(&[
+            "note",
+            "replace",
+            "01M0G2",
+            "-p",
+            "src/auth.rs",
+            "-a",
+            "fn verify",
+            "rewrite",
+        ]),
+        Parsed::Note(NoteCommand::Replace(NoteReplaceArgs {
+            id: "01M0G2".into(),
+            text: Some("rewrite".into()),
+            path: Some("src/auth.rs".into()),
+            anchor: Some("fn verify".into()),
+        }))
+    );
+}
+
+#[test]
+fn note_id_verbs_take_exactly_one_id() {
+    for (verb, expected) in [
+        (
+            "confirm",
+            NoteCommand::Confirm {
+                id: "01M0G2".into(),
+            },
+        ),
+        (
+            "retire",
+            NoteCommand::Retire {
+                id: "01M0G2".into(),
+            },
+        ),
+        (
+            "restore",
+            NoteCommand::Restore {
+                id: "01M0G2".into(),
+            },
+        ),
+        (
+            "pin",
+            NoteCommand::Pin {
+                id: "01M0G2".into(),
+            },
+        ),
+        (
+            "unpin",
+            NoteCommand::Unpin {
+                id: "01M0G2".into(),
+            },
+        ),
+    ] {
+        assert_eq!(ok(&["note", verb, "01M0G2"]), Parsed::Note(expected));
+    }
+}
+
+#[test]
+fn note_double_dash_preserves_text_that_starts_with_a_dash() {
+    assert_eq!(
+        ok(&["note", "add", "README.md", "--", "--not-a-flag"]),
+        Parsed::Note(NoteCommand::Add(NoteAddArgs {
+            path: "README.md".into(),
+            text: Some("--not-a-flag".into()),
+            anchor: None,
+        }))
+    );
+}
+
+#[test]
+fn note_commands_refuse_missing_and_extra_values() {
+    assert_eq!(absent(&["note", "add"]), ["<PATH>"]);
+    assert_eq!(absent(&["note", "confirm"]), ["<ID>"]);
+    assert!(err(&["note", "add", "one", "two", "three"]).contains("'three'"));
+    assert!(err(&["note", "pin", "one", "two"]).contains("'two'"));
+    assert!(err(&["note", "replace", "one", "two", "three"]).contains("'three'"));
+    assert!(err(&["note", "retier", "01M0G2"]).contains("'retire'"));
+}
+
+#[test]
+fn legacy_note_and_holds_spellings_are_refused() {
+    assert!(parse_words(&["note", "-p", "src/auth.rs", "finding"]).is_err());
+    assert!(
+        parse_words(&[
+            "note",
+            "add",
+            "src/auth.rs",
+            "--supersedes",
+            "01M0G2",
+            "finding",
+        ])
+        .is_err()
+    );
+    assert!(parse_words(&["holds", "01M0G2"]).is_err());
+}
+
+#[test]
+fn joined_values_parse_the_way_clap_read_them() {
+    assert_eq!(
+        ok(&["note", "add", "--anchor=fn verify", "src/auth.rs", "text"]),
+        Parsed::Note(NoteCommand::Add(NoteAddArgs {
+            path: "src/auth.rs".into(),
+            text: Some("text".into()),
+            anchor: Some("fn verify".into()),
+        }))
+    );
+    assert_eq!(
+        ok(&["note", "replace", "-psrc/auth.rs", "01M0G2", "text"]),
+        Parsed::Note(NoteCommand::Replace(NoteReplaceArgs {
+            id: "01M0G2".into(),
+            text: Some("text".into()),
+            path: Some("src/auth.rs".into()),
+            anchor: None,
+        }))
     );
     let Parsed::Audit(audit) = ok(&["audit", "--base=HEAD~3", "--max-notes=3"]) else {
         panic!("expected audit");
@@ -267,17 +406,16 @@ fn a_double_dash_lets_a_finding_start_with_one() {
     assert_eq!(
         ok(&[
             "note",
-            "-p",
+            "add",
             "README.md",
             "--",
             "--dirty is not the default"
         ]),
-        Parsed::Note(NoteArgs {
-            text: "--dirty is not the default".into(),
+        Parsed::Note(NoteCommand::Add(NoteAddArgs {
             path: "README.md".into(),
-            anchor: "@file".into(),
-            supersedes: None,
-        })
+            text: Some("--dirty is not the default".into()),
+            anchor: None,
+        }))
     );
 }
 
@@ -436,12 +574,6 @@ fn merge_and_rm_read_the_rest_of_their_flags() {
     );
     assert_eq!(ok(&["check", "--json"]), Parsed::Check { json: true });
     assert_eq!(
-        ok(&["holds", "01M0G2"]),
-        Parsed::Holds {
-            id: "01M0G2".into()
-        }
-    );
-    assert_eq!(
         ok(&["path", "spike"]),
         Parsed::Path {
             name: "spike".into()
@@ -500,7 +632,7 @@ fn every_command_the_root_screen_lists_parses() {
         .take_while(|line| !line.trim().is_empty())
         .filter_map(|line| line.split_whitespace().next())
         .collect();
-    assert_eq!(listed.len(), 17, "{listed:?}");
+    assert_eq!(listed.len(), 16, "{listed:?}");
     for name in listed {
         assert!(matches!(ok(&[name, "--help"]), Parsed::Help(_)), "{name}");
     }
@@ -516,10 +648,16 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::Path,
         Help::Anchors,
         Help::Note,
+        Help::NoteAdd,
+        Help::NoteReplace,
+        Help::NoteConfirm,
+        Help::NoteRetire,
+        Help::NoteRestore,
+        Help::NotePin,
+        Help::NoteUnpin,
         Help::Install,
         Help::Uninstall,
         Help::Why,
-        Help::Holds,
         Help::Check,
         Help::Audit,
         Help::Merge,

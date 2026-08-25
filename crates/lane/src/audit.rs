@@ -25,17 +25,17 @@ pub struct Outcome {
     pub evicted: Vec<(Note, String)>,
 }
 
-pub fn holds(root: &Path, id: &str) -> Result<String> {
+pub fn confirm(root: &Path, id: &str) -> Result<String> {
     let mut note = store::resolve_id(root, id)?;
     let id = note.meta.id.clone();
     if note.unreadable {
-        anyhow::bail!("cannot hold note {id}: frontmatter is unreadable");
+        anyhow::bail!("cannot confirm note {id}: frontmatter is unreadable");
     }
     let mut checker = store::Checker::new(root);
     let res = checker.check(&note);
     if res.span.is_none() {
         anyhow::bail!(
-            "cannot hold note {id}: anchor does not resolve ({})",
+            "cannot confirm note {id}: anchor does not resolve ({})",
             res.tier
         );
     }
@@ -241,14 +241,14 @@ mod tests {
     }
 
     #[test]
-    fn holds_rewrites_the_note_with_the_fingerprint_it_vouched_for() {
+    fn confirm_rewrites_the_note_with_the_fingerprint_it_vouched_for() {
         let root = tempfile::tempdir().unwrap();
         let note = note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
         edit(root.path(), "pub fn verify() {\n    new();\n}\n");
         let drifted = store::Checker::new(root.path()).check(&note);
         assert_eq!(drifted.tier, BODY);
 
-        holds(root.path(), &note.meta.id).unwrap();
+        confirm(root.path(), &note.meta.id).unwrap();
 
         let confirmed = store::resolve_id(root.path(), &note.meta.id).unwrap();
         assert_eq!(confirmed.meta.sig, drifted.sig);
@@ -262,11 +262,11 @@ mod tests {
     }
 
     #[test]
-    fn a_holds_outlives_the_branch_that_made_it() {
+    fn a_confirmation_outlives_the_branch_that_made_it() {
         let root = tempfile::tempdir().unwrap();
         let note = note_fixture(root.path(), "pub fn verify() {\n    old();\n}\n");
         edit(root.path(), "pub fn verify() {\n    new();\n}\n");
-        holds(root.path(), &note.meta.id).unwrap();
+        confirm(root.path(), &note.meta.id).unwrap();
 
         // The note is the whole record: nothing per-branch is left to garbage-collect.
         assert!(!root.path().join(store::LANE_DIR).join("branch").exists());
@@ -278,12 +278,12 @@ mod tests {
     }
 
     #[test]
-    fn holds_refuses_a_missing_anchor_and_records_nothing() {
+    fn confirm_refuses_a_missing_anchor_and_records_nothing() {
         let root = tempfile::tempdir().unwrap();
         let note = note_fixture(root.path(), "pub fn verify() { old(); }\n");
         edit(root.path(), "pub const ENABLED: bool = true;\n");
 
-        let error = holds(root.path(), &note.meta.id).unwrap_err();
+        let error = confirm(root.path(), &note.meta.id).unwrap_err();
 
         assert!(error.to_string().contains(MISSING));
         assert!(note.meta.vouched.is_empty());

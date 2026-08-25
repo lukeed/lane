@@ -117,7 +117,15 @@ pub fn attic_dir(root: &Path, path: &str) -> PathBuf {
 
 /// Live notes only; the attic is a sibling of the reserved tree, never inside it.
 pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
-    let base = root.join(LANE_DIR).join(NOTES);
+    load_note_tree(root, NOTES, filter)
+}
+
+pub fn load_retired(root: &Path, filter: Option<&str>) -> Vec<Note> {
+    load_note_tree(root, ATTIC, filter)
+}
+
+fn load_note_tree(root: &Path, tree: &str, filter: Option<&str>) -> Vec<Note> {
+    let base = root.join(LANE_DIR).join(tree);
     if !base.exists() {
         return Vec::new();
     }
@@ -164,14 +172,14 @@ fn write_baseline(
 ) -> Result<()> {
     if note.unreadable {
         anyhow::bail!(
-            "cannot hold note {}: frontmatter is unreadable",
+            "cannot confirm note {}: frontmatter is unreadable",
             note.meta.id
         );
     }
     let file = note
         .file
         .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("cannot hold note {}: no note file", note.meta.id))?;
+        .ok_or_else(|| anyhow::anyhow!("cannot confirm note {}: no note file", note.meta.id))?;
     note.meta.sig = sig.into();
     note.meta.body_hash = body_hash.into();
     note.meta.raw_hash = raw_hash.into();
@@ -355,12 +363,20 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
 /// An id, or any unambiguous prefix of one. `lane why` prints ten characters of a
 /// ULID, so what a reader can see has to be what the verbs accept.
 pub fn resolve_id(root: &Path, id: &str) -> Result<Note> {
-    let mut hits: Vec<Note> = load_notes(root, None)
+    resolve_from(load_notes(root, None), id, "live")
+}
+
+pub fn resolve_retired_id(root: &Path, id: &str) -> Result<Note> {
+    resolve_from(load_retired(root, None), id, "retired")
+}
+
+fn resolve_from(notes: Vec<Note>, id: &str, state: &str) -> Result<Note> {
+    let mut hits: Vec<Note> = notes
         .into_iter()
         .filter(|note| note.meta.id.starts_with(id))
         .collect();
     match hits.len() {
-        0 => anyhow::bail!("live note {id} not found"),
+        0 => anyhow::bail!("{state} note {id} not found"),
         1 => Ok(hits.remove(0)),
         n => {
             let shown: Vec<String> = hits
@@ -382,19 +398,62 @@ pub fn supersede(root: &Path, old: &mut Note, fresh: &Note) -> Result<()> {
 
 /// Never delete: audit moves notes to the attic so every retirement stays inspectable.
 pub fn evict(root: &Path, note: &mut Note, _reason: &str) -> Result<()> {
+    move_note(root, note, NOTES, ATTIC)
+}
+
+pub fn restore(root: &Path, note: &mut Note) -> Result<()> {
+    move_note(root, note, ATTIC, NOTES)
+}
+
+fn move_note(root: &Path, note: &mut Note, from: &str, to: &str) -> Result<()> {
     let Some(file) = note.file.clone() else {
-        return Ok(());
+        anyhow::bail!("cannot move note {}: no note file", note.meta.id);
     };
-    let live = root.join(LANE_DIR).join(NOTES);
-    let rel = file.strip_prefix(&live).unwrap_or(&file);
-    let dest = root.join(LANE_DIR).join(ATTIC).join(rel);
+    let source = root.join(LANE_DIR).join(from);
+    let rel = file.strip_prefix(&source).map_err(|_| {
+        anyhow::anyhow!(
+            "cannot move note {}: file is outside the {from} tree",
+            note.meta.id
+        )
+    })?;
+    let dest = root.join(LANE_DIR).join(to).join(rel);
     // A pure move: the note is retired, not rewritten.
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    if dest.exists() {
+        anyhow::bail!(
+            "cannot move note {}: {} already exists",
+            note.meta.id,
+            dest.display()
+        );
+    }
     std::fs::rename(&file, &dest)?;
     note.file = Some(dest);
     Ok(())
+}
+
+pub fn set_pinned(note: &mut Note, pinned: bool) -> Result<bool> {
+    if note.unreadable {
+        anyhow::bail!(
+            "cannot {} note {}: frontmatter is unreadable",
+            if pinned { "pin" } else { "unpin" },
+            note.meta.id
+        );
+    }
+    let file = note.file.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "cannot {} note {}: no note file",
+            if pinned { "pin" } else { "unpin" },
+            note.meta.id
+        )
+    })?;
+    if note.meta.pinned == pinned {
+        return Ok(false);
+    }
+    note.meta.pinned = pinned;
+    note.write(file)?;
+    Ok(true)
 }
 
 pub struct Check {
@@ -590,6 +649,28 @@ pub fn append_pending(root: &Path, rec: &PendingNote) -> Result<()> {
     Ok(())
 }
 
+pub fn pending_supersedes(root: &Path, id: &str) -> Result<bool> {
+    let pending = pending_path(root);
+    if !pending.exists() {
+        return Ok(false);
+    }
+    let text = std::fs::read_to_string(pending)?;
+    let mut found = false;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let rec: PendingNote = match serde_json::from_str(line) {
+            Ok(rec) => rec,
+            Err(err) => {
+                eprintln!("warning: skipping unreadable pending note: {err}");
+                continue;
+            }
+        };
+        if rec.supersedes == id {
+            found = true;
+        }
+    }
+    Ok(found)
+}
+
 pub fn pending_count(worktree: &Path) -> usize {
     std::fs::read_to_string(pending_path(worktree))
         .map(|t| t.lines().filter(|l| !l.trim().is_empty()).count())
@@ -700,6 +781,131 @@ mod tests {
 
         let unknown = resolve_id(root.path(), "ZZZ").unwrap_err().to_string();
         assert!(unknown.contains("not found"), "{unknown}");
+    }
+
+    #[test]
+    fn live_resolution_excludes_the_attic() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0ALIVE", "keep");
+        let mut note = resolve_id(root.path(), "01M0A").unwrap();
+        evict(root.path(), &mut note, "test").unwrap();
+
+        assert!(resolve_id(root.path(), "01M0A").is_err());
+        assert_eq!(
+            resolve_retired_id(root.path(), "01M0A").unwrap().meta.id,
+            "01M0ALIVE"
+        );
+    }
+
+    #[test]
+    fn retired_resolution_excludes_live_memory() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0ALIVE", "keep");
+
+        assert!(resolve_retired_id(root.path(), "01M0A").is_err());
+        assert_eq!(
+            resolve_id(root.path(), "01M0A").unwrap().meta.id,
+            "01M0ALIVE"
+        );
+    }
+
+    #[test]
+    fn retire_and_restore_preserve_exact_bytes_and_refuse_collisions() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0A", "keep");
+        let mut note = resolve_id(root.path(), "01M0A").unwrap();
+        let live = note.file.clone().unwrap();
+        let bytes = std::fs::read(&live).unwrap();
+
+        evict(root.path(), &mut note, "test").unwrap();
+        let retired = note.file.clone().unwrap();
+        assert_eq!(std::fs::read(&retired).unwrap(), bytes);
+        restore(root.path(), &mut note).unwrap();
+        assert_eq!(note.file.as_deref(), Some(live.as_path()));
+        assert_eq!(std::fs::read(&live).unwrap(), bytes);
+
+        std::fs::create_dir_all(retired.parent().unwrap()).unwrap();
+        std::fs::write(&retired, b"collision").unwrap();
+        assert!(evict(root.path(), &mut note, "test").is_err());
+        assert_eq!(std::fs::read(&live).unwrap(), bytes);
+        assert_eq!(std::fs::read(&retired).unwrap(), b"collision");
+    }
+
+    #[test]
+    fn ambiguous_prefixes_are_local_to_each_state() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/live.rs", "01M0ALIVE", "live");
+        seed_note(root.path(), "src/old.rs", "01M0AOLD", "old");
+        let mut old = resolve_id(root.path(), "01M0AO").unwrap();
+        evict(root.path(), &mut old, "test").unwrap();
+
+        assert_eq!(
+            resolve_id(root.path(), "01M0A").unwrap().meta.id,
+            "01M0ALIVE"
+        );
+        assert_eq!(
+            resolve_retired_id(root.path(), "01M0A").unwrap().meta.id,
+            "01M0AOLD"
+        );
+    }
+
+    #[test]
+    fn pin_and_unpin_render_correctly_and_are_idempotent() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0A", "keep");
+        let mut note = resolve_id(root.path(), "01M0A").unwrap();
+        let file = note.file.clone().unwrap();
+
+        assert!(set_pinned(&mut note, true).unwrap());
+        let pinned = std::fs::read_to_string(&file).unwrap();
+        assert!(pinned.contains("pinned: true"));
+        assert!(!set_pinned(&mut note, true).unwrap());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), pinned);
+
+        assert!(set_pinned(&mut note, false).unwrap());
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("pinned:"));
+        assert!(!set_pinned(&mut note, false).unwrap());
+    }
+
+    #[test]
+    fn unreadable_notes_refuse_pin_mutations() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/a.rs", "01M0A", "keep");
+        let file = resolve_id(root.path(), "01M0A").unwrap().file.unwrap();
+        let damaged = std::fs::read_to_string(&file).unwrap().replacen(
+            "anchor:",
+            "anchor: first\nanchor:",
+            1,
+        );
+        std::fs::write(&file, &damaged).unwrap();
+        let mut note = resolve_id(root.path(), "01M0A").unwrap();
+
+        assert!(note.unreadable);
+        assert!(set_pinned(&mut note, true).is_err());
+        assert!(set_pinned(&mut note, false).is_err());
+        assert_eq!(std::fs::read_to_string(file).unwrap(), damaged);
+    }
+
+    #[test]
+    fn a_pending_replacement_is_detected_without_rewriting_the_queue() {
+        let root = tempfile::tempdir().unwrap();
+        append_pending(
+            root.path(),
+            &PendingNote {
+                text: "replacement".into(),
+                path: "src/a.rs".into(),
+                anchor: "@file".into(),
+                at: "2026-08-24T00:00:00Z".into(),
+                supersedes: "01M0A".into(),
+            },
+        )
+        .unwrap();
+        let path = pending_path(root.path());
+        let before = std::fs::read(&path).unwrap();
+
+        assert!(pending_supersedes(root.path(), "01M0A").unwrap());
+        assert!(!pending_supersedes(root.path(), "01M0B").unwrap());
+        assert_eq!(std::fs::read(path).unwrap(), before);
     }
 
     #[test]

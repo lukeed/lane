@@ -1,11 +1,12 @@
 //! Command surface. Every command returns an exit code; failures bubble as errors.
 
-use crate::args::{self, Budget, Installable, Parsed};
+use crate::args::{self, Budget, Installable, NoteAddArgs, NoteCommand, NoteReplaceArgs, Parsed};
 use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
+use crate::prompt;
 use crate::store::{self, BODY, FRESH, LANE_DIR, MISSING, SIG, UNVERIFIABLE};
-use crate::syntax::{Qualification, Source};
+use crate::syntax::{Anchor, Qualification, Source};
 use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
@@ -49,12 +50,15 @@ pub fn run() -> Result<i32> {
         Parsed::Ls { json } => ls(json),
         Parsed::Path { name } => path(&name),
         Parsed::Anchors { path, json } => anchors(&path, json),
-        Parsed::Note(args) => note(
-            &args.text,
-            &args.path,
-            &args.anchor,
-            args.supersedes.as_deref(),
-        ),
+        Parsed::Note(command) => match command {
+            NoteCommand::Add(args) => note_add(args),
+            NoteCommand::Replace(args) => note_replace(args),
+            NoteCommand::Confirm { id } => confirm(&id),
+            NoteCommand::Retire { id } => retire(&id),
+            NoteCommand::Restore { id } => restore(&id),
+            NoteCommand::Pin { id } => pin(&id, true),
+            NoteCommand::Unpin { id } => pin(&id, false),
+        },
         Parsed::Install(what) => match what {
             Installable::Hooks => hooks_install(),
             Installable::Skill => skill_install(),
@@ -68,7 +72,6 @@ pub fn run() -> Result<i32> {
             Ok(0)
         }
         Parsed::Why(args) => why(args.path.as_deref(), args.anchor.as_deref(), args.json),
-        Parsed::Holds { id } => holds(&id),
         Parsed::Check { json } => check(json),
         Parsed::Audit(args) => audit_cmd(&args.base, &args.budget, args.json),
         Parsed::Merge(args) => merge(
@@ -110,7 +113,7 @@ impl LandingLock {
 const PROTOCOL: &str = "\n<!-- lane:protocol -->\n\
 ## Context memory\n\n\
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.\n\
-- Record non-obvious findings with `lane note -p <path> -a <anchor> \"...\"`.\n\
+- Record non-obvious findings with `lane note add <path> -a <anchor> \"...\"`.\n\
 - Do not edit `.lane/` by hand; `lane merge` manages it.\n\
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n\
 <!-- /lane:protocol -->\n";
@@ -685,22 +688,77 @@ fn anchors(path: &str, json: bool) -> Result<i32> {
     Ok(0)
 }
 
-fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Result<i32> {
+fn note_add(args: NoteAddArgs) -> Result<i32> {
     let root = git::repo_root()?;
-    // Resolved here, so the queue carries a whole id and promotion cannot be
-    // handed a prefix that has since grown ambiguous.
-    let supersedes = match supersedes {
-        Some(id) => store::resolve_id(&root, id)?.meta.id,
-        None => String::new(),
-    };
-    let rel = store::rel_to_repo(&root, path)?;
+    let rel = store::rel_to_repo(&root, &args.path)?;
     if !root.join(&rel).exists() {
         // Otherwise the note is promoted, found missing, and atticked in the same audit.
         bail!("{rel} does not exist; note not recorded");
     }
     let source_text = std::fs::read_to_string(root.join(&rel))?;
     let source = Source::new(&source_text, &rel);
-    let anchor = match source.qualify(anchor) {
+    let (text, anchor) = match args.anchor {
+        Some(anchor) => {
+            let anchor = qualify_anchor(&source, &rel, &anchor)?;
+            let (text, _) = note_text(args.text, None)?;
+            (text, anchor)
+        }
+        None if args.text.is_some() => {
+            let (text, _) = note_text(args.text, None)?;
+            (text, store::WHOLE_FILE.to_string())
+        }
+        None => {
+            let anchors = source.anchors();
+            let (text, selected) = note_text(None, Some((&rel, &anchors)))?;
+            let selected = selected.expect("interactive add requested an anchor selector");
+            (text, selected.value)
+        }
+    };
+    append_note(&root, text, rel.clone(), anchor.clone(), String::new())?;
+    println!("noted -> {rel}#{anchor}");
+    Ok(0)
+}
+
+fn note_replace(args: NoteReplaceArgs) -> Result<i32> {
+    let root = git::repo_root()?;
+    let predecessor = store::resolve_id(&root, &args.id)?;
+    let predecessor_id = predecessor.meta.id.clone();
+    let (path, anchor) = replacement_target(&predecessor, args.path, args.anchor);
+    let rel = store::rel_to_repo(&root, &path)?;
+    if !root.join(&rel).exists() {
+        bail!("{rel} does not exist; replacement not recorded");
+    }
+    let source_text = std::fs::read_to_string(root.join(&rel))?;
+    let source = Source::new(&source_text, &rel);
+    let anchor = qualify_anchor(&source, &rel, &anchor)?;
+    let (text, _) = note_text(args.text, None)?;
+    if store::pending_supersedes(&root, &predecessor_id)? {
+        bail!("note {predecessor_id} already has a pending replacement");
+    }
+    append_note(
+        &root,
+        text,
+        rel.clone(),
+        anchor.clone(),
+        predecessor_id.clone(),
+    )?;
+    println!("replacement queued -> {predecessor_id} {rel}#{anchor}");
+    Ok(0)
+}
+
+fn replacement_target(
+    predecessor: &crate::note::Note,
+    path: Option<String>,
+    anchor: Option<String>,
+) -> (String, String) {
+    (
+        path.unwrap_or_else(|| predecessor.path()),
+        anchor.unwrap_or_else(|| predecessor.meta.anchor.clone()),
+    )
+}
+
+fn qualify_anchor(source: &Source, rel: &str, anchor: &str) -> Result<String> {
+    Ok(match source.qualify(anchor) {
         Qualification::Canonical(candidate) => candidate.value,
         Qualification::Ambiguous(choices) => {
             let choices = choices
@@ -718,19 +776,53 @@ fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Resul
             eprintln!("warning: {rel} has no grammar; note will be kept but not checked for drift");
             anchor.to_string()
         }
+    })
+}
+
+fn note_text(
+    text: Option<String>,
+    selection: Option<(&str, &[Anchor])>,
+) -> Result<(String, Option<Anchor>)> {
+    if let Some(text) = text {
+        return Ok((text, None));
+    }
+    let stdin = std::io::stdin();
+    let stderr = std::io::stderr();
+    if !stdin.is_terminal() || !stderr.is_terminal() {
+        bail!("note text omitted outside a terminal; pass text explicitly");
+    }
+    let mut input = stdin.lock();
+    let mut output = stderr.lock();
+    let selected = match selection {
+        Some((path, anchors)) => Some(prompt::select_anchor(
+            &mut input,
+            &mut output,
+            path,
+            anchors,
+        )?),
+        None => None,
     };
+    let text = prompt::read_note(&mut input, &mut output)?;
+    Ok((text, selected))
+}
+
+fn append_note(
+    root: &Path,
+    text: String,
+    path: String,
+    anchor: String,
+    supersedes: String,
+) -> Result<()> {
     store::append_pending(
-        &root,
+        root,
         &store::PendingNote {
-            text: text.to_string(),
-            path: rel.clone(),
-            anchor: anchor.clone(),
+            text,
+            path,
+            anchor,
             at: now_iso(),
-            supersedes: supersedes.clone(),
+            supersedes,
         },
-    )?;
-    println!("noted -> {rel}#{anchor}");
-    Ok(0)
+    )
 }
 
 #[derive(serde::Serialize)]
@@ -810,9 +902,50 @@ fn why(path: Option<&str>, anchor: Option<&str>, json: bool) -> Result<i32> {
     Ok(0)
 }
 
-fn holds(id: &str) -> Result<i32> {
-    // The whole id, not the prefix you typed, so you can see which note you held.
-    println!("holds -> {}", audit::holds(&git::repo_root()?, id)?);
+fn confirm(id: &str) -> Result<i32> {
+    // The whole id, not the prefix you typed, so you can see which note you confirmed.
+    println!("confirmed -> {}", audit::confirm(&git::repo_root()?, id)?);
+    Ok(0)
+}
+
+fn retire(id: &str) -> Result<i32> {
+    let root = git::repo_root()?;
+    let mut note = store::resolve_id(&root, id)?;
+    let id = note.meta.id.clone();
+    if store::pending_supersedes(&root, &id)? {
+        bail!("note {id} has a pending replacement and cannot be retired");
+    }
+    store::evict(&root, &mut note, "retired explicitly")?;
+    println!("retired -> {id}");
+    Ok(0)
+}
+
+fn restore(id: &str) -> Result<i32> {
+    let root = git::repo_root()?;
+    let mut note = store::resolve_retired_id(&root, id)?;
+    let id = note.meta.id.clone();
+    let path = note.path();
+    let anchor = note.meta.anchor.clone();
+    match store::Checker::new(&root).check(&note).tier {
+        MISSING => eprintln!(
+            "warning: {path}#{anchor} does not resolve; the next audit may retire note {id} again unless it is pinned"
+        ),
+        UNVERIFIABLE => {
+            eprintln!("warning: {path}#{anchor} cannot be verified with the available grammars")
+        }
+        _ => {}
+    }
+    store::restore(&root, &mut note)?;
+    println!("restored -> {id}");
+    Ok(0)
+}
+
+fn pin(id: &str, pinned: bool) -> Result<i32> {
+    let root = git::repo_root()?;
+    let mut note = store::resolve_id(&root, id)?;
+    let id = note.meta.id.clone();
+    store::set_pinned(&mut note, pinned)?;
+    println!("{} -> {id}", if pinned { "pinned" } else { "unpinned" });
     Ok(0)
 }
 
@@ -1186,6 +1319,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn replacement_targets_inherit_and_accept_independent_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let file = store::note_dir(root.path(), "src/auth.rs").join("01M0A-note.md");
+        let note = crate::note::Note::new(
+            crate::note::Meta {
+                id: "01M0A".into(),
+                anchor: "fn verify".into(),
+                ..Default::default()
+            },
+            "keep",
+        );
+        note.write(&file).unwrap();
+        let note = crate::note::parse(&file).unwrap();
+
+        assert_eq!(
+            replacement_target(&note, None, None),
+            ("src/auth.rs".into(), "fn verify".into())
+        );
+        assert_eq!(
+            replacement_target(&note, Some("src/token.rs".into()), None),
+            ("src/token.rs".into(), "fn verify".into())
+        );
+        assert_eq!(
+            replacement_target(&note, None, Some("fn refresh".into())),
+            ("src/auth.rs".into(), "fn refresh".into())
+        );
+    }
+
+    #[test]
     fn flock_excludes_a_second_open_file_description() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("landing.lock");
@@ -1239,10 +1401,10 @@ mod tests {
     }
 
     #[test]
-    fn a_different_marked_protocol_is_replaced() {
+    fn the_previous_marked_protocol_is_replaced() {
         let existing = format!(
             "# AGENTS\n{}",
-            PROTOCOL.replace("lane note -p", "lane note edited")
+            PROTOCOL.replace("lane note add <path>", "lane note -p <path>")
         );
         assert!(matches!(
             protocol_action(Some(&existing)),
@@ -1259,7 +1421,7 @@ mod tests {
             format!(
                 "# AGENTS\n{}",
                 PROTOCOL
-                    .replace("lane note -p", "lane note edited")
+                    .replace("lane note add", "lane note edited")
                     .trim_end()
             ),
         )
@@ -1281,7 +1443,7 @@ mod tests {
             &agents,
             format!(
                 "# AGENTS\n{}{}",
-                PROTOCOL.trim().replace("lane note -p", "lane note edited"),
+                PROTOCOL.trim().replace("lane note add", "lane note edited"),
                 following
             ),
         )

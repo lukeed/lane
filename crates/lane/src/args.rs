@@ -27,7 +27,6 @@ const COMMANDS: &[&str] = &[
     "install",
     "uninstall",
     "why",
-    "holds",
     "check",
     "audit",
     "merge",
@@ -35,6 +34,10 @@ const COMMANDS: &[&str] = &[
     "prune",
     "rm",
     "shellenv",
+];
+
+const NOTE_COMMANDS: &[&str] = &[
+    "add", "replace", "confirm", "retire", "restore", "pin", "unpin",
 ];
 
 /// How much memory one `(path, anchor)` may keep. Shared by `audit` and `merge`,
@@ -69,11 +72,29 @@ pub struct NewArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NoteArgs {
-    pub text: String,
+pub struct NoteAddArgs {
     pub path: String,
-    pub anchor: String,
-    pub supersedes: Option<String>,
+    pub text: Option<String>,
+    pub anchor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteReplaceArgs {
+    pub id: String,
+    pub text: Option<String>,
+    pub path: Option<String>,
+    pub anchor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoteCommand {
+    Add(NoteAddArgs),
+    Replace(NoteReplaceArgs),
+    Confirm { id: String },
+    Retire { id: String },
+    Restore { id: String },
+    Pin { id: String },
+    Unpin { id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,12 +141,11 @@ pub enum Parsed {
     Ls { json: bool },
     Path { name: String },
     Anchors { path: String, json: bool },
-    Note(NoteArgs),
+    Note(NoteCommand),
     Install(Installable),
     Uninstall(Installable),
     Capture { rev: String },
     Why(WhyArgs),
-    Holds { id: String },
     Check { json: bool },
     Audit(AuditArgs),
     Merge(MergeArgs),
@@ -160,7 +180,6 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("uninstall") => parse_installable(rest(raw), Help::Uninstall, Parsed::Uninstall),
         Some("capture") => parse_capture(rest(raw)),
         Some("why") => parse_why(rest(raw)),
-        Some("holds") => parse_one(rest(raw), Help::Holds, "<ID>", |id| Parsed::Holds { id }),
         Some("check") => parse_check(rest(raw)),
         Some("audit") => parse_audit(rest(raw)),
         Some("merge") => parse_merge(rest(raw)),
@@ -233,6 +252,22 @@ fn at_most_one(got: Vec<String>, help: Help) -> Result<Option<String>> {
     }
 }
 
+fn required_optional(
+    got: Vec<String>,
+    required: &str,
+    help: Help,
+) -> Result<(String, Option<String>)> {
+    let mut got = got.into_iter();
+    let Some(first) = got.next() else {
+        return Err(missing(&[required], help));
+    };
+    let second = got.next();
+    match got.next() {
+        Some(extra) => Err(unexpected(&extra, help)),
+        None => Ok((first, second)),
+    }
+}
+
 fn none(got: Vec<String>, help: Help) -> Result<()> {
     match got.into_iter().next() {
         Some(extra) => Err(unexpected(&extra, help)),
@@ -252,12 +287,10 @@ fn bare(raw: Vec<OsString>, help: Help, parsed: Parsed) -> Result<Parsed> {
 }
 
 /// A command whose whole surface is one required word.
-fn parse_one(
-    raw: Vec<OsString>,
-    help: Help,
-    name: &str,
-    build: fn(String) -> Parsed,
-) -> Result<Parsed> {
+fn parse_one<F>(raw: Vec<OsString>, help: Help, name: &str, build: F) -> Result<Parsed>
+where
+    F: FnOnce(String) -> Parsed,
+{
     let (flags, after) = terminated(raw);
     let mut pargs = pico_args::Arguments::from_vec(flags);
     if pargs.contains(["-h", "--help"]) {
@@ -311,35 +344,74 @@ fn parse_anchors(raw: Vec<OsString>) -> Result<Parsed> {
 }
 
 fn parse_note(raw: Vec<OsString>) -> Result<Parsed> {
+    let head = raw.first().and_then(|a| a.to_str()).map(str::to_owned);
+    match head.as_deref() {
+        Some("add") => parse_note_add(rest(raw)),
+        Some("replace") => parse_note_replace(rest(raw)),
+        Some("confirm") => parse_note_id(rest(raw), Help::NoteConfirm, |id| NoteCommand::Confirm {
+            id,
+        }),
+        Some("retire") => {
+            parse_note_id(rest(raw), Help::NoteRetire, |id| NoteCommand::Retire { id })
+        }
+        Some("restore") => parse_note_id(rest(raw), Help::NoteRestore, |id| NoteCommand::Restore {
+            id,
+        }),
+        Some("pin") => parse_note_id(rest(raw), Help::NotePin, |id| NoteCommand::Pin { id }),
+        Some("unpin") => parse_note_id(rest(raw), Help::NoteUnpin, |id| NoteCommand::Unpin { id }),
+        Some("-h" | "--help") => Ok(Parsed::Help(Help::Note)),
+        None => Err(missing(&["<COMMAND>"], Help::Note)),
+        Some(other) if other.starts_with('-') => Err(unexpected(other, Help::Note)),
+        Some(other) => Err(unrecognized_note(other)),
+    }
+}
+
+fn parse_note_add(raw: Vec<OsString>) -> Result<Parsed> {
     let (flags, after) = terminated(raw);
     let mut pargs = pico_args::Arguments::from_vec(flags);
     if pargs.contains(["-h", "--help"]) {
-        return Ok(Parsed::Help(Help::Note));
+        return Ok(Parsed::Help(Help::NoteAdd));
     }
-    let path: Option<String> = pargs.opt_value_from_str(["-p", "--path"])?;
-    let anchor: Option<String> = pargs.opt_value_from_str(["-a", "--anchor"])?;
-    let supersedes = pargs.opt_value_from_str("--supersedes")?;
-    let text = at_most_one(positionals(pargs, after, Help::Note)?, Help::Note)?;
+    let anchor = pargs.opt_value_from_str(["-a", "--anchor"])?;
+    let (path, text) = required_optional(
+        positionals(pargs, after, Help::NoteAdd)?,
+        "<PATH>",
+        Help::NoteAdd,
+    )?;
+    Ok(Parsed::Note(NoteCommand::Add(NoteAddArgs {
+        path,
+        text,
+        anchor,
+    })))
+}
 
-    // Both are required, and a reader who forgot both should be told so once.
-    match (text, path) {
-        (Some(text), Some(path)) => Ok(Parsed::Note(NoteArgs {
-            text,
-            path,
-            anchor: anchor.unwrap_or_else(|| "@file".to_string()),
-            supersedes,
-        })),
-        (text, path) => {
-            let mut absent = Vec::new();
-            if path.is_none() {
-                absent.push("--path <PATH>");
-            }
-            if text.is_none() {
-                absent.push("<TEXT>");
-            }
-            Err(missing(&absent, Help::Note))
-        }
+fn parse_note_replace(raw: Vec<OsString>) -> Result<Parsed> {
+    let (flags, after) = terminated(raw);
+    let mut pargs = pico_args::Arguments::from_vec(flags);
+    if pargs.contains(["-h", "--help"]) {
+        return Ok(Parsed::Help(Help::NoteReplace));
     }
+    let path = pargs.opt_value_from_str(["-p", "--path"])?;
+    let anchor = pargs.opt_value_from_str(["-a", "--anchor"])?;
+    let (id, text) = required_optional(
+        positionals(pargs, after, Help::NoteReplace)?,
+        "<ID>",
+        Help::NoteReplace,
+    )?;
+    Ok(Parsed::Note(NoteCommand::Replace(NoteReplaceArgs {
+        id,
+        text,
+        path,
+        anchor,
+    })))
+}
+
+fn parse_note_id(
+    raw: Vec<OsString>,
+    help: Help,
+    build: fn(String) -> NoteCommand,
+) -> Result<Parsed> {
+    parse_one(raw, help, "<ID>", |id| Parsed::Note(build(id)))
 }
 
 fn parse_installable(
@@ -512,7 +584,7 @@ fn missing(absent: &[&str], help: Help) -> anyhow::Error {
 }
 
 fn unrecognized(typed: &str) -> anyhow::Error {
-    let tip = match nearest(typed) {
+    let tip = match nearest(typed, COMMANDS) {
         Some(name) => format!("\n\n  tip: a similar subcommand exists: '{name}'"),
         None => String::new(),
     };
@@ -523,10 +595,22 @@ fn unrecognized(typed: &str) -> anyhow::Error {
     )
 }
 
+fn unrecognized_note(typed: &str) -> anyhow::Error {
+    let tip = match nearest(typed, NOTE_COMMANDS) {
+        Some(name) => format!("\n\n  tip: a similar note command exists: '{name}'"),
+        None => String::new(),
+    };
+    anyhow::anyhow!(
+        "unrecognized note command '{typed}'{tip}\n\nUsage: {}\n\nFor more information, try '{} --help'.",
+        Help::Note.usage(),
+        Help::Note.invocation()
+    )
+}
+
 /// The closest command name, when one is close enough to be worth offering.
 /// Two edits is the bound: past that the guess is noise rather than a typo.
-fn nearest(typed: &str) -> Option<&'static str> {
-    COMMANDS
+fn nearest(typed: &str, choices: &'static [&'static str]) -> Option<&'static str> {
+    choices
         .iter()
         .map(|name| (distance(typed, name), *name))
         .filter(|(d, _)| *d <= 2)

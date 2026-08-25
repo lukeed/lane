@@ -144,8 +144,9 @@ fn prepare_lanes_dir(root: &Path) -> Result<()> {
     if !ignore.exists() {
         std::fs::write(ignore, "*\n")?;
     }
+    // --git-path answers relative to the repository, not to wherever the process stands.
     let exclude = git(&["rev-parse", "--git-path", "info/exclude"], Some(root))?;
-    append_line(Path::new(&exclude), &format!("{TREES_PATH}/"))
+    append_line(&root.join(exclude), &format!("{TREES_PATH}/"))
 }
 
 fn excluded(root: &Path) -> HashSet<String> {
@@ -735,6 +736,21 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         panic!("sweep left the trash behind");
+    }
+
+    #[test]
+    fn the_exclude_file_is_found_from_outside_the_repository() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path();
+        git(&["init", "-qb", "main"], Some(r))?;
+
+        // The test process stands in the crate directory, never in `r`: the same relation a
+        // lane has to the repository it was made from.
+        prepare_lanes_dir(r)?;
+
+        let exclude = std::fs::read_to_string(r.join(".git/info/exclude"))?;
+        assert!(exclude.contains(TREES_PATH), "{exclude}");
+        Ok(())
     }
 
     #[test]

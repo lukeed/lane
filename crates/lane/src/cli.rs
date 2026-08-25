@@ -724,6 +724,9 @@ fn note_replace(args: NoteReplaceArgs) -> Result<i32> {
     let root = git::repo_root()?;
     let predecessor = store::resolve_id(&root, &args.id)?;
     let predecessor_id = predecessor.meta.id.clone();
+    if predecessor.unreadable {
+        bail!("cannot replace note {predecessor_id}: frontmatter is unreadable");
+    }
     let (path, anchor) = replacement_target(&predecessor, args.path, args.anchor);
     let rel = store::rel_to_repo(&root, &path)?;
     if !root.join(&rel).exists() {
@@ -910,8 +913,6 @@ fn confirm(id: &str) -> Result<i32> {
 }
 
 fn edit(id: &str) -> Result<i32> {
-    let root = git::repo_root()?;
-    let note = store::resolve_id(&root, id)?;
     let stdin = std::io::stdin();
     let stderr = std::io::stderr();
     if !stdin.is_terminal() || !stderr.is_terminal() {
@@ -920,13 +921,16 @@ fn edit(id: &str) -> Result<i32> {
         );
     }
 
+    let root = git::repo_root()?;
+    let note = store::resolve_id(&root, id)?;
     let full_id = note.meta.id.clone();
+    if note.unreadable {
+        bail!(
+            "cannot edit note {full_id}: frontmatter is unreadable; use `lane note retire {full_id}` to preserve it unchanged"
+        );
+    }
     let path = note.path();
-    let status = if note.unreadable {
-        "unreadable"
-    } else {
-        store::Checker::new(&root).check(&note).tier
-    };
+    let status = store::Checker::new(&root).check(&note).tier;
     let pinned = note.meta.pinned;
     let mut input = stdin.lock();
     let mut output = stderr.lock();

@@ -121,6 +121,7 @@ lane note restore <id>                           # restore a retired note
 lane note pin <id>                               # protect a note from eviction
 lane note unpin <id>                             # remove eviction protection
 lane why src/auth.rs                 # read what earlier lanes learned
+lane why src/                        # read every note beneath a directory
 lane merge                           # rebase, audit memory, fast-forward, remove
 lane push                            # rebase, audit, and push for a pull request
 lane prune                           # remove lanes whose branch has landed

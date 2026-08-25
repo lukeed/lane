@@ -26,11 +26,13 @@ multiple lanes.
 
 ```bash
 lane why src/auth.rs
+lane why src/            # every note beneath a directory
 ```
 
 Do this for every file you are about to change. `lane why` is the compact reading view;
-`lane why --json` returns full ids, paths, anchors, timestamps, and note text. Run
-`lane check` when you need freshness and the ids of notes that require action.
+`lane why --json` returns full ids, paths, anchors, timestamps, and note text. Give it a
+directory to survey an area before you know which file you need. Run `lane check` when
+you need freshness and the ids of notes that require action.
 
 Before `lane merge`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 

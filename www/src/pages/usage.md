@@ -152,8 +152,23 @@ $ lane why src/auth.rs
     must stay constant-time; early return leaks token length
 ```
 
-The path is omitted from headers because the command already names it. The whole-store
-form, `lane why`, keeps `path@anchor` in each header so groups remain unambiguous.
+The path is omitted from headers because the command already names it. A directory
+reads the whole subtree beneath it, and a bare `lane why` reads the whole store; both
+keep `path#anchor` in each header so groups remain unambiguous:
+
+```bash
+$ lane why src/
+
+[src/auth.rs#fn verify]
+  - 01M0B9MBYB · 2026-08-14
+    must stay constant-time; early return leaks token length
+
+[src/db/pool.rs#@file]
+  - 01M0C1PDQR · 2026-08-15
+    the pool is created once per process; a second one exhausts the server
+```
+
+Matching is by whole path component, so `src` never claims `src-gen/lib.rs`.
 `lane why` changes nothing and carries no branch provenance. Run `lane check` to see
 whether a note's anchored code has drifted and get the id needed to resolve it.
 
@@ -352,7 +367,7 @@ The short version. See [commands](/commands) for full information.
 | `lane note unpin <id>` | remove eviction protection |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
 | `lane uninstall skill|hooks` | remove them |
-| `lane why <file> [-a <anchor>]` | read the notes on a file; changes nothing |
+| `lane why <path> [-a <anchor>]` | read the notes on a file or a directory; changes nothing |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
 | `lane merge [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |

@@ -46,7 +46,7 @@ pub fn run() -> Result<i32> {
         }
         Parsed::Init => init(),
         Parsed::New(args) => new(&args.name, args.base.as_deref(), args.dirty, args.cd),
-        Parsed::Ls => ls(),
+        Parsed::Ls { json } => ls(json),
         Parsed::Path { name } => path(&name),
         Parsed::Note(args) => note(
             &args.text,
@@ -66,7 +66,7 @@ pub fn run() -> Result<i32> {
             capture::capture(&rev);
             Ok(0)
         }
-        Parsed::Why(args) => why(args.path.as_deref(), args.anchor.as_deref()),
+        Parsed::Why(args) => why(args.path.as_deref(), args.anchor.as_deref(), args.json),
         Parsed::Holds { id } => holds(&id),
         Parsed::Check { json } => check(json),
         Parsed::Audit(args) => audit_cmd(&args.base, &args.budget, args.json),
@@ -511,13 +511,19 @@ fn new(name: &str, base: Option<&str>, dirty: bool, cd: bool) -> Result<i32> {
     Ok(0)
 }
 
-fn ls() -> Result<i32> {
+#[derive(serde::Serialize)]
+struct LaneRow {
+    name: String,
+    path: String,
+    branch: String,
+    state: &'static str,
+    dirty: bool,
+    pending_notes: usize,
+}
+
+fn ls(json: bool) -> Result<i32> {
     let root = wt::main_root()?;
     let lanes = wt::list_lanes(&root);
-    if lanes.is_empty() {
-        println!("no lanes");
-        return Ok(0);
-    }
     let dirty: Vec<bool> = std::thread::scope(|scope| {
         let workers: Vec<_> = lanes
             .iter()
@@ -528,29 +534,54 @@ fn ls() -> Result<i32> {
             .map(|handle| handle.join().expect("status worker panicked"))
             .collect()
     });
-    for (lane, dirty) in lanes.into_iter().zip(dirty) {
-        let name = lane
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let dirty = if dirty { "dirty" } else { "clean" };
-        let upstream = try_git(&["rev-parse", "@{upstream}"], Some(&lane.path));
-        // Only marked lanes pay for the containment probe.
-        let state = if store::is_landed(&lane.path)
-            && wt::contained_in(&root, &wt::trunk_name(&root), &lane.branch)
-        {
-            "landed"
-        } else if !upstream.is_empty()
-            && try_git(&["rev-parse", "HEAD"], Some(&lane.path)) == upstream
-        {
-            "pushed"
-        } else {
-            "open"
-        };
+    let rows: Vec<_> = lanes
+        .into_iter()
+        .zip(dirty)
+        .map(|(lane, dirty)| {
+            let name = lane
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let upstream = try_git(&["rev-parse", "@{upstream}"], Some(&lane.path));
+            // Only marked lanes pay for the containment probe.
+            let state = if store::is_landed(&lane.path)
+                && wt::contained_in(&root, &wt::trunk_name(&root), &lane.branch)
+            {
+                "landed"
+            } else if !upstream.is_empty()
+                && try_git(&["rev-parse", "HEAD"], Some(&lane.path)) == upstream
+            {
+                "pushed"
+            } else {
+                "open"
+            };
+            LaneRow {
+                name,
+                path: lane.path.to_string_lossy().to_string(),
+                branch: lane.branch,
+                state,
+                dirty,
+                pending_notes: store::pending_count(&lane.path),
+            }
+        })
+        .collect();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(0);
+    }
+    if rows.is_empty() {
+        println!("no lanes");
+        return Ok(0);
+    }
+    for row in rows {
+        let name = row.name;
+        let state = row.state;
+        let dirty = if row.dirty { "dirty" } else { "clean" };
         println!(
             "{name:<20} {state:<7} {dirty:<6} {} pending note(s)",
-            store::pending_count(&lane.path)
+            row.pending_notes
         );
     }
     Ok(0)
@@ -652,7 +683,16 @@ fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Resul
     Ok(0)
 }
 
-fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
+#[derive(serde::Serialize)]
+struct WhyRow {
+    id: String,
+    path: String,
+    anchor: String,
+    created: String,
+    note: String,
+}
+
+fn why(path: Option<&str>, anchor: Option<&str>, json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let rel = match path {
         Some(p) => Some(store::rel_to_repo(&root, p)?),
@@ -661,6 +701,29 @@ fn why(path: Option<&str>, anchor: Option<&str>) -> Result<i32> {
     let mut notes = store::load_notes(&root, rel.as_deref());
     if let Some(want) = anchor {
         notes.retain(|n| n.meta.anchor == want);
+    }
+    if json {
+        notes.sort_by(|a, b| {
+            a.path()
+                .cmp(&b.path())
+                .then_with(|| a.meta.anchor.cmp(&b.meta.anchor))
+                .then_with(|| a.meta.id.cmp(&b.meta.id))
+        });
+        let rows: Vec<_> = notes
+            .into_iter()
+            .map(|note| {
+                let path = note.path();
+                WhyRow {
+                    id: note.meta.id,
+                    path,
+                    anchor: note.meta.anchor,
+                    created: note.meta.created,
+                    note: note.body.trim().to_string(),
+                }
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(0);
     }
     if notes.is_empty() {
         println!("no context for {}", rel.as_deref().unwrap_or("repo"));

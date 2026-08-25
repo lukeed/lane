@@ -69,7 +69,7 @@ fn help_wins_over_the_arguments_beside_it() {
 #[test]
 fn commands_without_arguments_take_none() {
     assert_eq!(ok(&["init"]), Parsed::Init);
-    assert_eq!(ok(&["ls"]), Parsed::Ls);
+    assert_eq!(ok(&["ls"]), Parsed::Ls { json: false });
     assert_eq!(ok(&["shellenv"]), Parsed::Shellenv);
     assert!(err(&["ls", "extra"]).contains("unexpected argument 'extra' found"));
 }
@@ -334,7 +334,8 @@ fn why_takes_an_optional_path_and_anchor() {
         ok(&["why"]),
         Parsed::Why(WhyArgs {
             path: None,
-            anchor: None
+            anchor: None,
+            json: false,
         })
     );
     assert_eq!(
@@ -342,9 +343,33 @@ fn why_takes_an_optional_path_and_anchor() {
         Parsed::Why(WhyArgs {
             path: Some("src/auth.rs".into()),
             anchor: Some("fn verify".into()),
+            json: false,
         })
     );
     assert!(err(&["why", "one", "two"]).contains("unexpected argument 'two' found"));
+}
+
+#[test]
+fn structured_read_commands_take_json() {
+    assert_eq!(ok(&["ls", "--json"]), Parsed::Ls { json: true });
+    assert_eq!(
+        ok(&["why", "--json"]),
+        Parsed::Why(WhyArgs {
+            path: None,
+            anchor: None,
+            json: true,
+        })
+    );
+    assert_eq!(
+        ok(&["why", "src/auth.rs", "-a", "fn verify", "--json"]),
+        Parsed::Why(WhyArgs {
+            path: Some("src/auth.rs".into()),
+            anchor: Some("fn verify".into()),
+            json: true,
+        })
+    );
+    assert!(err(&["ls", "--jsonn"]).contains("unexpected argument '--jsonn' found"));
+    assert!(err(&["why", "--jsonn"]).contains("unexpected argument '--jsonn' found"));
 }
 
 #[test]

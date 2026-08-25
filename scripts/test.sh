@@ -47,8 +47,11 @@ remote_setup() {
 
 echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
+is "ls json is an empty array before a lane exists" \
+   "$("$LANE" ls --json | python3 -c 'import json,sys; print(json.load(sys.stdin) == [])')" "True"
 "$LANE" new fix-login > /tmp/new.out 2>&1
 LP="$TMP/repo/.lane/trees/fix-login"
+LP_REAL=$(cd "$LP" && pwd -P)
 REFLINK=$(grep -c 'reflink: yes' /tmp/new.out)
 want() { [ "$REFLINK" = "1" ] && echo yes || echo no; }
 is "lane exists" "$([ -d "$LP" ] && echo yes)" "yes"
@@ -58,6 +61,8 @@ is "tracked file present" "$([ -f "$LP/src/auth.rs" ] && echo yes)" "yes"
 is "lane status clean" "$(git -C "$LP" status --porcelain | wc -l | tr -d ' ')" "0"
 is "ls prints the lane name once" \
    "$("$LANE" ls | awk '$1 == "fix-login" && $2 == "open" && $3 == "clean" && $4 == "0" { n++ } END { print n + 0 }')" "1"
+is "ls json reports the exact clean open lane row" \
+   "$("$LANE" ls --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(int(d == [{"name":"fix-login","path":sys.argv[1],"branch":"fix-login","state":"open","dirty":False,"pending_notes":0}] and type(d[0]["dirty"]) is bool and type(d[0]["pending_notes"]) is int))' "$LP_REAL")" "1"
 is "reflink verdict reported" "$(grep -c 'reflink:' /tmp/new.out)" "1"
 is "tracked files not re-cloned" \
    "$(grep -o 'cloned' /tmp/new.out | head -1)" "cloned"
@@ -76,6 +81,8 @@ is "dirty mode reports what it carried" \
    "$(grep -q 'carried' /tmp/dirty.out && echo yes || echo no)" "yes"
 is "exactly one modified file, not the whole tree" \
    "$(git -C "$LP" status --porcelain | grep -c '^ M')" "1"
+is "ls json reports the dirty spike row" \
+   "$("$LANE" ls --json | python3 -c 'import json,sys; print(sum(r["name"] == "spike" and r["dirty"] is True for r in json.load(sys.stdin)))')" "1"
 is "warm dir also carried iff reflink" \
    "$([ -f "$LP/node_modules/pkg/blob.bin" ] && echo yes || echo no)" "$(want)"
 
@@ -641,10 +648,14 @@ is "and removed the branch" "$(git branch --list sq | wc -l | tr -d ' ')" "0"
 
 echo "== 29. reading context does not modify the tree =="
 setup
+is "why json is an empty array before a note exists" \
+   "$("$LANE" why --json | python3 -c 'import json,sys; print(json.load(sys.stdin) == [])')" "True"
 "$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 WHY_NOTE=$(find .lane/memory/src/auth.rs -type f -name '*.md' | head -n 1)
-WHY_ID=$(basename "$WHY_NOTE" | cut -c1-10)
+WHY_FULL_ID=$(basename "$WHY_NOTE" | cut -d- -f1)
+WHY_ID=$(printf '%s' "$WHY_FULL_ID" | cut -c1-10)
+WHY_CREATED=$(awk '/^created:/{print $2; exit}' "$WHY_NOTE")
 WHY_DATE=$(awk '/^created:/{print substr($2, 1, 10); exit}' "$WHY_NOTE")
 is "lane why uses the compact note format" \
   "$("$LANE" why src/auth.rs)" \
@@ -653,9 +664,15 @@ is "lane why uses the compact note format" \
     must stay constant-time"
 is "the whole-store view keeps paths unambiguous" \
   "$("$LANE" why | head -n 1)" "[src/auth.rs@fn verify]"
+is "why json reports the exact full note row" \
+  "$("$LANE" why src/auth.rs --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(int(d == [{"id":sys.argv[1],"path":"src/auth.rs","anchor":"fn verify","created":sys.argv[2],"note":"must stay constant-time"}]))' "$WHY_FULL_ID" "$WHY_CREATED")" "1"
+is "why json honors an anchor with no matches" \
+  "$("$LANE" why src/auth.rs -a 'fn refresh' --json | python3 -c 'import json,sys; print(json.load(sys.stdin) == [])')" "True"
 is "new notes do not track their branch" \
   "$(grep -R '^branch:' .lane/memory .lane/attic 2>/dev/null || true)" ""
 git add -A .lane && git commit -qm "memory" > /dev/null
+"$LANE" why src/auth.rs --json > /dev/null
+is "lane why json leaves the tree clean" "$(git status --porcelain)" ""
 "$LANE" why src/auth.rs > /dev/null
 is "lane why leaves the tree clean" "$(git status --porcelain)" ""
 "$LANE" why src/auth.rs > /dev/null
@@ -739,10 +756,14 @@ is "push leaves trunk where it was" "$(git rev-parse main)" "$BEFORE"
 is "push keeps the lane" "$([ -d .lane/trees/feat ] && echo yes || echo no)" "yes"
 is "push reaches origin" "$(git --git-dir="$TMP/origin.git" branch --list feat | wc -l | tr -d ' ')" "1"
 is "the lane is pushed, not landed" "$("$LANE" ls | grep -c 'feat .*pushed')" "1"
+is "ls json reports the pushed state" \
+   "$("$LANE" ls --json | python3 -c 'import json,sys; print([r["state"] for r in json.load(sys.stdin) if r["name"] == "feat"][0])')" "pushed"
 
 # The merge happens where lane is not: squash, the button that hides every SHA.
 git merge -q --squash feat && git commit -qm "squash feat" > /dev/null
 is "ls sees the landing through a squash" "$("$LANE" ls | grep -c 'feat .*landed')" "1"
+is "ls json reports the landed state" \
+   "$("$LANE" ls --json | python3 -c 'import json,sys; print([r["state"] for r in json.load(sys.stdin) if r["name"] == "feat"][0])')" "landed"
 is "the note came with it" \
    "$(find .lane/memory/src/auth.rs -name '*.md' | wc -l | tr -d ' ')" "1"
 

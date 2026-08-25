@@ -79,6 +79,7 @@ pub struct NoteArgs {
 pub struct WhyArgs {
     pub path: Option<String>,
     pub anchor: Option<String>,
+    pub json: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,7 +116,7 @@ pub struct RmArgs {
 pub enum Parsed {
     Init,
     New(NewArgs),
-    Ls,
+    Ls { json: bool },
     Path { name: String },
     Note(NoteArgs),
     Install(Installable),
@@ -147,7 +148,7 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
     match head.as_deref() {
         Some("init") => bare(rest(raw), Help::Init, Parsed::Init),
         Some("new") => parse_new(rest(raw)),
-        Some("ls") => bare(rest(raw), Help::Ls, Parsed::Ls),
+        Some("ls") => parse_ls(rest(raw)),
         Some("path") => parse_one(rest(raw), Help::Path, "<NAME>", |name| Parsed::Path {
             name,
         }),
@@ -280,6 +281,17 @@ fn parse_new(raw: Vec<OsString>) -> Result<Parsed> {
     }))
 }
 
+fn parse_ls(raw: Vec<OsString>) -> Result<Parsed> {
+    let (flags, after) = terminated(raw);
+    let mut pargs = pico_args::Arguments::from_vec(flags);
+    if pargs.contains(["-h", "--help"]) {
+        return Ok(Parsed::Help(Help::Ls));
+    }
+    let json = pargs.contains("--json");
+    none(positionals(pargs, after, Help::Ls)?, Help::Ls)?;
+    Ok(Parsed::Ls { json })
+}
+
 fn parse_note(raw: Vec<OsString>) -> Result<Parsed> {
     let (flags, after) = terminated(raw);
     let mut pargs = pico_args::Arguments::from_vec(flags);
@@ -352,8 +364,9 @@ fn parse_why(raw: Vec<OsString>) -> Result<Parsed> {
         return Ok(Parsed::Help(Help::Why));
     }
     let anchor = pargs.opt_value_from_str(["-a", "--anchor"])?;
+    let json = pargs.contains("--json");
     let path = at_most_one(positionals(pargs, after, Help::Why)?, Help::Why)?;
-    Ok(Parsed::Why(WhyArgs { path, anchor }))
+    Ok(Parsed::Why(WhyArgs { path, anchor, json }))
 }
 
 fn parse_check(raw: Vec<OsString>) -> Result<Parsed> {

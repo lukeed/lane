@@ -3,8 +3,6 @@ name: bench
 # Manual only. Loop-mounting a filesystem and writing 20k files is too slow to gate a
 # pull request, and the numbers are only worth reading when someone is asking for them.
 on:
-  push:
-    branches: [clone-syscalls]
   workflow_dispatch:
     inputs:
       baseline:

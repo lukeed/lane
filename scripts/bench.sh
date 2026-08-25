@@ -82,11 +82,18 @@ settle "$REPO"
 
 # Both timings come from one loop: a lane must be removed before the next can be made, and
 # timing `new` against a name that already exists measures the refusal instead.
+# A command that fails returns fast, and a fast number is what this script is looking for.
+# Check the status or a broken lane reads as a quick one.
+run() {
+  local out; out=$("$@" 2>&1)
+  [ $? -eq 0 ] || { echo "FAILED: $* -> $out" >&2; exit 1; }
+}
+
 new_best=""; rm_best=""
 for _ in $(seq 1 "$RUNS"); do
-  t=$( { time "$LANE" new bench >/dev/null 2>&1; } 2>&1 )
+  t=$( { time run "$LANE" new bench; } 2>&1 )
   new_best=$(lower "${new_best:-$t}" "$t")
-  t=$( { time "$LANE" rm bench --force >/dev/null 2>&1; } 2>&1 )
+  t=$( { time run "$LANE" rm bench --force; } 2>&1 )
   rm_best=$(lower "${rm_best:-$t}" "$t")
   settle "$REPO"
 done

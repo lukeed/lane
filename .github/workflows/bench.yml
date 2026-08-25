@@ -3,6 +3,8 @@ name: bench
 # Manual only. Loop-mounting a filesystem and writing 20k files is too slow to gate a
 # pull request, and the numbers are only worth reading when someone is asking for them.
 on:
+  push:
+    branches: [bench-linux]
   workflow_dispatch:
     inputs:
       baseline:
@@ -74,7 +76,7 @@ jobs:
       # string somebody typed.
       - name: Build the binaries
         env:
-          BASELINE: ${{ inputs.baseline }}
+          BASELINE: ${{ inputs.baseline || 'main' }}
         run: |
           set -euo pipefail
           cargo build --release --quiet
@@ -88,8 +90,8 @@ jobs:
 
       - name: Measure
         env:
-          FILES: ${{ inputs.files }}
-          RUNS: ${{ inputs.runs }}
+          FILES: ${{ inputs.files || '20000' }}
+          RUNS: ${{ inputs.runs || '3' }}
         run: |
           set -uo pipefail
           for which in base head; do
@@ -116,7 +118,7 @@ jobs:
       - name: Summarize
         if: always()
         env:
-          BASELINE: ${{ inputs.baseline }}
+          BASELINE: ${{ inputs.baseline || 'main' }}
         run: |
           {
             echo "## ${{ matrix.fs }}"

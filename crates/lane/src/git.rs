@@ -133,25 +133,28 @@ pub fn repo_root() -> Result<PathBuf> {
     Ok(layout(&std::env::current_dir()?)?.repo_root)
 }
 
-pub fn current_branch() -> String {
-    let b = try_git(&["rev-parse", "--abbrev-ref", "HEAD"], None);
+pub fn current_branch(cwd: &Path) -> String {
+    let b = try_git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(cwd));
     if b.is_empty() { "unknown".into() } else { b }
 }
 
 /// Paths this branch changed relative to base; biases note retention.
-pub fn touched_paths(base: &str) -> std::collections::HashSet<String> {
-    try_git(&["diff", "--name-only", &format!("{base}...HEAD")], None)
-        .lines()
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect()
+pub fn touched_paths(root: &Path, base: &str) -> std::collections::HashSet<String> {
+    try_git(
+        &["diff", "--name-only", &format!("{base}...HEAD")],
+        Some(root),
+    )
+    .lines()
+    .filter(|l| !l.is_empty())
+    .map(str::to_string)
+    .collect()
 }
 
 /// Renames reachable from HEAD, oldest first so a chain of them applies in order.
 ///
 /// A lane knows its base and can diff against it. On trunk there is no base — the rename
 /// is already in history — so fall back to a bounded walk of recent commits.
-pub fn renames(base: &str) -> Vec<(String, String)> {
+pub fn renames(root: &Path, base: &str) -> Vec<(String, String)> {
     let (out, newest_first) = if base.is_empty() {
         (
             try_git(
@@ -163,7 +166,7 @@ pub fn renames(base: &str) -> Vec<(String, String)> {
                     "--format=",
                     "--max-count=200",
                 ],
-                None,
+                Some(root),
             ),
             true,
         )
@@ -176,7 +179,7 @@ pub fn renames(base: &str) -> Vec<(String, String)> {
                     "--find-renames",
                     &format!("{base}...HEAD"),
                 ],
-                None,
+                Some(root),
             ),
             false,
         )
@@ -295,17 +298,22 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_failure_reported_on_stdout_alone_is_still_named() {
+    fn repository() -> TempDir {
         let temp = TempDir::new().unwrap();
-        let root = temp.path();
         for args in [
             &["init", "-qb", "main"][..],
             &["config", "user.email", "t@t.t"],
             &["config", "user.name", "t"],
         ] {
-            git(args, Some(root)).unwrap();
+            git(args, Some(temp.path())).unwrap();
         }
+        temp
+    }
+
+    #[test]
+    fn a_failure_reported_on_stdout_alone_is_still_named() {
+        let temp = repository();
+        let root = temp.path();
         std::fs::write(root.join("untracked.txt"), "x").unwrap();
 
         let error = git(&["commit", "-q", "-m", "empty"], Some(root))
@@ -313,6 +321,29 @@ mod tests {
             .to_string();
 
         assert!(error.contains("nothing added to commit"), "{error}");
+    }
+
+    #[test]
+    fn history_is_read_where_it_is_named_not_where_the_process_stands() {
+        let temp = repository();
+        let root = temp.path();
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src/auth.rs"), "fn verify() {}\n").unwrap();
+        git(&["add", "-A"], Some(root)).unwrap();
+        git(&["commit", "-qm", "base"], Some(root)).unwrap();
+        git(&["checkout", "-qb", "lane"], Some(root)).unwrap();
+        git(&["mv", "src/auth.rs", "src/token.rs"], Some(root)).unwrap();
+        git(&["commit", "-qm", "rename"], Some(root)).unwrap();
+
+        assert_eq!(current_branch(root), "lane");
+        assert_eq!(
+            touched_paths(root, "main"),
+            std::collections::HashSet::from(["src/token.rs".to_string()])
+        );
+        assert_eq!(
+            renames(root, "main"),
+            vec![("src/auth.rs".to_string(), "src/token.rs".to_string())]
+        );
     }
 
     #[test]

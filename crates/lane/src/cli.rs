@@ -1241,12 +1241,7 @@ fn prepare(
     }
     store::mark_landed(&lane_path)?;
 
-    let changed = try_git(
-        &["status", "--porcelain", "--", LANE_DIR, "AGENTS.md"],
-        Some(&lane_path),
-    );
-    if !changed.trim().is_empty() {
-        try_git(&["add", LANE_DIR, "AGENTS.md"], Some(&lane_path));
+    if stage_memory(&lane_path) {
         git(
             &["commit", "-q", "-m", &format!("lane: sync {branch} memory")],
             Some(&lane_path),
@@ -1261,6 +1256,14 @@ fn prepare(
         base,
         _lock: lock,
     }))
+}
+
+/// Stage lane's own paths one at a time: a pathspec matching nothing fails the whole add.
+fn stage_memory(lane_path: &Path) -> bool {
+    for path in [LANE_DIR, "AGENTS.md"] {
+        try_git(&["add", "--", path], Some(lane_path));
+    }
+    !git::git_ok(&["diff", "--cached", "--quiet"], Some(lane_path))
 }
 
 fn merge(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget) -> Result<i32> {
@@ -1700,5 +1703,66 @@ mod tests {
         assert!(drifted["span"].as_str().unwrap().contains("\"new\""));
         assert_eq!(fresh["note"], "fresh note");
         assert!(fresh.get("span").is_none());
+    }
+
+    fn repository() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        for args in [
+            &["init", "-qb", "main"][..],
+            &["config", "user.email", "t@t.t"],
+            &["config", "user.name", "t"],
+        ] {
+            git(args, Some(root)).unwrap();
+        }
+        std::fs::write(root.join("main.rs"), "fn main() {}\n").unwrap();
+        git(&["add", "-A"], Some(root)).unwrap();
+        git(&["commit", "-qm", "base"], Some(root)).unwrap();
+        temp
+    }
+
+    fn write_note(root: &Path) {
+        let dir = root.join(LANE_DIR).join("memory/main.rs");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("01M0A-note.md"), "note\n").unwrap();
+    }
+
+    #[test]
+    fn memory_stages_where_the_repository_has_no_agents_file() {
+        let temp = repository();
+        let root = temp.path();
+        write_note(root);
+
+        assert!(stage_memory(root));
+        assert_eq!(
+            git(&["diff", "--cached", "--name-only"], Some(root)).unwrap(),
+            ".lane/memory/main.rs/01M0A-note.md"
+        );
+    }
+
+    #[test]
+    fn an_ignored_store_stages_nothing_to_commit() {
+        let temp = repository();
+        let root = temp.path();
+        std::fs::write(root.join(".gitignore"), ".lane/\n").unwrap();
+        git(&["add", "-A"], Some(root)).unwrap();
+        git(&["commit", "-qm", "ignore the store"], Some(root)).unwrap();
+        write_note(root);
+
+        assert!(!stage_memory(root));
+    }
+
+    #[test]
+    fn an_agents_file_stages_alongside_the_store() {
+        let temp = repository();
+        let root = temp.path();
+        write_note(root);
+        std::fs::write(root.join("AGENTS.md"), "# AGENTS\n").unwrap();
+
+        assert!(stage_memory(root));
+        assert_eq!(
+            git(&["diff", "--cached", "--name-only"], Some(root)).unwrap(),
+            ".lane/memory/main.rs/01M0A-note.md\nAGENTS.md"
+        );
     }
 }

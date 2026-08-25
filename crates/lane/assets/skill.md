@@ -38,6 +38,10 @@ Before `lane merge`, run `lane check`. It lists every note that is not fresh, ea
 - `lane note replace <id> "<rewrite>"` when the subject is still right but the sentence is wrong. It inherits the predecessor's path and anchor unless you override them.
 - `lane note retire <id>` when the constraint is gone.
 
+At a terminal, `lane note edit <id>` shows the live note and guides a human through
+the same actions, including pin or unpin. Agents and scripts should use the direct
+commands above so they never depend on prompts.
+
 Any unambiguous prefix of an id works, so the ten characters `lane check` and `lane why` print are enough. `lane check --json` carries the same rows plus each note's body and current span, for when you would rather not open the files.
 
 A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone; let audit move that note to the attic instead of vouching for it.

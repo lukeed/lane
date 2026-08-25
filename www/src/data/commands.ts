@@ -80,6 +80,13 @@ export let commands: Command[] = [
 		example: "$ lane note add src/auth.rs -a \"fn verify\" \\\n    \"must stay constant-time; early return leaks length\"\nnoted -> src/auth.rs#fn verify",
 	},
 	{
+		name: "note edit",
+		usage: "lane note edit <id>",
+		summary: "shows a live note and interactively chooses one lifecycle action: confirm, replace text, retire, or toggle pinning.",
+		options: [],
+		example: "$ lane note edit 01M0B4KQTX\nEditing 01M0B4KQTX7H3EZ8FE7S6BJ91N\n  src/auth.rs#fn verify\n  status: content-changed\n  must stay constant-time\nAction:\n  1. confirm — still true\n  2. replace — change the text\n  3. retire — no longer applies\n  4. pin — protect from eviction\nChoose [1-4]: 1\nconfirmed -> 01M0B4KQTX7H3EZ8FE7S6BJ91N",
+	},
+	{
 		name: "note replace",
 		usage: "lane note replace [-p <path>] [-a <anchor>] <id> [text]",
 		summary: "queues a successor that inherits the live predecessor's path and anchor; promotion retires the predecessor.",

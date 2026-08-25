@@ -158,7 +158,7 @@ const ROOT: &str = "
     ls           List lanes
     path         Print a lane's path
     anchors      List addressable anchors in a file
-    note         Record a finding
+    note         Manage memory notes
     install      Install lane's agent integrations
     uninstall    Remove lane's agent integrations
     why          Show context for a path
@@ -408,7 +408,8 @@ const UNINSTALL: &str = "
 const WHY: &str = "
   Description
     Print what earlier lanes learned about a path, each note with the id you
-    need to re-vouch for it. With no path, report the whole store.
+    need to re-vouch for it. A directory reports every note beneath it, and no
+    path at all reports the whole store.
 
   Usage
     $ lane why [path] [options]
@@ -421,6 +422,7 @@ const WHY: &str = "
   Examples
     $ lane why src/auth.rs
     $ lane why src/auth.rs -a 'fn verify'
+    $ lane why src/
 ";
 
 const CHECK: &str = "

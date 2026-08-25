@@ -116,6 +116,9 @@ pub fn attic_dir(root: &Path, path: &str) -> PathBuf {
 }
 
 /// Live notes only; the attic is a sibling of the reserved tree, never inside it.
+///
+/// A filter holds the notes at that path and every note beneath it, so a directory
+/// reads as the whole subtree.
 pub fn load_notes(root: &Path, filter: Option<&str>) -> Vec<Note> {
     load_note_tree(root, NOTES, filter)
 }
@@ -141,8 +144,17 @@ fn load_note_tree(root: &Path, tree: &str, filter: Option<&str>) -> Vec<Note> {
     files
         .iter()
         .filter_map(|p| note::parse(p).ok())
-        .filter(|n| filter.is_none_or(|f| n.path() == f))
+        .filter(|n| filter.is_none_or(|f| within(&n.path(), f)))
         .collect()
+}
+
+/// Whether a note path is the filter itself or sits under it. The boundary is a
+/// whole path component, so `src` never claims `src-gen/lib.rs`.
+pub fn within(path: &str, filter: &str) -> bool {
+    path == filter
+        || path
+            .strip_prefix(filter)
+            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 fn field(entry: &serde_json::Value, key: &str) -> String {
@@ -627,15 +639,22 @@ fn resolved(path: &Path) -> Result<PathBuf> {
 
 /// Repo-relative path, refusing anything that would land outside the store.
 pub fn rel_to_repo(root: &Path, path: &str) -> Result<String> {
+    rel_scope(root, path)?
+        .ok_or_else(|| anyhow::anyhow!("{path} is the repository root, not a file"))
+}
+
+/// The same path for a read that accepts a directory, where the repository root is
+/// `None` because it holds everything and filters nothing.
+pub fn rel_scope(root: &Path, path: &str) -> Result<Option<String>> {
     let abs = resolved(Path::new(path))?;
     let base = resolved(root)?;
     let rel = abs
         .strip_prefix(&base)
         .map_err(|_| anyhow::anyhow!("{path} is outside the repository"))?;
     if rel.as_os_str().is_empty() {
-        anyhow::bail!("{path} is the repository root, not a file");
+        return Ok(None);
     }
-    Ok(rel.to_string_lossy().to_string())
+    Ok(Some(rel.to_string_lossy().to_string()))
 }
 
 pub fn append_pending(root: &Path, rec: &PendingNote) -> Result<()> {
@@ -1105,6 +1124,45 @@ mod tests {
             1
         );
         assert_eq!(load_notes(root.path(), Some("src/token.rs")).len(), 2);
+    }
+
+    #[test]
+    fn a_directory_filter_holds_every_note_beneath_it() {
+        let root = tempfile::tempdir().unwrap();
+        seed_note(root.path(), "src/auth.rs", "01M0A", "at the top");
+        seed_note(root.path(), "src/db/pool.rs", "01M0B", "further down");
+        seed_note(root.path(), "src-gen/lib.rs", "01M0C", "a different tree");
+        seed_note(root.path(), "docs/api.md", "01M0D", "elsewhere");
+
+        let paths = |filter: &str| {
+            let mut found: Vec<String> = load_notes(root.path(), Some(filter))
+                .iter()
+                .map(Note::path)
+                .collect();
+            found.sort();
+            found
+        };
+        assert_eq!(paths("src"), ["src/auth.rs", "src/db/pool.rs"]);
+        assert_eq!(paths("src/db"), ["src/db/pool.rs"]);
+        assert_eq!(paths("src/auth.rs"), ["src/auth.rs"]);
+        assert!(paths("src/au").is_empty());
+    }
+
+    #[test]
+    fn the_repository_root_scopes_to_everything() {
+        let root = tempfile::tempdir().unwrap();
+        let inside = root.path().join("src");
+        std::fs::create_dir_all(&inside).unwrap();
+
+        assert_eq!(
+            rel_scope(root.path(), root.path().to_str().unwrap()).unwrap(),
+            None
+        );
+        assert_eq!(
+            rel_scope(root.path(), inside.to_str().unwrap()).unwrap(),
+            Some("src".into())
+        );
+        assert!(rel_to_repo(root.path(), root.path().to_str().unwrap()).is_err());
     }
 
     #[test]

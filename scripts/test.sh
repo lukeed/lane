@@ -700,7 +700,19 @@ is "lane why uses the compact note format" \
   - $WHY_ID · $WHY_DATE
     must stay constant-time"
 is "the whole-store view keeps paths unambiguous" \
-  "$("$LANE" why | head -n 1)" "[src/auth.rs@fn verify]"
+  "$("$LANE" why | head -n 1)" "[src/auth.rs#fn verify]"
+is "a directory reads every note beneath it" \
+  "$("$LANE" why src/)" \
+  "[src/auth.rs#fn verify]
+  - $WHY_ID · $WHY_DATE
+    must stay constant-time"
+is "the repository root reads the whole store" \
+  "$("$LANE" why . | head -n 1)" "[src/auth.rs#fn verify]"
+is "a directory json carries the path of every match" \
+  "$("$LANE" why src/ --json | python3 -c 'import json,sys; print([n["path"] for n in json.load(sys.stdin)])')" \
+  "['src/auth.rs']"
+is "a partial name matches no path" \
+  "$("$LANE" why src/au)" "no context for src/au"
 is "why json reports the exact full note row" \
   "$("$LANE" why src/auth.rs --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(int(d == [{"id":sys.argv[1],"path":"src/auth.rs","anchor":"fn verify","created":sys.argv[2],"note":"must stay constant-time"}]))' "$WHY_FULL_ID" "$WHY_CREATED")" "1"
 is "why json honors an anchor with no matches" \

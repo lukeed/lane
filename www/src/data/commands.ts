@@ -134,7 +134,7 @@ export let commands: Command[] = [
 	{
 		name: "why",
 		usage: "lane why [<path>] [-a <anchor>] [--json]",
-		summary: "prints the notes for a path in compact form. A pure read; it changes nothing.",
+		summary: "prints the notes for a path in compact form, or for every path beneath it when the path is a directory. A pure read; it changes nothing.",
 		options: [
 			{ flag: "-a, --anchor", arg: "<anchor>", about: "show only the notes on this anchor." },
 			{ flag: "--json", arg: null, about: "print full note fields as machine-readable JSON." },

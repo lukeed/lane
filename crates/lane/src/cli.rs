@@ -708,16 +708,25 @@ fn lane_named(root: &Path, name: &str) -> Result<PathBuf> {
     Ok(dest)
 }
 
-/// Both print a destination and nothing else: the shell function turns that into a cd,
-/// and `cd "$(lane enter x)"` is the same thing typed by hand.
-fn enter(name: &str) -> Result<i32> {
-    println!("{}", lane_named(&wt::main_root()?, name)?.display());
+/// Move the shell, or say why it did not.
+///
+/// A terminal on stdout means nothing captured the destination, so no shell function ran.
+fn move_to(dest: &Path) -> Result<i32> {
+    println!("{}", dest.display());
+    if std::io::stdout().is_terminal() {
+        eprintln!(
+            "note: no shell integration; add `eval \"$(lane shellenv)\"` to cd automatically"
+        );
+    }
     Ok(0)
 }
 
+fn enter(name: &str) -> Result<i32> {
+    move_to(&lane_named(&wt::main_root()?, name)?)
+}
+
 fn exit() -> Result<i32> {
-    println!("{}", wt::main_root()?.display());
-    Ok(0)
+    move_to(&wt::main_root()?)
 }
 
 #[derive(serde::Serialize)]

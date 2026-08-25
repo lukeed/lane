@@ -115,6 +115,22 @@ pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
     }
 }
 
+/// Clone a whole directory in one call.
+///
+/// Darwin's clonefile takes a directory and clones the tree under it; Linux's FICLONE takes
+/// a file alone, which is why the per-file walk exists at all.
+#[cfg(target_os = "macos")]
+fn clone_dir(src: &Path, dst: &Path) -> Result<(), CloneError> {
+    clone_file(src, dst)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clone_dir(_src: &Path, _dst: &Path) -> Result<(), CloneError> {
+    Err(CloneError::Unsupported(
+        "no directory clone primitive on this platform".into(),
+    ))
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn clone_file(_src: &Path, _dst: &Path) -> Result<(), CloneError> {
     Err(CloneError::Unsupported(
@@ -172,6 +188,121 @@ impl fmt::Display for CloneStats {
             )
         }
     }
+}
+
+/// Clone a directory whole where the kernel can, walking it only to fix what it copied
+/// verbatim: an absolute symlink into the source still points at the source.
+///
+/// Falls back to the per-file walk when the tree cannot be cloned in one call.
+pub fn clone_dir_tree(
+    src: &Path,
+    dst: &Path,
+    src_root: &Path,
+    dst_root: &Path,
+) -> std::io::Result<CloneStats> {
+    let walk = || clone_tree_rooted(src, dst, &|_, _| false, src_root, dst_root);
+    // clonefile refuses an existing destination, and a destination inside the source needs
+    // the walk's pruning to avoid cloning the clone.
+    if fs::symlink_metadata(dst).is_ok() || dst.starts_with(src) {
+        return walk();
+    }
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match clone_dir(src, dst) {
+        Ok(()) => {}
+        Err(CloneError::Unsupported(_)) => return walk(),
+        Err(CloneError::Io(e)) => return Err(e),
+    }
+
+    fixup(dst, src_root, dst_root)
+}
+
+/// Count what was cloned and repoint links the kernel copied verbatim.
+fn visit(
+    path: &Path,
+    kind: fs::FileType,
+    src_roots: &[PathBuf],
+    dst_root: &Path,
+    stats: &mut CloneStats,
+) -> std::io::Result<()> {
+    if kind.is_symlink() {
+        stats.links += 1;
+        let target = fs::read_link(path)?;
+        if let Some(retargeted) = retarget(&target, src_roots, dst_root) {
+            fs::remove_file(path)?;
+            std::os::unix::fs::symlink(retargeted, path)?;
+        }
+    } else if kind.is_file() {
+        stats.cloned += 1;
+        stats.bytes_shared += fs::symlink_metadata(path).map(|m| m.len()).unwrap_or(0);
+    }
+    Ok(())
+}
+
+/// Walk the clone on every core: readdir over a large tree is the cost, not the clone.
+fn fixup(dst: &Path, src_root: &Path, dst_root: &Path) -> std::io::Result<CloneStats> {
+    let src_roots = root_spellings(src_root)?;
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let mut stats = CloneStats::default();
+
+    // Descend breadth-first until there are enough subtrees to spread across the threads.
+    let mut level = vec![dst.to_path_buf()];
+    while level.len() < threads * 4 {
+        let mut next = Vec::new();
+        for dir in &level {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                if kind.is_dir() {
+                    next.push(entry.path());
+                } else {
+                    visit(&entry.path(), kind, &src_roots, dst_root, &mut stats)?;
+                }
+            }
+        }
+        if next.is_empty() {
+            level.clear();
+            break;
+        }
+        level = next;
+    }
+    if level.is_empty() {
+        return Ok(stats);
+    }
+
+    let chunk = level.len().div_ceil(threads);
+    let parts: Vec<std::io::Result<CloneStats>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = level
+            .chunks(chunk)
+            .map(|chunk| {
+                let src_roots = &src_roots;
+                scope.spawn(move || {
+                    let mut stats = CloneStats::default();
+                    for dir in chunk {
+                        for entry in walkdir::WalkDir::new(dir) {
+                            let Ok(entry) = entry else { continue };
+                            let kind = entry.file_type();
+                            if !kind.is_dir() {
+                                visit(entry.path(), kind, src_roots, dst_root, &mut stats)?;
+                            }
+                        }
+                    }
+                    Ok(stats)
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    for part in parts {
+        let part = part?;
+        stats.cloned += part.cloned;
+        stats.copied += part.copied;
+        stats.links += part.links;
+        stats.bytes_shared += part.bytes_shared;
+        stats.bytes_copied += part.bytes_copied;
+    }
+    Ok(stats)
 }
 
 /// Recursively clone `src` into `dst`; `skip(relpath, is_dir)` prunes.

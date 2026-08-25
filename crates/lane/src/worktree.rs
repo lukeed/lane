@@ -249,13 +249,7 @@ fn clone_entry(root: &Path, dest: &Path, entry: &str) -> Result<cow::CloneStats>
     let source = root.join(entry);
     let target = dest.join(entry);
     if std::fs::symlink_metadata(&source)?.is_dir() {
-        return Ok(cow::clone_tree_rooted(
-            &source,
-            &target,
-            &|_, _| false,
-            root,
-            dest,
-        )?);
+        return Ok(cow::clone_dir_tree(&source, &target, root, dest)?);
     }
     let Some(name) = source.file_name().map(|name| name.to_string_lossy()) else {
         bail!("ignored entry has no file name: {entry}");
@@ -413,6 +407,53 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     })
 }
 
+fn trash_dir(root: &Path) -> PathBuf {
+    lanes_dir(root).join(".trash")
+}
+
+/// Move the bulk aside so git's removal only unlinks what it tracks.
+///
+/// Renaming is constant time where deleting is one syscall per file, and nothing here is
+/// worth waiting for: these are the entries git itself declined to materialize.
+fn park(root: &Path, dest: &Path) -> Vec<(PathBuf, PathBuf)> {
+    let trash = trash_dir(root);
+    if std::fs::create_dir_all(&trash).is_err() {
+        return Vec::new();
+    }
+    let mut parked = Vec::new();
+    for entry in ignored_entries(dest) {
+        let from = dest.join(&entry);
+        if std::fs::symlink_metadata(&from).is_err() {
+            continue;
+        }
+        let to = trash.join(format!("{}-{}", std::process::id(), parked.len()));
+        if std::fs::rename(&from, &to).is_ok() {
+            parked.push((from, to));
+        }
+    }
+    parked
+}
+
+/// Unlink what was parked, in a process that outlives this one. Picks up anything an
+/// earlier sweep left behind, so a killed child costs disk and not correctness.
+fn sweep(root: &Path) {
+    let trash = trash_dir(root);
+    let Ok(entries) = std::fs::read_dir(&trash) else {
+        return;
+    };
+    let paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+    if paths.is_empty() {
+        return;
+    }
+    let _ = std::process::Command::new("rm")
+        .arg("-rf")
+        .args(paths)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+}
+
 /// True while git still has a worktree registered at this path, prunable ones included.
 pub fn registered(root: &Path, dest: &Path) -> bool {
     let target = dest.canonicalize().ok();
@@ -481,8 +522,17 @@ pub fn remove(name: &str) -> Result<()> {
     // A hand-deleted lane leaves a branch and no worktree, and git calls removing an
     // absent one fatal. Skipping is what lets `rm` clean up after that.
     if worktree {
+        let parked = park(&root, &dest);
         let dest_str = dest.to_string_lossy().to_string();
-        git(&["worktree", "remove", "--force", &dest_str], Some(&root))?;
+        match git(&["worktree", "remove", "--force", &dest_str], Some(&root)) {
+            Ok(_) => sweep(&root),
+            Err(error) => {
+                for (from, to) in parked {
+                    let _ = std::fs::rename(to, from);
+                }
+                return Err(error);
+            }
+        }
     }
     if branch {
         git(&["branch", "-D", name], Some(&root))?;
@@ -644,6 +694,47 @@ mod tests {
         assert!(entries.contains(&"cache".to_string()));
         assert!(!entries.contains(&TREES_PATH.to_string()));
         Ok(())
+    }
+
+    #[test]
+    fn parking_moves_the_bulk_aside_and_the_sweep_unlinks_it() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path();
+        let run = |args: &[&str]| {
+            git(args, Some(r)).ok();
+        };
+        run(&["init", "-qb", "main"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(r.join(".gitignore"), "build/\n")?;
+        run(&["add", "-A"]);
+        run(&["commit", "-qm", "base"]);
+        std::fs::create_dir_all(r.join("build/deep"))?;
+        std::fs::write(r.join("build/deep/artifact"), "bulk")?;
+
+        let parked = park(r, r);
+
+        assert_eq!(parked.len(), 1, "the ignored tree is the thing to park");
+        assert!(!r.join("build").exists(), "parking leaves the worktree");
+        let (from, to) = &parked[0];
+        assert_eq!(from, &r.join("build"));
+        assert!(to.join("deep/artifact").exists(), "content moved intact");
+
+        sweep(r);
+
+        // The unlinking outlives this process, so wait on it rather than assume it.
+        for _ in 0..100 {
+            if std::fs::read_dir(trash_dir(r))
+                .into_iter()
+                .flatten()
+                .count()
+                == 0
+            {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("sweep left the trash behind");
     }
 
     #[test]

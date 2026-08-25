@@ -2,6 +2,7 @@
 
 use lane::cow::{self, CloneError};
 use std::fs;
+use std::path::Path;
 
 /// Available bytes on the filesystem holding `path`, via df so no platform code is needed.
 fn free_bytes(path: &std::path::Path) -> u64 {
@@ -190,10 +191,17 @@ fn clone_shares_extents_where_supported() {
     fs::write(&big, vec![0xABu8; 64 * 1024 * 1024]).unwrap();
     let _ = std::process::Command::new("sync").status();
 
-    let before = free_bytes(dir.path());
-    cow::clone_file(&big, &dir.path().join("clone.bin")).expect("clone");
-    let _ = std::process::Command::new("sync").status();
-    let spent = before.saturating_sub(free_bytes(dir.path()));
+    // free_bytes reads the whole volume, so anything else writing to it lands in the
+    // measurement. Noise only ever adds, so the cheapest of several clones is the answer.
+    let spent = (0..3)
+        .map(|i| {
+            let before = free_bytes(dir.path());
+            cow::clone_file(&big, &dir.path().join(format!("clone{i}.bin"))).expect("clone");
+            let _ = std::process::Command::new("sync").status();
+            before.saturating_sub(free_bytes(dir.path()))
+        })
+        .min()
+        .unwrap();
 
     assert!(
         spent < 16 * 1024 * 1024,
@@ -201,7 +209,7 @@ fn clone_shares_extents_where_supported() {
     );
     assert_eq!(
         fs::read(&big).unwrap(),
-        fs::read(dir.path().join("clone.bin")).unwrap()
+        fs::read(dir.path().join("clone0.bin")).unwrap()
     );
 }
 
@@ -220,5 +228,99 @@ fn cloning_onto_an_existing_path_is_not_reported_as_unsupported() {
             assert!(!supported, "unsupported here is only valid without reflink");
         }
         Err(CloneError::Io(_)) | Ok(()) => {}
+    }
+}
+
+/// The one-call directory clone must land what the per-file walk lands.
+#[test]
+fn directory_clone_is_byte_identical_and_retargets_absolute_links() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let src = src.path().canonicalize().unwrap();
+
+    fs::create_dir_all(src.join("sub")).unwrap();
+    fs::write(src.join("a.bin"), vec![7u8; 4096]).unwrap();
+    fs::write(src.join("sub/b.bin"), vec![9u8; 4096]).unwrap();
+    std::os::unix::fs::symlink("a.bin", src.join("relative")).unwrap();
+    std::os::unix::fs::symlink(src.join("a.bin"), src.join("absolute")).unwrap();
+
+    let stats = cow::clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+    assert_eq!(
+        fs::read(src.join("sub/b.bin")).unwrap(),
+        fs::read(out.join("sub/b.bin")).unwrap()
+    );
+    assert_eq!(
+        fs::read_link(out.join("relative")).unwrap(),
+        Path::new("a.bin")
+    );
+    assert_eq!(
+        fs::read_link(out.join("absolute")).unwrap(),
+        out.join("a.bin")
+    );
+
+    // The retargeted link must read the clone's copy, not the source's.
+    fs::write(src.join("a.bin"), b"source").unwrap();
+    fs::write(out.join("a.bin"), b"clone").unwrap();
+    assert_eq!(fs::read(out.join("absolute")).unwrap(), b"clone");
+
+    assert_eq!(stats.links, 2);
+    assert_eq!(stats.cloned + stats.copied, 2);
+}
+
+#[test]
+fn directory_clone_falls_back_to_the_walk_when_the_destination_exists() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let src = src.path().canonicalize().unwrap();
+
+    fs::write(src.join("a.bin"), vec![3u8; 4096]).unwrap();
+    fs::create_dir_all(&out).unwrap();
+
+    let stats = cow::clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+    assert_eq!(
+        fs::read(src.join("a.bin")).unwrap(),
+        fs::read(out.join("a.bin")).unwrap()
+    );
+    assert_eq!(stats.cloned + stats.copied, 1);
+}
+
+/// Enough subtrees to cross the threshold where the fixup spreads across threads.
+#[test]
+fn a_wide_tree_is_fixed_up_on_every_core() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let src = src.path().canonicalize().unwrap();
+
+    for i in 0..128 {
+        let dir = src.join(format!("d{i}/nested"));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("f.bin"), vec![1u8; 64]).unwrap();
+    }
+    std::os::unix::fs::symlink(src.join("d0/nested/f.bin"), src.join("d7/absolute")).unwrap();
+    std::os::unix::fs::symlink("nested/f.bin", src.join("d8/relative")).unwrap();
+
+    let stats = cow::clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+    assert_eq!(stats.cloned + stats.copied, 128);
+    assert_eq!(stats.links, 2);
+    assert_eq!(stats.bytes_shared + stats.bytes_copied, 128 * 64);
+    assert_eq!(
+        fs::read_link(out.join("d7/absolute")).unwrap(),
+        out.join("d0/nested/f.bin")
+    );
+    assert_eq!(
+        fs::read_link(out.join("d8/relative")).unwrap(),
+        Path::new("nested/f.bin")
+    );
+    for i in 0..128 {
+        assert_eq!(
+            fs::read(out.join(format!("d{i}/nested/f.bin"))).unwrap(),
+            vec![1u8; 64]
+        );
     }
 }

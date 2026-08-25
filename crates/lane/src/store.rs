@@ -384,7 +384,10 @@ fn resolve_from(notes: Vec<Note>, id: &str, state: &str) -> Result<Note> {
                 .take(5)
                 .map(|note| format!("{} {}#{}", note.meta.id, note.path(), note.meta.anchor))
                 .collect();
-            anyhow::bail!("{id} matches {n} notes:\n  {}", shown.join("\n  "))
+            anyhow::bail!(
+                "{state} note {id} matches {n} notes:\n  {}",
+                shown.join("\n  ")
+            )
         }
     }
 }
@@ -834,18 +837,36 @@ mod tests {
     #[test]
     fn ambiguous_prefixes_are_local_to_each_state() {
         let root = tempfile::tempdir().unwrap();
-        seed_note(root.path(), "src/live.rs", "01M0ALIVE", "live");
-        seed_note(root.path(), "src/old.rs", "01M0AOLD", "old");
-        let mut old = resolve_id(root.path(), "01M0AO").unwrap();
+        seed_note(root.path(), "src/live.rs", "01M0ALIVE1", "live");
+        seed_note(root.path(), "src/old.rs", "01M0AOLD1", "old");
+        let mut old = resolve_id(root.path(), "01M0AOLD1").unwrap();
         evict(root.path(), &mut old, "test").unwrap();
 
         assert_eq!(
             resolve_id(root.path(), "01M0A").unwrap().meta.id,
-            "01M0ALIVE"
+            "01M0ALIVE1"
         );
         assert_eq!(
             resolve_retired_id(root.path(), "01M0A").unwrap().meta.id,
-            "01M0AOLD"
+            "01M0AOLD1"
+        );
+
+        seed_note(root.path(), "src/live2.rs", "01M0ALIVE2", "live two");
+        seed_note(root.path(), "src/old2.rs", "01M0AOLD2", "old two");
+        let mut old_two = resolve_id(root.path(), "01M0AOLD2").unwrap();
+        evict(root.path(), &mut old_two, "test").unwrap();
+
+        let live = resolve_id(root.path(), "01M0A").unwrap_err().to_string();
+        assert!(
+            live.starts_with("live note 01M0A matches 2 notes:"),
+            "{live}"
+        );
+        let retired = resolve_retired_id(root.path(), "01M0A")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            retired.starts_with("retired note 01M0A matches 2 notes:"),
+            "{retired}"
         );
     }
 

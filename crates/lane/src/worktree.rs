@@ -499,15 +499,22 @@ pub fn losses(root: &Path, path: &Path, branch: &str, trunk: &str) -> Vec<String
 
     // A retired upstream proves arrival and a recorded tip dates it. Together they answer
     // without a patch comparison; missing either one, the probe is still the only witness.
-    let landed = match (upstream_gone(root, branch), after) {
+    let gone = upstream_gone(root, branch);
+    let landed = match (gone, after) {
         (true, Some(_)) => true,
         _ => contained_in(root, trunk, branch),
     };
 
     if !landed {
-        // No count: a squash merge leaves commits whose patches landed inside one of
-        // trunk's, so `rev-list` would name a number larger than what is really at risk.
-        out.push(format!("commits {trunk} does not have"));
+        if gone {
+            // It arrived, and no tip dates it, so what sits on top is unknown rather than
+            // absent. Saying trunk lacks the work would be false.
+            out.push("landed, later commits unknown".into());
+        } else {
+            // No count: a squash merge leaves commits whose patches landed inside one of
+            // trunk's, so `rev-list` would name a number larger than what is really at risk.
+            out.push(format!("commits {trunk} does not have"));
+        }
     } else if let Some(count) = after.filter(|count| *count > 0) {
         out.push(format!("{count} commit(s) after landing"));
     }

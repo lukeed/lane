@@ -22,6 +22,7 @@ const COMMANDS: &[&str] = &[
     "new",
     "ls",
     "path",
+    "anchors",
     "note",
     "install",
     "uninstall",
@@ -118,6 +119,7 @@ pub enum Parsed {
     New(NewArgs),
     Ls { json: bool },
     Path { name: String },
+    Anchors { path: String, json: bool },
     Note(NoteArgs),
     Install(Installable),
     Uninstall(Installable),
@@ -152,6 +154,7 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("path") => parse_one(rest(raw), Help::Path, "<NAME>", |name| Parsed::Path {
             name,
         }),
+        Some("anchors") => parse_anchors(rest(raw)),
         Some("note") => parse_note(rest(raw)),
         Some("install") => parse_installable(rest(raw), Help::Install, Parsed::Install),
         Some("uninstall") => parse_installable(rest(raw), Help::Uninstall, Parsed::Uninstall),
@@ -290,6 +293,21 @@ fn parse_ls(raw: Vec<OsString>) -> Result<Parsed> {
     let json = pargs.contains("--json");
     none(positionals(pargs, after, Help::Ls)?, Help::Ls)?;
     Ok(Parsed::Ls { json })
+}
+
+fn parse_anchors(raw: Vec<OsString>) -> Result<Parsed> {
+    let (flags, after) = terminated(raw);
+    let mut pargs = pico_args::Arguments::from_vec(flags);
+    if pargs.contains(["-h", "--help"]) {
+        return Ok(Parsed::Help(Help::Anchors));
+    }
+    let json = pargs.contains("--json");
+    let path = one(
+        positionals(pargs, after, Help::Anchors)?,
+        "<PATH>",
+        Help::Anchors,
+    )?;
+    Ok(Parsed::Anchors { path, json })
 }
 
 fn parse_note(raw: Vec<OsString>) -> Result<Parsed> {

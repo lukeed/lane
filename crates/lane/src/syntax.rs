@@ -21,10 +21,105 @@ pub enum Resolution {
     Unparsed,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Anchor {
+    pub(crate) value: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Qualification {
+    Canonical(Anchor),
+    Ambiguous(Vec<Anchor>),
+    NotFound,
+    Unparsed,
+}
+
 struct Grammar {
     language: fn() -> Language,
     decls: &'static str,
+    kind: fn(&str, &str) -> Option<&'static str>,
     query: &'static OnceLock<Option<Query>>,
+}
+
+fn rust_kind(node: &str, _: &str) -> Option<&'static str> {
+    Some(match node {
+        "function_item" => "fn",
+        "struct_item" => "struct",
+        "enum_item" => "enum",
+        "trait_item" => "trait",
+        "type_item" => "type",
+        "mod_item" => "mod",
+        "const_item" => "const",
+        "static_item" => "static",
+        "macro_definition" => "macro",
+        "impl_item" => "impl",
+        _ => return None,
+    })
+}
+
+fn go_kind(node: &str, _: &str) -> Option<&'static str> {
+    Some(match node {
+        "function_declaration" | "method_declaration" => "func",
+        "type_declaration" => "type",
+        "const_declaration" => "const",
+        "var_declaration" => "var",
+        _ => return None,
+    })
+}
+
+fn python_kind(node: &str, _: &str) -> Option<&'static str> {
+    Some(match node {
+        "function_definition" => "def",
+        "class_definition" => "class",
+        _ => return None,
+    })
+}
+
+fn javascript_kind(node: &str, line: &str) -> Option<&'static str> {
+    Some(match node {
+        "function_declaration" | "generator_function_declaration" => "function",
+        "class_declaration" => "class",
+        "method_definition" => "method",
+        "lexical_declaration" if has_word(line, "const") => "const",
+        "lexical_declaration" if has_word(line, "let") => "let",
+        "variable_declaration" => "var",
+        "interface_declaration" => "interface",
+        "type_alias_declaration" => "type",
+        "enum_declaration" => "enum",
+        _ => return None,
+    })
+}
+
+fn c_kind(node: &str, _: &str) -> Option<&'static str> {
+    Some(match node {
+        "function_definition" | "declaration" => "fn",
+        "struct_specifier" => "struct",
+        "union_specifier" => "union",
+        "enum_specifier" => "enum",
+        "type_definition" => "type",
+        _ => return None,
+    })
+}
+
+fn java_kind(node: &str, _: &str) -> Option<&'static str> {
+    Some(match node {
+        "method_declaration" => "method",
+        "constructor_declaration" => "constructor",
+        "class_declaration" => "class",
+        "interface_declaration" => "interface",
+        "enum_declaration" => "enum",
+        "record_declaration" => "record",
+        _ => return None,
+    })
+}
+
+fn bash_kind(node: &str, _: &str) -> Option<&'static str> {
+    (node == "function_definition").then_some("function")
+}
+
+fn no_kind(_: &str, _: &str) -> Option<&'static str> {
+    None
 }
 
 static RUST_QUERY: OnceLock<Option<Query>> = OnceLock::new();
@@ -42,6 +137,7 @@ static RUST: Grammar = Grammar {
         (macro_definition name: (identifier) @name) @decl
         (impl_item type: (type_identifier) @name) @decl
     "#,
+    kind: rust_kind,
     query: &RUST_QUERY,
 };
 
@@ -55,6 +151,7 @@ static GO: Grammar = Grammar {
         (const_declaration (const_spec name: (identifier) @name)) @decl
         (var_declaration (var_spec name: (identifier) @name)) @decl
     "#,
+    kind: go_kind,
     query: &GO_QUERY,
 };
 
@@ -65,6 +162,7 @@ static PYTHON: Grammar = Grammar {
         (function_definition name: (identifier) @name) @decl
         (class_definition name: (identifier) @name) @decl
     "#,
+    kind: python_kind,
     query: &PYTHON_QUERY,
 };
 
@@ -110,6 +208,7 @@ static JAVA: Grammar = Grammar {
         (enum_declaration name: (identifier) @name) @decl
         (record_declaration name: (identifier) @name) @decl
     "#,
+    kind: java_kind,
     query: &JAVA_QUERY,
 };
 
@@ -117,6 +216,7 @@ static BASH_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static BASH: Grammar = Grammar {
     language: || tree_sitter_bash::LANGUAGE.into(),
     decls: r#"(function_definition name: (word) @name) @decl"#,
+    kind: bash_kind,
     query: &BASH_QUERY,
 };
 
@@ -125,6 +225,7 @@ static CSS_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static CSS: Grammar = Grammar {
     language: || tree_sitter_css::LANGUAGE.into(),
     decls: "",
+    kind: no_kind,
     query: &CSS_QUERY,
 };
 
@@ -132,6 +233,7 @@ static HTML_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static HTML: Grammar = Grammar {
     language: || tree_sitter_html::LANGUAGE.into(),
     decls: "",
+    kind: no_kind,
     query: &HTML_QUERY,
 };
 
@@ -139,6 +241,7 @@ static MARKDOWN_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static MARKDOWN: Grammar = Grammar {
     language: || tree_sitter_md::LANGUAGE.into(),
     decls: "",
+    kind: no_kind,
     query: &MARKDOWN_QUERY,
 };
 
@@ -146,6 +249,7 @@ static JS_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static JS: Grammar = Grammar {
     language: || tree_sitter_javascript::LANGUAGE.into(),
     decls: JS_DECLS,
+    kind: javascript_kind,
     query: &JS_QUERY,
 };
 
@@ -153,6 +257,7 @@ static TYPESCRIPT_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static TYPESCRIPT: Grammar = Grammar {
     language: || tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
     decls: TS_DECLS,
+    kind: javascript_kind,
     query: &TYPESCRIPT_QUERY,
 };
 
@@ -160,6 +265,7 @@ static TSX_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static TSX: Grammar = Grammar {
     language: || tree_sitter_typescript::LANGUAGE_TSX.into(),
     decls: TS_DECLS,
+    kind: javascript_kind,
     query: &TSX_QUERY,
 };
 
@@ -167,6 +273,7 @@ static C_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static C: Grammar = Grammar {
     language: || tree_sitter_c::LANGUAGE.into(),
     decls: C_DECLS,
+    kind: c_kind,
     query: &C_QUERY,
 };
 
@@ -174,6 +281,7 @@ static CPP_QUERY: OnceLock<Option<Query>> = OnceLock::new();
 static CPP: Grammar = Grammar {
     language: || tree_sitter_cpp::LANGUAGE.into(),
     decls: C_DECLS,
+    kind: c_kind,
     query: &CPP_QUERY,
 };
 
@@ -293,13 +401,68 @@ impl Source {
         self.text[self.byte_range(span)].to_string()
     }
 
+    fn file_anchor(&self) -> Anchor {
+        Anchor {
+            value: "@file".to_string(),
+            span: Span {
+                start: 1,
+                end: self.line_count().max(1),
+            },
+        }
+    }
+
+    pub(crate) fn anchors(&self) -> Vec<Anchor> {
+        let mut rest = self.block_candidates();
+        rest.extend(self.heading_candidates());
+        rest.extend(self.declaration_candidates());
+        rest.sort_by(|a, b| {
+            a.span
+                .start
+                .cmp(&b.span.start)
+                .then_with(|| a.span.end.cmp(&b.span.end))
+                .then_with(|| a.value.cmp(&b.value))
+        });
+        let mut seen = std::collections::HashSet::new();
+        rest.retain(|anchor| seen.insert(anchor.value.clone()));
+
+        let mut anchors = Vec::with_capacity(rest.len() + 1);
+        anchors.push(self.file_anchor());
+        anchors.extend(rest);
+        anchors
+    }
+
+    pub(crate) fn qualify(&self, anchor: &str) -> Qualification {
+        let value = anchor.trim();
+        let anchors = self.anchors();
+        if let Some(candidate) = anchors.iter().find(|candidate| candidate.value == value) {
+            return Qualification::Canonical(candidate.clone());
+        }
+        if self.grammar.is_none() {
+            return Qualification::Unparsed;
+        }
+        if value.starts_with('#') || value.split_whitespace().count() != 1 {
+            return Qualification::NotFound;
+        }
+
+        let candidates: Vec<_> = anchors
+            .into_iter()
+            .filter(|candidate| {
+                candidate.value != "@file"
+                    && !candidate.value.starts_with('#')
+                    && candidate.value.split_whitespace().last() == Some(value)
+            })
+            .collect();
+        match candidates.len() {
+            0 => Qualification::NotFound,
+            1 => Qualification::Canonical(candidates.into_iter().next().unwrap()),
+            _ => Qualification::Ambiguous(candidates),
+        }
+    }
+
     pub fn resolve_detail(&self, anchor: &str) -> Resolution {
         let a = anchor.trim();
         if a.is_empty() || a == "@file" || a == "*" {
-            return Resolution::Found(Span {
-                start: 1,
-                end: self.line_count().max(1),
-            });
+            return Resolution::Found(self.file_anchor().span);
         }
         if self.grammar.is_none() {
             return Resolution::Unparsed;
@@ -328,23 +491,43 @@ impl Source {
 
     /// `<script>` / `<style>` / `<template>` in an SFC or html file.
     fn resolve_block(&self, block: &str) -> Option<Span> {
-        let tree = self.tree.as_ref()?;
-        let mut found = None;
+        self.block_candidates()
+            .into_iter()
+            .find(|anchor| {
+                anchor
+                    .value
+                    .strip_prefix('#')
+                    .is_some_and(|value| value.eq_ignore_ascii_case(block))
+            })
+            .map(|anchor| anchor.span)
+    }
+
+    fn block_candidates(&self) -> Vec<Anchor> {
+        if !is_sfc(&self.ext) {
+            return Vec::new();
+        }
+        let Some(tree) = self.tree.as_ref() else {
+            return Vec::new();
+        };
+        let mut found = Vec::new();
         walk(tree.root_node(), &mut |node| {
-            if found.is_some() {
-                return;
-            }
             // html gives script and style their own node kinds; template is a plain element.
-            let hit = match node.kind() {
-                "script_element" => block.eq_ignore_ascii_case("script"),
-                "style_element" => block.eq_ignore_ascii_case("style"),
-                "element" => {
-                    element_tag(node, &self.text).is_some_and(|t| t.eq_ignore_ascii_case(block))
+            let value = match node.kind() {
+                "script_element" => Some("#script"),
+                "style_element" => Some("#style"),
+                "element"
+                    if element_tag(node, &self.text)
+                        .is_some_and(|tag| tag.eq_ignore_ascii_case("template")) =>
+                {
+                    Some("#template")
                 }
-                _ => false,
+                _ => None,
             };
-            if hit {
-                found = Some(node_span(node));
+            if let Some(value) = value {
+                found.push(Anchor {
+                    value: value.to_string(),
+                    span: node_span(node),
+                });
             }
         });
         found
@@ -352,7 +535,16 @@ impl Source {
 
     /// A markdown section: the heading plus everything until the next heading of its level or above.
     fn resolve_heading(&self, anchor: &str) -> Option<Span> {
-        let tree = self.tree.as_ref()?;
+        self.heading_candidates()
+            .into_iter()
+            .find(|candidate| candidate.value == anchor.trim())
+            .map(|candidate| candidate.span)
+    }
+
+    fn heading_candidates(&self) -> Vec<Anchor> {
+        let Some(tree) = self.tree.as_ref() else {
+            return Vec::new();
+        };
         let mut headings: Vec<(usize, usize, String)> = Vec::new();
         walk(tree.root_node(), &mut |node| {
             if node.kind() != "atx_heading" {
@@ -364,65 +556,94 @@ impl Source {
         });
         headings.sort_by_key(|h| h.0);
 
-        let want = anchor.trim();
-        let idx = headings.iter().position(|(_, _, text)| text == want)?;
-        let (start, level, _) = headings[idx];
-        let end = headings[idx + 1..]
+        headings
             .iter()
-            .find(|(_, l, _)| *l <= level)
-            .map(|(line, _, _)| line - 1)
-            .unwrap_or_else(|| self.line_count());
-        Some(Span {
-            start,
-            end: end.max(start),
-        })
+            .enumerate()
+            .map(|(idx, (start, level, value))| {
+                let end = headings[idx + 1..]
+                    .iter()
+                    .find(|(_, next_level, _)| *next_level <= *level)
+                    .map(|(line, _, _)| line - 1)
+                    .unwrap_or_else(|| self.line_count());
+                Anchor {
+                    value: value.clone(),
+                    span: Span {
+                        start: *start,
+                        end: end.max(*start),
+                    },
+                }
+            })
+            .collect()
     }
 
     /// `fn verify` or a bare `verify`: the earliest declaration of that name in the file.
     fn resolve_decl(&self, anchor: &str) -> Option<Span> {
-        let tree = self.tree.as_ref()?;
-        let query = self.decl_query()?;
-        let parts: Vec<&str> = anchor.split_whitespace().collect();
-        let name = *parts.last()?;
-        let keyword = if parts.len() > 1 {
-            Some(parts[0])
-        } else {
-            None
+        let anchor = anchor.trim();
+        let candidates = self.declaration_candidates();
+        if let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.value == anchor)
+        {
+            return Some(candidate.span);
+        }
+        if anchor.split_whitespace().count() != 1 {
+            return None;
+        }
+        candidates
+            .into_iter()
+            .find(|candidate| candidate.value.split_whitespace().last() == Some(anchor))
+            .map(|candidate| candidate.span)
+    }
+
+    fn declaration_candidates(&self) -> Vec<Anchor> {
+        let Some(tree) = self.tree.as_ref() else {
+            return Vec::new();
+        };
+        let Some(query) = self.decl_query() else {
+            return Vec::new();
+        };
+        let Some(grammar) = self.grammar else {
+            return Vec::new();
         };
 
-        let name_idx = query.capture_index_for_name("name")?;
-        let decl_idx = query.capture_index_for_name("decl")?;
+        let Some(name_idx) = query.capture_index_for_name("name") else {
+            return Vec::new();
+        };
+        let Some(decl_idx) = query.capture_index_for_name("decl") else {
+            return Vec::new();
+        };
 
-        let mut best: Option<(usize, Span)> = None;
+        let mut found = Vec::new();
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(query, tree.root_node(), self.text.as_bytes());
         while let Some(m) = matches.next() {
-            let named = m
+            let Some(name) = m
                 .captures
                 .iter()
                 .find(|c| c.index == name_idx)
-                .map(|c| &self.text[c.node.byte_range()]);
-            if named != Some(name) {
+                .map(|capture| &self.text[capture.node.byte_range()])
+            else {
                 continue;
-            }
+            };
             let Some(decl) = m.captures.iter().find(|c| c.index == decl_idx) else {
                 continue;
             };
-            // The keyword is checked against the declaration's own line: `fn verify`
-            // must find a line that really says `fn`, whichever pattern matched it.
-            if let Some(kw) = keyword {
-                let row = decl.node.start_position().row;
-                let line = self.line_at(row).unwrap_or_default();
-                if !has_word(line, kw) {
-                    continue;
-                }
-            }
-            let start = decl.node.start_byte();
-            if best.as_ref().is_none_or(|(b, _)| start < *b) {
-                best = Some((start, node_span(decl.node)));
-            }
+            let line = self
+                .line_at(decl.node.start_position().row)
+                .unwrap_or_default();
+            let Some(kind) = (grammar.kind)(decl.node.kind(), line) else {
+                continue;
+            };
+            found.push((
+                decl.node.start_byte(),
+                Anchor {
+                    value: format!("{kind} {name}"),
+                    span: node_span(decl.node),
+                },
+            ));
         }
-        best.map(|(_, span)| span)
+        found.sort_by_key(|(start, _)| *start);
+        found.into_iter().map(|(_, anchor)| anchor).collect()
     }
 
     fn decl_query(&self) -> Option<&Query> {
@@ -599,6 +820,169 @@ pub fn refresh(token: &str) -> String {
     fn earliest_declaration_wins_not_pattern_order() {
         let src = "pub fn handler() {}\n\npub const handler: u8 = 1;\n";
         assert_eq!(span_of(src, "a.rs", "handler").unwrap().start, 1);
+    }
+
+    #[test]
+    fn rust_anchors_are_canonical_and_in_source_order() {
+        let text = "fn work() {}\n\
+struct Item;\n\
+enum Mode { One }\n\
+trait Ready {}\n\
+type Count = u8;\n\
+mod nested {}\n\
+const LIMIT: u8 = 1;\n\
+static ENABLED: bool = true;\n\
+macro_rules! build { () => {} }\n\
+impl Item {}\n";
+        let source = Source::new(text, "a.rs");
+        let values: Vec<_> = source
+            .anchors()
+            .into_iter()
+            .map(|anchor| anchor.value)
+            .collect();
+        assert_eq!(
+            values,
+            [
+                "@file",
+                "fn work",
+                "struct Item",
+                "enum Mode",
+                "trait Ready",
+                "type Count",
+                "mod nested",
+                "const LIMIT",
+                "static ENABLED",
+                "macro build",
+                "impl Item",
+            ]
+        );
+    }
+
+    #[test]
+    fn javascript_lexical_anchors_keep_const_and_let_distinct() {
+        let source = Source::new(
+            "export const first = 1;\nlet second = 2;\nvar third = 3;\n",
+            "a.js",
+        );
+        let values: Vec<_> = source
+            .anchors()
+            .into_iter()
+            .map(|anchor| anchor.value)
+            .collect();
+        assert_eq!(values, ["@file", "const first", "let second", "var third"]);
+    }
+
+    #[test]
+    fn markdown_anchors_keep_exact_heading_text_and_section_spans() {
+        let anchors = Source::new(MD_SRC, "guide.md").anchors();
+        assert_eq!(
+            anchors,
+            [
+                Anchor {
+                    value: "@file".into(),
+                    span: Span { start: 1, end: 13 },
+                },
+                Anchor {
+                    value: "# Title".into(),
+                    span: Span { start: 1, end: 13 },
+                },
+                Anchor {
+                    value: "## Rate limiting".into(),
+                    span: Span { start: 3, end: 10 },
+                },
+                Anchor {
+                    value: "## Retries".into(),
+                    span: Span { start: 11, end: 13 },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn sfc_anchors_include_only_blocks_that_are_present() {
+        let source = Source::new(
+            "<template><main /></template>\n<script>let x = 1;</script>\n<style>main {}</style>\n",
+            "View.vue",
+        );
+        let values: Vec<_> = source
+            .anchors()
+            .into_iter()
+            .map(|anchor| anchor.value)
+            .collect();
+        assert_eq!(values, ["@file", "#template", "#script", "#style"]);
+    }
+
+    #[test]
+    fn unparsed_files_have_only_the_file_anchor() {
+        assert_eq!(
+            Source::new("func work() {}\nreturn\n", "a.swift").anchors(),
+            [Anchor {
+                value: "@file".into(),
+                span: Span { start: 1, end: 2 },
+            }]
+        );
+    }
+
+    #[test]
+    fn empty_files_have_a_one_line_file_anchor() {
+        assert_eq!(
+            Source::new("", "a.rs").anchors(),
+            [Anchor {
+                value: "@file".into(),
+                span: Span { start: 1, end: 1 },
+            }]
+        );
+    }
+
+    #[test]
+    fn identical_anchor_values_keep_the_earliest_span() {
+        let anchors = Source::new("fn run() {}\nfn run() {}\n", "a.rs").anchors();
+        assert_eq!(anchors.len(), 2);
+        assert_eq!(
+            anchors[1],
+            Anchor {
+                value: "fn run".into(),
+                span: Span { start: 1, end: 1 },
+            }
+        );
+    }
+
+    #[test]
+    fn an_old_bare_anchor_still_resolves_to_the_earliest_declaration() {
+        let source = Source::new("const run: u8 = 1;\nfn run() {}\n", "a.rs");
+        assert_eq!(source.resolve("run"), Some(Span { start: 1, end: 1 }));
+    }
+
+    #[test]
+    fn a_unique_bare_name_qualifies_to_its_canonical_anchor() {
+        let source = Source::new("pub fn verify() {}\n", "a.rs");
+        assert_eq!(
+            source.qualify("verify"),
+            Qualification::Canonical(Anchor {
+                value: "fn verify".into(),
+                span: Span { start: 1, end: 1 },
+            })
+        );
+        assert!(matches!(source.qualify("*"), Qualification::NotFound));
+        assert!(matches!(
+            Source::new("## Rate limiting\n", "a.md").qualify("limiting"),
+            Qualification::NotFound
+        ));
+    }
+
+    #[test]
+    fn a_bare_name_with_distinct_canonical_values_is_ambiguous() {
+        let source = Source::new("fn run() {}\nconst run: u8 = 1;\n", "a.rs");
+        let Qualification::Ambiguous(choices) = source.qualify("run") else {
+            panic!("expected ambiguity");
+        };
+        assert_eq!(
+            choices
+                .into_iter()
+                .map(|choice| choice.value)
+                .collect::<Vec<_>>(),
+            ["fn run", "const run"]
+        );
     }
 
     #[test]

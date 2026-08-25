@@ -45,6 +45,43 @@ remote_setup() {
   git remote add origin "$TMP/origin.git"
 }
 
+echo "== 1. anchor discovery and qualification =="
+setup
+is "anchors human output is canonical and in source order" \
+   "$("$LANE" anchors src/auth.rs)" \
+   $'@file\t1-7\nfn verify\t1-3\nfn refresh\t5-7'
+is "anchors json has exactly the contracted fields and types" \
+   "$("$LANE" anchors src/auth.rs --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(all(set(r)=={"anchor","start","end"} and type(r["anchor"]) is str and type(r["start"]) is int and type(r["end"]) is int for r in d))')" "True"
+is "anchors json order and ranges match human output" \
+   "$("$LANE" anchors --json src/auth.rs | python3 -c 'import json,sys; print("\n".join(f"{r['"'"'anchor'"'"']}\t{r['"'"'start'"'"']}-{r['"'"'end'"'"']}" for r in json.load(sys.stdin)))')" \
+   "$("$LANE" anchors src/auth.rs)"
+printf 'func verify() {}\n' > src/Auth.swift
+is "an unknown extension reports only the file anchor" \
+   "$("$LANE" anchors src/Auth.swift)" $'@file\t1-1'
+is "unique shorthand prints its canonical anchor" \
+   "$("$LANE" note -p src/auth.rs -a verify "shorthand stays canonical")" \
+   "noted -> src/auth.rs#fn verify"
+"$LANE" audit > /dev/null
+is "the promoted shorthand note stores its canonical anchor" \
+   "$(grep -R -c '^anchor: fn verify$' .lane/memory/src/auth.rs | awk -F: '{n += $NF} END {print n + 0}')" "1"
+cat > src/ambiguous.rs <<'EOF'
+fn run() {}
+const run: u8 = 1;
+EOF
+pending_lines() {
+  if [ -f .git/lane/pending.jsonl ]; then
+    awk 'NF { n++ } END { print n + 0 }' .git/lane/pending.jsonl
+  else
+    echo 0
+  fi
+}
+BEFORE_AMBIGUOUS=$(pending_lines)
+"$LANE" note -p src/ambiguous.rs -a run "must choose a declaration" > /tmp/ambiguous.out 2>&1
+AMBIGUOUS_STATUS=$?
+is "ambiguous shorthand fails and lists both canonical choices" \
+   "$([ "$AMBIGUOUS_STATUS" -ne 0 ] && grep -q '^  fn run$' /tmp/ambiguous.out && grep -q '^  const run$' /tmp/ambiguous.out && echo yes)" "yes"
+is "an ambiguous note writes no pending record" "$(pending_lines)" "$BEFORE_AMBIGUOUS"
+
 echo "== 2. new: warm cache arrives, tracked files from git, status clean =="
 setup
 is "ls json is an empty array before a lane exists" \

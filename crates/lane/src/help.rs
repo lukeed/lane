@@ -15,6 +15,7 @@ pub enum Help {
     New,
     Ls,
     Path,
+    Anchors,
     Note,
     Install,
     Uninstall,
@@ -38,6 +39,7 @@ impl Help {
             Help::New => NEW,
             Help::Ls => LS,
             Help::Path => PATH,
+            Help::Anchors => ANCHORS,
             Help::Note => NOTE,
             Help::Install => INSTALL,
             Help::Uninstall => UNINSTALL,
@@ -61,6 +63,7 @@ impl Help {
             Help::New => "lane new [OPTIONS] <NAME>",
             Help::Ls => "lane ls [--json]",
             Help::Path => "lane path <NAME>",
+            Help::Anchors => "lane anchors [--json] <PATH>",
             Help::Note => "lane note [OPTIONS] --path <PATH> <TEXT>",
             Help::Install => "lane install <hooks|skill>",
             Help::Uninstall => "lane uninstall <hooks|skill>",
@@ -96,6 +99,7 @@ impl Help {
             Help::New => "lane new",
             Help::Ls => "lane ls",
             Help::Path => "lane path",
+            Help::Anchors => "lane anchors",
             Help::Note => "lane note",
             Help::Install => "lane install",
             Help::Uninstall => "lane uninstall",
@@ -125,6 +129,7 @@ const ROOT: &str = "
     new          Create a CoW lane
     ls           List lanes
     path         Print a lane's path
+    anchors      List addressable anchors in a file
     note         Record a finding
     install      Install lane's agent integrations
     uninstall    Remove lane's agent integrations
@@ -203,6 +208,22 @@ const PATH: &str = "
 
   Options
     -h, --help    Display this message
+";
+
+const ANCHORS: &str = "
+  Description
+    List every addressable anchor in source order with its inclusive line range.
+    @file is always present, including for empty and unparsed files.
+
+  Usage
+    $ lane anchors [--json] <PATH>
+
+  Options
+    --json        Emit machine-readable JSON
+    -h, --help    Display this message
+
+  Examples
+    $ lane anchors src/auth.rs
 ";
 
 const NOTE: &str = "

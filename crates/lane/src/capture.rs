@@ -2,11 +2,12 @@
 
 use crate::git::{self, git};
 use crate::store;
-use crate::syntax::{Resolution, Source};
+use crate::syntax::{Qualification, Source};
 use crate::util::now_iso;
 use anyhow::Result;
 use std::collections::HashSet;
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 #[derive(Debug)]
@@ -110,22 +111,25 @@ fn capture_rev(rev: &str) -> Result<()> {
     let message = git(&["log", "-1", "--format=%B", rev], None)?;
     let subject = git(&["log", "-1", "--format=%s", rev], None)?;
     let root = git::repo_root()?;
+    capture_message(&root, &subject, &message)
+}
 
-    for result in parse_trailers(&message) {
-        let captured = match result {
+fn capture_message(root: &Path, subject: &str, message: &str) -> Result<()> {
+    for result in parse_trailers(message) {
+        let mut captured = match result {
             Ok(captured) => captured,
             Err(error) => {
                 eprintln!("warning: rejected Why trailer: {error}");
                 continue;
             }
         };
-        if restates(&subject, &captured.text) {
+        if restates(subject, &captured.text) {
             eprintln!(
                 "warning: rejected Why trailer: record why it must stay true, not the commit subject"
             );
             continue;
         }
-        let rel = match store::rel_to_repo(&root, &captured.path) {
+        let rel = match store::rel_to_repo(root, &captured.path) {
             Ok(rel) => rel,
             Err(error) => {
                 eprintln!("warning: rejected Why trailer: {error}");
@@ -144,13 +148,25 @@ fn capture_rev(rev: &str) -> Result<()> {
             }
         };
         let source = Source::new(&source_text, &rel);
-        match source.resolve_detail(&captured.anchor) {
-            Resolution::Found(_) => {}
-            Resolution::NotFound => eprintln!(
+        match source.qualify(&captured.anchor) {
+            Qualification::Canonical(candidate) => captured.anchor = candidate.value,
+            Qualification::Ambiguous(choices) => {
+                let choices = choices
+                    .into_iter()
+                    .map(|choice| format!("  {}", choice.value))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                eprintln!(
+                    "warning: rejected Why trailer: anchor {:?} is ambiguous in {rel}; choose one:\n{choices}",
+                    captured.anchor
+                );
+                continue;
+            }
+            Qualification::NotFound => eprintln!(
                 "warning: anchor {:?} not found in {rel}; note recorded anyway",
                 captured.anchor
             ),
-            Resolution::Unparsed => eprintln!(
+            Qualification::Unparsed => eprintln!(
                 "warning: {rel} has no grammar; note will be kept but not checked for drift"
             ),
         }
@@ -161,7 +177,7 @@ fn capture_rev(rev: &str) -> Result<()> {
             at: now_iso(),
             supersedes: String::new(),
         };
-        if let Err(error) = store::append_pending(&root, &pending) {
+        if let Err(error) = store::append_pending(root, &pending) {
             eprintln!("warning: could not record Why trailer for {rel}: {error}");
             continue;
         }
@@ -173,6 +189,18 @@ fn capture_rev(rev: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pending_anchors(root: &Path) -> Vec<String> {
+        std::fs::read_to_string(store::pending_path(root))
+            .unwrap()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<store::PendingNote>(line)
+                    .unwrap()
+                    .anchor
+            })
+            .collect()
+    }
 
     #[test]
     fn git_rejects_bracket_keys_and_malformed_blocks() {
@@ -224,5 +252,40 @@ mod tests {
             "make verify constant-time",
             "must stay constant-time; early return leaks token length"
         ));
+    }
+
+    #[test]
+    fn a_unique_trailer_anchor_is_stored_canonically() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(repo.path().join(".git")).unwrap();
+        std::fs::create_dir_all(repo.path().join("src")).unwrap();
+        let source = repo.path().join("src/auth.rs");
+        std::fs::write(&source, "fn verify() {}\n").unwrap();
+        let message = format!(
+            "change authentication\n\nWhy: {}#verify | callers require constant time\n",
+            source.display()
+        );
+
+        capture_message(repo.path(), "change authentication", &message).unwrap();
+
+        assert_eq!(pending_anchors(repo.path()), ["fn verify"]);
+    }
+
+    #[test]
+    fn an_ambiguous_trailer_is_skipped_without_aborting_later_trailers() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(repo.path().join(".git")).unwrap();
+        std::fs::create_dir_all(repo.path().join("src")).unwrap();
+        let source = repo.path().join("src/tasks.rs");
+        std::fs::write(&source, "fn run() {}\nconst run: u8 = 1;\nfn keep() {}\n").unwrap();
+        let message = format!(
+            "change task handling\n\nWhy: {}#run | callers choose one runner\nWhy: {}#keep | later callers rely on this\n",
+            source.display(),
+            source.display()
+        );
+
+        capture_message(repo.path(), "change task handling", &message).unwrap();
+
+        assert_eq!(pending_anchors(repo.path()), ["fn keep"]);
     }
 }

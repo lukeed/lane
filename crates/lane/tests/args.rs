@@ -43,6 +43,7 @@ fn every_command_answers_its_own_help_flag() {
         ("new", Help::New),
         ("ls", Help::Ls),
         ("path", Help::Path),
+        ("anchors", Help::Anchors),
         ("note", Help::Note),
         ("install", Help::Install),
         ("uninstall", Help::Uninstall),
@@ -72,6 +73,30 @@ fn commands_without_arguments_take_none() {
     assert_eq!(ok(&["ls"]), Parsed::Ls { json: false });
     assert_eq!(ok(&["shellenv"]), Parsed::Shellenv);
     assert!(err(&["ls", "extra"]).contains("unexpected argument 'extra' found"));
+}
+
+#[test]
+fn anchors_takes_one_path_and_an_optional_json_switch() {
+    assert_eq!(
+        ok(&["anchors", "src/auth.rs"]),
+        Parsed::Anchors {
+            path: "src/auth.rs".into(),
+            json: false,
+        }
+    );
+    let json = Parsed::Anchors {
+        path: "src/auth.rs".into(),
+        json: true,
+    };
+    assert_eq!(ok(&["anchors", "--json", "src/auth.rs"]), json);
+    assert_eq!(ok(&["anchors", "src/auth.rs", "--json"]), json);
+    assert_eq!(
+        ok(&["anchors", "missing", "--help"]),
+        Parsed::Help(Help::Anchors)
+    );
+    assert!(err(&["anchors"]).contains("<PATH>"));
+    assert!(err(&["anchors", "one", "two"]).contains("unexpected argument 'two' found"));
+    assert!(err(&["anchors", "--jsonn", "one"]).contains("unexpected argument '--jsonn' found"));
 }
 
 #[test]
@@ -475,7 +500,7 @@ fn every_command_the_root_screen_lists_parses() {
         .take_while(|line| !line.trim().is_empty())
         .filter_map(|line| line.split_whitespace().next())
         .collect();
-    assert_eq!(listed.len(), 16, "{listed:?}");
+    assert_eq!(listed.len(), 17, "{listed:?}");
     for name in listed {
         assert!(matches!(ok(&[name, "--help"]), Parsed::Help(_)), "{name}");
     }
@@ -489,6 +514,7 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::New,
         Help::Ls,
         Help::Path,
+        Help::Anchors,
         Help::Note,
         Help::Install,
         Help::Uninstall,

@@ -5,7 +5,7 @@ use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
 use crate::store::{self, BODY, FRESH, LANE_DIR, MISSING, SIG, UNVERIFIABLE};
-use crate::syntax::{Resolution, Source};
+use crate::syntax::{Qualification, Source};
 use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
@@ -48,6 +48,7 @@ pub fn run() -> Result<i32> {
         Parsed::New(args) => new(&args.name, args.base.as_deref(), args.dirty, args.cd),
         Parsed::Ls { json } => ls(json),
         Parsed::Path { name } => path(&name),
+        Parsed::Anchors { path, json } => anchors(&path, json),
         Parsed::Note(args) => note(
             &args.text,
             &args.path,
@@ -645,6 +646,45 @@ fn path(name: &str) -> Result<i32> {
     Ok(0)
 }
 
+#[derive(serde::Serialize)]
+struct AnchorRow {
+    anchor: String,
+    start: usize,
+    end: usize,
+}
+
+fn anchors(path: &str, json: bool) -> Result<i32> {
+    let root = git::repo_root()?;
+    let rel = store::rel_to_repo(&root, path)?;
+    let target = root.join(&rel);
+    if !target.is_file() {
+        bail!("{rel} is not a regular file");
+    }
+    let source_text = std::fs::read_to_string(&target)?;
+    let source = Source::new(&source_text, &rel);
+    let anchors = source.anchors();
+
+    if json {
+        let rows: Vec<_> = anchors
+            .into_iter()
+            .map(|anchor| AnchorRow {
+                anchor: anchor.value,
+                start: anchor.span.start,
+                end: anchor.span.end,
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+    } else {
+        for anchor in anchors {
+            println!(
+                "{}\t{}-{}",
+                anchor.value, anchor.span.start, anchor.span.end
+            );
+        }
+    }
+    Ok(0)
+}
+
 fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Result<i32> {
     let root = git::repo_root()?;
     // Resolved here, so the queue carries a whole id and promotion cannot be
@@ -660,21 +700,31 @@ fn note(text: &str, path: &str, anchor: &str, supersedes: Option<&str>) -> Resul
     }
     let source_text = std::fs::read_to_string(root.join(&rel))?;
     let source = Source::new(&source_text, &rel);
-    match source.resolve_detail(anchor) {
-        Resolution::Found(_) => {}
-        Resolution::NotFound => {
+    let anchor = match source.qualify(anchor) {
+        Qualification::Canonical(candidate) => candidate.value,
+        Qualification::Ambiguous(choices) => {
+            let choices = choices
+                .into_iter()
+                .map(|choice| format!("  {}", choice.value))
+                .collect::<Vec<_>>()
+                .join("\n");
+            bail!("anchor {anchor:?} is ambiguous in {rel}; choose one:\n{choices}");
+        }
+        Qualification::NotFound => {
             eprintln!("warning: anchor {anchor:?} not found in {rel}; note recorded anyway");
+            anchor.to_string()
         }
-        Resolution::Unparsed => {
+        Qualification::Unparsed => {
             eprintln!("warning: {rel} has no grammar; note will be kept but not checked for drift");
+            anchor.to_string()
         }
-    }
+    };
     store::append_pending(
         &root,
         &store::PendingNote {
             text: text.to_string(),
             path: rel.clone(),
-            anchor: anchor.to_string(),
+            anchor: anchor.clone(),
             at: now_iso(),
             supersedes: supersedes.clone(),
         },

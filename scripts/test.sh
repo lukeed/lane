@@ -1109,6 +1109,61 @@ LP="$TMP/repo/.lane/trees/clean-pr"
 ( cd "$LP" && "$LANE" merge > /tmp/clean-pr.out 2>&1 )
 is "merge stays silent when the pushed tip remains reachable" "$(grep -c '^warning: pushed pull request' /tmp/clean-pr.out)" "0"
 
+
+echo "== 40. a retired upstream proves a landing no patch can =="
+setup
+remote_setup
+printf 'one\ntwo\nthree\nfour\nfive\n' > src/ctx.txt
+git add -A && git commit -qm ctx
+git push -q origin main
+"$LANE" new drifted > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/drifted"
+( cd "$LP" && sedi 's/^four$/four-lane/' src/ctx.txt && git add -A && git commit -qm "lane edits four" \
+  && "$LANE" push > /dev/null 2>&1 )
+# main moves first, touching only a context line of the lane's own hunk, then takes the
+# lane's change on top of it. That is enough to give the two diffs different patch ids.
+sedi 's/^two$/two-main/' src/ctx.txt && git add -A && git commit -qm "main edits two"
+sedi 's/^four$/four-lane/' src/ctx.txt && git add -A && git commit -qm "squash drifted"
+is "the patch probe alone cannot see the landing" "$("$LANE" ls | grep -c 'drifted .*pushed')" "1"
+# The remote retires the branch on its own side, exactly as a merged pull request does.
+git --git-dir="$TMP/origin.git" branch -q -D drifted
+is "ls does not fetch, so it still reads the cached ref" "$("$LANE" ls | grep -c 'drifted .*pushed')" "1"
+git fetch -q --prune
+is "a retired upstream reads as landed" "$("$LANE" ls | grep -c 'drifted .*landed')" "1"
+is "prune collects it" "$("$LANE" prune 2>&1 | grep -c 'removed drifted')" "1"
+is "and the lane is gone" "$([ -d .lane/trees/drifted ] && echo yes || echo no)" "no"
+
+echo "== 41. work added after a landing is counted, not guessed =="
+setup
+remote_setup
+"$LANE" new kept > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/kept"
+( cd "$LP" && echo one > src/one.rs && git add -A && git commit -qm one && "$LANE" push > /dev/null 2>&1 )
+git merge -q --squash kept > /dev/null && git commit -qm "squash kept" > /dev/null
+git --git-dir="$TMP/origin.git" branch -q -D kept && git fetch -q --prune
+# The branch keeps committing after its own pull request merged.
+( cd "$LP" && echo two > src/two.rs && git add -A && git commit -qm two )
+is "prune counts what arrived after the landing" \
+   "$("$LANE" prune 2>&1 | grep -c 'kept: 1 commit(s) after landing')" "1"
+is "it does not fall back to the uncountable message" \
+   "$("$LANE" prune 2>&1 | grep -c 'kept: commits main does not have')" "0"
+is "and the lane survives" "$([ -d .lane/trees/kept ] && echo yes || echo no)" "yes"
+
+echo "== 42. an open pull request is never collected =="
+setup
+remote_setup
+"$LANE" new open-pr > /dev/null 2>&1
+( cd "$TMP/repo/.lane/trees/open-pr" && echo x > src/x.rs && git add -A && git commit -qm x \
+  && "$LANE" push > /dev/null 2>&1 )
+is "prune keeps a lane whose branch is still on the remote" \
+   "$("$LANE" prune 2>&1 | grep -c 'skipped open-pr: commits main does not have')" "1"
+is "the lane survives" "$([ -d .lane/trees/open-pr ] && echo yes || echo no)" "yes"
+git remote set-url origin "$TMP/gone.git"
+is "a failed fetch warns instead of stopping prune" \
+   "$("$LANE" prune 2>&1 | grep -c 'warning: fetch failed')" "1"
+is "and the open lane is still kept" \
+   "$("$LANE" prune 2>&1 | grep -c 'skipped open-pr')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

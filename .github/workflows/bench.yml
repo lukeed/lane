@@ -100,6 +100,12 @@ jobs:
             echo "== $which =="
             ./scripts/bench.sh "$bin" "$BENCH_DIR/$which" "$FILES" "$RUNS" \
               | tee "$RUNNER_TEMP/$which.txt"
+            # Leave the filesystem as the next binary found it. The first run measured
+            # `lane rm` at 0.02s and the second at 0.88s from the same code, because the
+            # first repository was still on the disk and still being unlinked.
+            rm -rf "${BENCH_DIR:?}/$which"
+            sync
+            sleep 5
           done
 
       # Where the time goes, rather than how much of it there is. On Darwin the answer was

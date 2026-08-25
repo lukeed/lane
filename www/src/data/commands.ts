@@ -32,7 +32,7 @@ export let commands: Command[] = [
 		usage: "lane init",
 		summary: "scaffolds .lane/, adds the union merge rule, writes the AGENTS.md protocol, and probes reflink support.",
 		options: [],
-		example: "$ lane init\nwrote /w/proj/AGENTS.md protocol\ninitialized .lane/, union merge rules, AGENTS.md protocol\nreflink on this filesystem: yes (reflink available)",
+		example: "$ lane init\nwrote /w/proj/AGENTS.md protocol\ninitialized .lane/, union merge rules, AGENTS.md protocol\nreflink on this filesystem: yes (reflink available)\ncommit hooks are current",
 	},
 	{
 		name: "new",

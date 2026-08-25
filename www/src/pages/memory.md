@@ -47,6 +47,14 @@ That covers every lane, because worktrees share the hooks directory. Nothing
 before it reads a `Why:` trailer — without the hooks, git carries the line in
 the commit message forever and lane never sees it.
 
+A hook is a copy, not a link. `lane check` and `lane init` name one an older
+release wrote:
+
+```
+$ lane check
+warning: .git/hooks/post-commit is out of date; run `lane install hooks`
+```
+
 ### What the hooks give you
 
 One command where there were two:

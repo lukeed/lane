@@ -573,6 +573,40 @@ rm .git/hooks/post-commit
 is "a hook that was only lane's is deleted" \
    "$([ -f .git/hooks/post-commit ] && echo yes || echo no)" "no"
 
+echo "== 23b. a stale hook block is named, not left to run =="
+setup
+"$LANE" init > /tmp/init1.out 2>&1
+is "init offers the hooks nobody installed" \
+   "$(grep -c 'lane install hooks' /tmp/init1.out)" "1"
+"$LANE" install hooks > /dev/null
+"$LANE" init > /tmp/init2.out 2>&1
+is "init calls a freshly installed hook current" \
+   "$(grep -c 'commit hooks are current' /tmp/init2.out)" "1"
+"$LANE" check > /dev/null 2>/tmp/check1.err
+is "check says nothing about a current hook" \
+   "$(wc -c < /tmp/check1.err | tr -d ' ')" "0"
+# What an older release left behind: lane's own markers around a body it no longer ships.
+sedi 's/lane capture HEAD/lane capture/' .git/hooks/post-commit
+"$LANE" check > /dev/null 2>/tmp/check2.err
+is "check names the stale hook" \
+   "$(grep -c 'post-commit is out of date' /tmp/check2.err)" "1"
+is "and names the recovery" \
+   "$(grep -c 'lane install hooks' /tmp/check2.err)" "1"
+"$LANE" check --json > /tmp/check2.out 2>/dev/null
+is "the warning stays off the json document" \
+   "$(python3 -c 'import json,sys; print(json.load(open("/tmp/check2.out")) == [])')" "True"
+"$LANE" init > /tmp/init3.out 2>&1
+is "init names the stale hook too" \
+   "$(grep -c 'post-commit is out of date' /tmp/init3.out)" "1"
+"$LANE" install hooks > /dev/null
+"$LANE" check > /dev/null 2>/tmp/check3.err
+is "installing again clears the warning" \
+   "$(wc -c < /tmp/check3.err | tr -d ' ')" "0"
+printf '#!/bin/sh\necho mine\n' > .git/hooks/post-commit
+"$LANE" check > /dev/null 2>/tmp/check4.err
+is "a hook that is not lane's is left alone" \
+   "$(grep -c 'out of date' /tmp/check4.err)" "0"
+
 echo "== 24. lane install skill =="
 setup
 "$LANE" install skill > /tmp/skill.out 2>&1

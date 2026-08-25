@@ -434,6 +434,9 @@ impl Source {
     pub(crate) fn qualify(&self, anchor: &str) -> Qualification {
         let value = anchor.trim();
         let anchors = self.anchors();
+        if value.is_empty() || value == "*" {
+            return Qualification::Canonical(anchors[0].clone());
+        }
         if let Some(candidate) = anchors.iter().find(|candidate| candidate.value == value) {
             return Qualification::Canonical(candidate.clone());
         }
@@ -963,7 +966,16 @@ impl Item {}\n";
                 span: Span { start: 1, end: 1 },
             })
         );
-        assert!(matches!(source.qualify("*"), Qualification::NotFound));
+        for spelling in ["*", ""] {
+            assert_eq!(
+                source.qualify(spelling),
+                Qualification::Canonical(Anchor {
+                    value: "@file".into(),
+                    span: Span { start: 1, end: 1 },
+                }),
+                "whole-file spelling {spelling:?} must canonicalize"
+            );
+        }
         assert!(matches!(
             Source::new("## Rate limiting\n", "a.md").qualify("limiting"),
             Qualification::NotFound

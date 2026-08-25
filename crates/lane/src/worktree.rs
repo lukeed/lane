@@ -484,12 +484,32 @@ pub fn losses(root: &Path, path: &Path, branch: &str, trunk: &str) -> Vec<String
         }
     }
     let refname = format!("refs/heads/{branch}");
-    if git_ok(&["rev-parse", "--verify", "--quiet", &refname], Some(root))
-        && !contained_in(root, trunk, branch)
-    {
+    if !git_ok(&["rev-parse", "--verify", "--quiet", &refname], Some(root)) {
+        return out;
+    }
+
+    let after = crate::store::landed_tip(path).map(|tip| {
+        try_git(
+            &["rev-list", "--count", &format!("{tip}..{branch}")],
+            Some(root),
+        )
+        .parse::<u32>()
+        .unwrap_or(0)
+    });
+
+    // A retired upstream proves arrival and a recorded tip dates it. Together they answer
+    // without a patch comparison; missing either one, the probe is still the only witness.
+    let landed = match (upstream_gone(root, branch), after) {
+        (true, Some(_)) => true,
+        _ => contained_in(root, trunk, branch),
+    };
+
+    if !landed {
         // No count: a squash merge leaves commits whose patches landed inside one of
         // trunk's, so `rev-list` would name a number larger than what is really at risk.
         out.push(format!("commits {trunk} does not have"));
+    } else if let Some(count) = after.filter(|count| *count > 0) {
+        out.push(format!("{count} commit(s) after landing"));
     }
     out
 }
@@ -606,6 +626,21 @@ pub fn blocking_changes(root: &Path, trunk: &str, branch: &str) -> Vec<String> {
 /// ancestor. Anything else rewrites the SHAs, so `git branch -d` refuses even when the
 /// trees are identical; comparing the branch's cumulative diff against trunk by patch-id
 /// is what sees through a rebase or a squash.
+/// Git's own name for a branch its remote retired: upstream configured, ref no longer there.
+///
+/// Proof of arrival that compares no patches, which is what lets it see through a squash.
+/// Reads a cache, so it answers for the last fetch. Not `%(push:track)`, which reports
+/// `[gone]` for a branch never pushed, having answered for where a push would land.
+pub fn upstream_gone(root: &Path, branch: &str) -> bool {
+    let refname = format!("refs/heads/{branch}");
+    try_git(
+        &["for-each-ref", "--format=%(upstream:track)", &refname],
+        Some(root),
+    )
+    .trim()
+        == "[gone]"
+}
+
 pub fn contained_in(root: &Path, trunk: &str, branch: &str) -> bool {
     if git_ok(&["merge-base", "--is-ancestor", branch, trunk], Some(root)) {
         return true;

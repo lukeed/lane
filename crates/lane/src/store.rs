@@ -60,6 +60,8 @@ pub fn landed_path(worktree: &Path) -> Option<PathBuf> {
         .map(|layout| layout.git_dir.join(LANDED))
 }
 
+/// Records the tip as well, so what arrives after a landing is countable. Call this once
+/// the memory commit exists, or the tip names a commit the landing never included.
 pub fn mark_landed(worktree: &Path) -> Result<()> {
     let Some(path) = landed_path(worktree) else {
         return Ok(());
@@ -71,12 +73,28 @@ pub fn mark_landed(worktree: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, format!("{id} {}\n", now_iso()))?;
+    let tip = git::try_git(&["rev-parse", "HEAD"], Some(worktree));
+    let mut line = format!("{id} {}", now_iso());
+    if !tip.is_empty() {
+        line.push(' ');
+        line.push_str(&tip);
+    }
+    line.push('\n');
+    std::fs::write(path, line)?;
     Ok(())
 }
 
 pub fn is_landed(worktree: &Path) -> bool {
     landed_path(worktree).is_some_and(|path| path.is_file())
+}
+
+/// The tip at landing time. `None` for a marker written before tips were recorded, and
+/// that is never the same answer as "nothing followed the landing".
+pub fn landed_tip(worktree: &Path) -> Option<String> {
+    let path = landed_path(worktree)?;
+    let text = std::fs::read_to_string(path).ok()?;
+    let tip = text.split_whitespace().nth(2)?;
+    Some(tip.to_string())
 }
 
 /// The whole file. Its span has no declaration line, so its first line is an

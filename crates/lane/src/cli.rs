@@ -598,9 +598,11 @@ fn ls(json: bool) -> Result<i32> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             let upstream = try_git(&["rev-parse", "@{upstream}"], Some(&lane.path));
-            // Only marked lanes pay for the containment probe.
+            // Only marked lanes pay for a probe, and a retired upstream settles it before
+            // the expensive one runs.
             let state = if store::is_landed(&lane.path)
-                && wt::contained_in(&root, &wt::trunk_name(&root), &lane.branch)
+                && (wt::upstream_gone(&root, &lane.branch)
+                    || wt::contained_in(&root, &wt::trunk_name(&root), &lane.branch))
             {
                 "landed"
             } else if !upstream.is_empty()
@@ -643,6 +645,13 @@ fn ls(json: bool) -> Result<i32> {
 
 fn prune(dry_run: bool) -> Result<i32> {
     let root = wt::main_root()?;
+    // A retired upstream is read from a cache that only empties on a prune. Failing here
+    // costs accuracy, never the command: fall through and decide on the refs we have.
+    if !try_git(&["remote"], Some(&root)).trim().is_empty()
+        && !git::git_ok(&["fetch", "--prune", "--quiet"], Some(&root))
+    {
+        eprintln!("warning: fetch failed; deciding on cached remote refs");
+    }
     let trunk = wt::trunk_name(&root);
     let lanes = wt::list_lanes(&root);
 
@@ -1264,7 +1273,6 @@ fn prepare(
     if store::lane_id(&lane_path).is_empty() {
         eprintln!("warning: lane has no id; `lane prune` will not recognise this landing");
     }
-    store::mark_landed(&lane_path)?;
 
     if stage_memory(&lane_path) {
         git(
@@ -1273,6 +1281,10 @@ fn prepare(
         )?;
         writeln!(info, "committed memory update")?;
     }
+
+    // After the memory commit: the marker records the tip, and that commit is part of what
+    // lands. Marking earlier would date the landing one commit short of itself.
+    store::mark_landed(&lane_path)?;
 
     Ok(Preparation::Ready(Prepared {
         lane_path,

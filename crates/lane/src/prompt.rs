@@ -2,6 +2,14 @@ use crate::syntax::Anchor;
 use anyhow::{Result, bail};
 use std::io::{BufRead, Write};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EditAction {
+    Confirm,
+    Replace,
+    Retire,
+    SetPinned(bool),
+}
+
 pub(crate) fn select_anchor<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -44,7 +52,18 @@ pub(crate) fn select_anchor<R: BufRead, W: Write>(
 }
 
 pub(crate) fn read_note<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Result<String> {
-    write!(output, "Note: ")?;
+    read_text(input, output, "Note")
+}
+
+pub(crate) fn read_replacement<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+) -> Result<String> {
+    read_text(input, output, "Replacement")
+}
+
+fn read_text<R: BufRead, W: Write>(input: &mut R, output: &mut W, label: &str) -> Result<String> {
+    write!(output, "{label}: ")?;
     output.flush()?;
     let mut line = String::new();
     if input.read_line(&mut line)? == 0 {
@@ -55,6 +74,39 @@ pub(crate) fn read_note<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> 
         bail!("note text cannot be empty");
     }
     Ok(text.to_string())
+}
+
+pub(crate) fn select_edit_action<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    pinned: bool,
+) -> Result<EditAction> {
+    let (pin_verb, pin_description) = if pinned {
+        ("unpin", "remove eviction protection")
+    } else {
+        ("pin", "protect from eviction")
+    };
+    writeln!(output, "Action:")?;
+    writeln!(output, "  1. confirm — still true")?;
+    writeln!(output, "  2. replace — change the text")?;
+    writeln!(output, "  3. retire — no longer applies")?;
+    writeln!(output, "  4. {pin_verb} — {pin_description}")?;
+
+    loop {
+        write!(output, "Choose [1-4]: ")?;
+        output.flush()?;
+        let mut line = String::new();
+        if input.read_line(&mut line)? == 0 {
+            bail!("no edit action selected");
+        }
+        match line.trim() {
+            "1" => return Ok(EditAction::Confirm),
+            "2" => return Ok(EditAction::Replace),
+            "3" => return Ok(EditAction::Retire),
+            "4" => return Ok(EditAction::SetPinned(!pinned)),
+            _ => writeln!(output, "Enter a number from 1 to 4.")?,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -142,5 +194,51 @@ mod tests {
             "no note text entered"
         );
         assert_eq!(String::from_utf8(eof_output).unwrap(), "Note: ");
+    }
+
+    #[test]
+    fn edit_selects_an_action_and_labels_the_pin_toggle() {
+        let mut input = Cursor::new(b"2\n");
+        let mut output = Vec::new();
+        assert_eq!(
+            select_edit_action(&mut input, &mut output, false).unwrap(),
+            EditAction::Replace
+        );
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            concat!(
+                "Action:\n",
+                "  1. confirm — still true\n",
+                "  2. replace — change the text\n",
+                "  3. retire — no longer applies\n",
+                "  4. pin — protect from eviction\n",
+                "Choose [1-4]: "
+            )
+        );
+
+        let mut input = Cursor::new(b"4\n");
+        let mut output = Vec::new();
+        assert_eq!(
+            select_edit_action(&mut input, &mut output, true).unwrap(),
+            EditAction::SetPinned(false)
+        );
+        assert!(String::from_utf8(output).unwrap().contains("4. unpin —"));
+    }
+
+    #[test]
+    fn edit_retries_an_invalid_action_and_reads_replacement_text() {
+        let mut input = Cursor::new(b"nope\n2\nreplacement text\n");
+        let mut output = Vec::new();
+        assert_eq!(
+            select_edit_action(&mut input, &mut output, false).unwrap(),
+            EditAction::Replace
+        );
+        assert_eq!(
+            read_replacement(&mut input, &mut output).unwrap(),
+            "replacement text"
+        );
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("Choose [1-4]: Enter a number from 1 to 4.\nChoose [1-4]: "));
+        assert!(output.ends_with("Replacement: "));
     }
 }

@@ -52,6 +52,7 @@ pub fn run() -> Result<i32> {
         Parsed::Anchors { path, json } => anchors(&path, json),
         Parsed::Note(command) => match command {
             NoteCommand::Add(args) => note_add(args),
+            NoteCommand::Edit { id } => edit(&id),
             NoteCommand::Replace(args) => note_replace(args),
             NoteCommand::Confirm { id } => confirm(&id),
             NoteCommand::Retire { id } => retire(&id),
@@ -906,6 +907,57 @@ fn confirm(id: &str) -> Result<i32> {
     // The whole id, not the prefix you typed, so you can see which note you confirmed.
     println!("confirmed -> {}", audit::confirm(&git::repo_root()?, id)?);
     Ok(0)
+}
+
+fn edit(id: &str) -> Result<i32> {
+    let root = git::repo_root()?;
+    let note = store::resolve_id(&root, id)?;
+    let stdin = std::io::stdin();
+    let stderr = std::io::stderr();
+    if !stdin.is_terminal() || !stderr.is_terminal() {
+        bail!(
+            "note edit requires stdin and stderr terminals; use a direct `lane note <action>` command instead"
+        );
+    }
+
+    let full_id = note.meta.id.clone();
+    let path = note.path();
+    let status = if note.unreadable {
+        "unreadable"
+    } else {
+        store::Checker::new(&root).check(&note).tier
+    };
+    let pinned = note.meta.pinned;
+    let mut input = stdin.lock();
+    let mut output = stderr.lock();
+    writeln!(output, "Editing {full_id}")?;
+    writeln!(output, "  {path}#{}", note.meta.anchor)?;
+    writeln!(
+        output,
+        "  status: {status}{}",
+        if pinned { ", pinned" } else { "" }
+    )?;
+    writeln!(output, "  {}", note.body.trim().replace('\n', "\n  "))?;
+    let action = prompt::select_edit_action(&mut input, &mut output, pinned)?;
+    let replacement = if action == prompt::EditAction::Replace {
+        Some(prompt::read_replacement(&mut input, &mut output)?)
+    } else {
+        None
+    };
+    drop(output);
+    drop(input);
+
+    match action {
+        prompt::EditAction::Confirm => confirm(&full_id),
+        prompt::EditAction::Replace => note_replace(NoteReplaceArgs {
+            id: full_id,
+            text: replacement,
+            path: None,
+            anchor: None,
+        }),
+        prompt::EditAction::Retire => retire(&full_id),
+        prompt::EditAction::SetPinned(pinned) => pin(&full_id, pinned),
+    }
 }
 
 fn retire(id: &str) -> Result<i32> {

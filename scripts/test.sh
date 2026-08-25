@@ -800,6 +800,10 @@ is "missing text over non-terminal stdin fails without appending" \
 "$LANE" audit > /dev/null
 OLD_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
 OLD_ID=$(basename "$OLD_FILE" | cut -d- -f1)
+"$LANE" note edit "$OLD_ID" < /dev/null > /tmp/nonterminal-edit.out 2>&1
+is "note edit refuses non-terminal use with direct-command guidance" \
+   "$([ "$?" -eq 1 ] && grep -q 'requires stdin and stderr terminals' /tmp/nonterminal-edit.out \
+      && grep -q 'lane note <action>' /tmp/nonterminal-edit.out && echo yes)" "yes"
 "$LANE" note replace "$OLD_ID" "replacement rule" > /dev/null
 is "replace inherits the predecessor path" \
    "$(python3 -c 'import json; print(json.loads(open(".git/lane/pending.jsonl").readline())["path"])')" \

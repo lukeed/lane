@@ -1,0 +1,156 @@
+name: bench
+
+# Manual only. Loop-mounting a filesystem and writing 20k files is too slow to gate a
+# pull request, and the numbers are only worth reading when someone is asking for them.
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: ref to measure against, or empty to measure this ref alone
+        default: main
+      files:
+        description: ignored files in the synthetic repository
+        default: "20000"
+      order:
+        description: which binary runs first, to separate a code difference from a position one
+        default: "base head"
+      runs:
+        description: timed runs per measurement, best of
+        default: "3"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    # ext4 has no reflink, so it is the fallback copy and not a clone at all. btrfs and XFS
+    # are the two implementations FICLONE actually runs on, and they are separate answers.
+    strategy:
+      fail-fast: false
+      matrix:
+        fs: [ext4, btrfs, xfs]
+        # Uniform stubs measure syscall count alone; a built target/ puts real archives
+        # among them, which is where sharing extents rather than copying them shows.
+        workload: [synthetic, cargo]
+    runs-on: ubuntu-latest
+    name: ${{ matrix.fs }} / ${{ matrix.workload }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Restore only: a benchmark must not spend the repository's 10 GB cache budget.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ubuntu-latest
+          save-if: "false"
+
+      - name: Report the machine
+        run: |
+          uname -a
+          nproc
+          df -PTh "$RUNNER_TEMP" | tail -1
+
+      - name: Mount ${{ matrix.fs }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.fs }}" = ext4 ]; then
+            # The runner's own disk. No image, no mount, no reflink.
+            echo "BENCH_DIR=$RUNNER_TEMP/bench" >> "$GITHUB_ENV"
+            mkdir -p "$RUNNER_TEMP/bench"
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq btrfs-progs xfsprogs
+          truncate -s 8G "$RUNNER_TEMP/fs.img"
+          case "${{ matrix.fs }}" in
+            btrfs) mkfs.btrfs -q "$RUNNER_TEMP/fs.img" ;;
+            # reflink is default on new XFS, but say it: an older mkfs silently omits it.
+            xfs)   mkfs.xfs -q -m reflink=1 "$RUNNER_TEMP/fs.img" ;;
+          esac
+          sudo mkdir -p /mnt/bench
+          sudo mount -o loop "$RUNNER_TEMP/fs.img" /mnt/bench
+          sudo chown "$(id -u):$(id -g)" /mnt/bench
+          echo "BENCH_DIR=/mnt/bench" >> "$GITHUB_ENV"
+
+      # Inputs reach the shell as environment, never as interpolated text: a ref is a
+      # string somebody typed.
+      - name: Build the binaries
+        env:
+          BASELINE: ${{ inputs.baseline || 'main' }}
+        run: |
+          set -euo pipefail
+          cargo build --release --quiet
+          cp target/release/lane "$RUNNER_TEMP/lane-head"
+          if [ -n "$BASELINE" ]; then
+            git fetch -q origin "$BASELINE"
+            git worktree add --detach "$RUNNER_TEMP/baseline" FETCH_HEAD
+            cargo build --release --quiet --manifest-path "$RUNNER_TEMP/baseline/Cargo.toml"
+            cp "$RUNNER_TEMP/baseline/target/release/lane" "$RUNNER_TEMP/lane-base"
+          fi
+
+      - name: Measure
+        env:
+          FILES: ${{ inputs.files || '20000' }}
+          RUNS: ${{ inputs.runs || '3' }}
+          ORDER: ${{ inputs.order || 'base head' }}
+          WORKLOAD: ${{ matrix.workload }}
+        run: |
+          set -uo pipefail
+          for which in $ORDER; do
+            bin="$RUNNER_TEMP/lane-$which"
+            [ -x "$bin" ] || continue
+            echo "== $which =="
+            ./scripts/bench.sh "$bin" "$BENCH_DIR/$which" "$FILES" "$RUNS" "$WORKLOAD" \
+              | tee "$RUNNER_TEMP/$which.txt"
+            # Leave the filesystem as the next binary found it, but keep the last repo:
+            # the syscall profile runs in it.
+            if [ "$which" != "${ORDER##* }" ]; then
+              rm -rf "${BENCH_DIR:?}/$which"
+              sync
+              sleep 5
+            fi
+          done
+
+      # Where the time goes, rather than how much of it there is. On Darwin the answer was
+      # one clonefile per file; this is the same question asked of FICLONE.
+      - name: Profile the syscalls
+        env:
+          ORDER: ${{ inputs.order || 'base head' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq strace
+          which="${ORDER##* }"
+          bin="$RUNNER_TEMP/lane-$which"
+          cd "$BENCH_DIR/$which/repo"
+          strace -f -c -o "$RUNNER_TEMP/strace.txt" "$bin" new profiled >/dev/null 2>&1
+          "$bin" rm profiled --force >/dev/null 2>&1
+          cat "$RUNNER_TEMP/strace.txt"
+
+      - name: Summarize
+        if: always()
+        env:
+          BASELINE: ${{ inputs.baseline || 'main' }}
+        run: |
+          {
+            echo "## ${{ matrix.fs }} / ${{ matrix.workload }}"
+            echo
+            echo "| key | baseline (${BASELINE:-none}) | this ref |"
+            echo '| --- | --- | --- |'
+            for key in kernel filesystem mode ignored_files ignored_bytes reflink lane_new lane_rm; do
+              b=$(awk -F= -v k="$key" '$1==k{print $2}' "$RUNNER_TEMP/base.txt" 2>/dev/null)
+              h=$(awk -F= -v k="$key" '$1==k{print $2}' "$RUNNER_TEMP/head.txt" 2>/dev/null)
+              echo "| $key | ${b:-—} | ${h:-—} |"
+            done
+            echo
+            echo '<details><summary>syscalls</summary>'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/strace.txt" 2>/dev/null | head -25
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"

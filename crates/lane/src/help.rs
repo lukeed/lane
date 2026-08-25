@@ -408,7 +408,8 @@ const UNINSTALL: &str = "
 const WHY: &str = "
   Description
     Print what earlier lanes learned about a path, each note with the id you
-    need to re-vouch for it. With no path, report the whole store.
+    need to re-vouch for it. A directory reports every note beneath it, and no
+    path at all reports the whole store.
 
   Usage
     $ lane why [path] [options]
@@ -421,6 +422,7 @@ const WHY: &str = "
   Examples
     $ lane why src/auth.rs
     $ lane why src/auth.rs -a 'fn verify'
+    $ lane why src/
 ";
 
 const CHECK: &str = "

@@ -841,7 +841,7 @@ struct WhyRow {
 fn why(path: Option<&str>, anchor: Option<&str>, json: bool) -> Result<i32> {
     let root = git::repo_root()?;
     let rel = match path {
-        Some(p) => Some(store::rel_to_repo(&root, p)?),
+        Some(p) => store::rel_scope(&root, p)?,
         None => None,
     };
     let mut notes = store::load_notes(&root, rel.as_deref());
@@ -876,6 +876,11 @@ fn why(path: Option<&str>, anchor: Option<&str>, json: bool) -> Result<i32> {
         return Ok(0);
     }
 
+    // Only an argument that is itself a note's path named one file; a directory never does.
+    let one_file = rel
+        .as_deref()
+        .is_some_and(|rel| notes.iter().any(|n| n.path() == rel));
+
     let mut groups: std::collections::BTreeMap<(String, String), Vec<_>> = Default::default();
     for note in notes {
         groups
@@ -888,10 +893,10 @@ fn why(path: Option<&str>, anchor: Option<&str>, json: bool) -> Result<i32> {
         if index > 0 {
             println!();
         }
-        if rel.is_some() {
+        if one_file {
             println!("[{anchor}]");
         } else {
-            println!("[{file}@{anchor}]");
+            println!("[{file}#{anchor}]");
         }
         group.sort_by(|a, b| a.meta.id.cmp(&b.meta.id));
         for note in group {

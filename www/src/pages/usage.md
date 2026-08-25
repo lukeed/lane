@@ -246,7 +246,8 @@ Read the note and the code it points at, then take one action: `lane note confir
 <id>` when the sentence remains true; `lane note replace <id> "<rewrite>"` when
 the subject is right but the sentence must change; or `lane note retire <id>`
 when the constraint is gone. Replacement inherits the predecessor's path and
-anchor unless you override them. Lane never calls a model.
+anchor unless you override them. At a terminal, `lane note edit <id>` presents
+these actions plus pin/unpin as a guided menu. Lane never calls a model.
 
 Any unambiguous prefix of an id works, so the ten characters above are enough;
 an ambiguous one is refused and names what it matched. Add `--json` for the same
@@ -342,6 +343,7 @@ The short version. See [commands](/commands) for full information.
 | `lane path <name>` | print a lane's path |
 | `lane anchors <file> [--json]` | list canonical anchors and line ranges |
 | `lane note add <file> [-a <anchor>] [<text>]` | record a finding; omit text for interaction |
+| `lane note edit <id>` | interactively confirm, replace, retire, pin, or unpin a live note |
 | `lane note replace <id> [<text>]` | queue a successor, inheriting path and anchor |
 | `lane note confirm <id>` | re-vouch for a resolved live note |
 | `lane note retire <id>` | move a live note to the attic |

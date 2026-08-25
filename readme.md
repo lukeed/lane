@@ -113,6 +113,7 @@ lane new spike --dirty               # carry uncommitted work too
 lane ls
 lane anchors src/auth.rs             # discover canonical anchors and line ranges
 lane note add src/auth.rs -a "fn verify" "..."  # record a finding
+lane note edit <id>                              # choose a lifecycle action interactively
 lane note replace <id> "replacement text"       # queue a successor
 lane note confirm <id>                           # re-vouch for a drifted note
 lane note retire <id>                            # move a live note to the attic
@@ -159,6 +160,9 @@ lane note confirm <id>
 lane note replace <id> '<replacement>'
 lane note retire <id>
 ```
+
+Run `lane note edit <id>` for a guided terminal menu over the same actions,
+including pinning or unpinning the note.
 
 Replacement inherits the live note's path and anchor. Retire and restore move bytes unchanged between live memory and the attic; pin and unpin control eviction. For a new note, supplied text never prompts and defaults to `@file` without `-a`; omit text to opt into the interactive anchor selector and one-line prompt.
 

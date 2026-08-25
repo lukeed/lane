@@ -777,6 +777,12 @@ BEFORE=$(cksum < "$F")
 is "confirm refuses damaged frontmatter" \
    "$("$LANE" note confirm "$ID" 2>&1 | grep -c 'frontmatter is unreadable')" "1"
 is "confirm leaves damaged frontmatter byte-identical" "$(cksum < "$F")" "$BEFORE"
+BEFORE_PENDING=$(pending_lines)
+"$LANE" note replace "$ID" "replacement must not lose its anchor" > /tmp/damaged-replace.out 2>&1
+is "replace refuses damaged frontmatter without changing bytes or pending notes" \
+   "$([ "$?" -eq 1 ] && grep -q 'frontmatter is unreadable' /tmp/damaged-replace.out \
+      && [ "$(cksum < "$F")" = "$BEFORE" ] && [ "$(pending_lines)" = "$BEFORE_PENDING" ] \
+      && echo yes)" "yes"
 
 echo "== 31c. the explicit note lifecycle is guarded and reversible =="
 setup
@@ -800,6 +806,10 @@ is "missing text over non-terminal stdin fails without appending" \
 "$LANE" audit > /dev/null
 OLD_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
 OLD_ID=$(basename "$OLD_FILE" | cut -d- -f1)
+"$LANE" note edit NOT-A-NOTE < /dev/null > /tmp/nonterminal-edit.out 2>&1
+is "note edit refuses non-terminal use with direct-command guidance" \
+   "$([ "$?" -eq 1 ] && grep -q 'requires stdin and stderr terminals' /tmp/nonterminal-edit.out \
+      && grep -q 'lane note <action>' /tmp/nonterminal-edit.out && echo yes)" "yes"
 "$LANE" note replace "$OLD_ID" "replacement rule" > /dev/null
 is "replace inherits the predecessor path" \
    "$(python3 -c 'import json; print(json.loads(open(".git/lane/pending.jsonl").readline())["path"])')" \

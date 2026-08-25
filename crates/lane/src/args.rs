@@ -37,7 +37,7 @@ const COMMANDS: &[&str] = &[
 ];
 
 const NOTE_COMMANDS: &[&str] = &[
-    "add", "replace", "confirm", "retire", "restore", "pin", "unpin",
+    "add", "edit", "replace", "confirm", "retire", "restore", "pin", "unpin",
 ];
 
 /// How much memory one `(path, anchor)` may keep. Shared by `audit` and `merge`,
@@ -89,6 +89,7 @@ pub struct NoteReplaceArgs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NoteCommand {
     Add(NoteAddArgs),
+    Edit { id: String },
     Replace(NoteReplaceArgs),
     Confirm { id: String },
     Retire { id: String },
@@ -347,6 +348,7 @@ fn parse_note(raw: Vec<OsString>) -> Result<Parsed> {
     let head = raw.first().and_then(|a| a.to_str()).map(str::to_owned);
     match head.as_deref() {
         Some("add") => parse_note_add(rest(raw)),
+        Some("edit") => parse_note_id(rest(raw), Help::NoteEdit, |id| NoteCommand::Edit { id }),
         Some("replace") => parse_note_replace(rest(raw)),
         Some("confirm") => parse_note_id(rest(raw), Help::NoteConfirm, |id| NoteCommand::Confirm {
             id,

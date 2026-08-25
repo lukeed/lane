@@ -226,6 +226,7 @@ fn note_family_and_leaf_help_route_to_their_own_screens() {
     assert_eq!(ok(&["note", "--help"]), Parsed::Help(Help::Note));
     for (verb, screen) in [
         ("add", Help::NoteAdd),
+        ("edit", Help::NoteEdit),
         ("replace", Help::NoteReplace),
         ("confirm", Help::NoteConfirm),
         ("retire", Help::NoteRetire),
@@ -302,6 +303,12 @@ fn note_replace_parses_an_id_optional_text_and_overrides() {
 fn note_id_verbs_take_exactly_one_id() {
     for (verb, expected) in [
         (
+            "edit",
+            NoteCommand::Edit {
+                id: "01M0G2".into(),
+            },
+        ),
+        (
             "confirm",
             NoteCommand::Confirm {
                 id: "01M0G2".into(),
@@ -351,9 +358,11 @@ fn note_double_dash_preserves_text_that_starts_with_a_dash() {
 #[test]
 fn note_commands_refuse_missing_and_extra_values() {
     assert_eq!(absent(&["note", "add"]), ["<PATH>"]);
+    assert_eq!(absent(&["note", "edit"]), ["<ID>"]);
     assert_eq!(absent(&["note", "confirm"]), ["<ID>"]);
     assert!(err(&["note", "add", "one", "two", "three"]).contains("'three'"));
     assert!(err(&["note", "pin", "one", "two"]).contains("'two'"));
+    assert!(err(&["note", "edit", "one", "two"]).contains("'two'"));
     assert!(err(&["note", "replace", "one", "two", "three"]).contains("'three'"));
     assert!(err(&["note", "retier", "01M0G2"]).contains("'retire'"));
 }

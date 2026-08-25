@@ -18,6 +18,7 @@ pub enum Help {
     Anchors,
     Note,
     NoteAdd,
+    NoteEdit,
     NoteReplace,
     NoteConfirm,
     NoteRetire,
@@ -48,6 +49,7 @@ impl Help {
             Help::Anchors => ANCHORS,
             Help::Note => NOTE,
             Help::NoteAdd => NOTE_ADD,
+            Help::NoteEdit => NOTE_EDIT,
             Help::NoteReplace => NOTE_REPLACE,
             Help::NoteConfirm => NOTE_CONFIRM,
             Help::NoteRetire => NOTE_RETIRE,
@@ -78,6 +80,7 @@ impl Help {
             Help::Anchors => "lane anchors [--json] <PATH>",
             Help::Note => "lane note <COMMAND>",
             Help::NoteAdd => "lane note add [OPTIONS] <PATH> [TEXT]",
+            Help::NoteEdit => "lane note edit <ID>",
             Help::NoteReplace => "lane note replace [OPTIONS] <ID> [TEXT]",
             Help::NoteConfirm => "lane note confirm <ID>",
             Help::NoteRetire => "lane note retire <ID>",
@@ -120,6 +123,7 @@ impl Help {
             Help::Anchors => "lane anchors",
             Help::Note => "lane note",
             Help::NoteAdd => "lane note add",
+            Help::NoteEdit => "lane note edit",
             Help::NoteReplace => "lane note replace",
             Help::NoteConfirm => "lane note confirm",
             Help::NoteRetire => "lane note retire",
@@ -251,19 +255,33 @@ const ANCHORS: &str = "
 
 const NOTE: &str = "
   Description
-    Add, replace, confirm, retire, restore, pin, or unpin a note.
+    Add or interactively edit a note, or apply one lifecycle action directly.
 
   Usage
     $ lane note <command>
 
   Commands
     add        Record a finding
+    edit       Choose a lifecycle action interactively
     replace    Queue a replacement
     confirm    Confirm a drifted note is still true
     retire     Move a live note to the attic
     restore    Restore a retired note
     pin        Protect a live note from eviction
     unpin      Remove eviction protection
+
+  Options
+    -h, --help    Display this message
+";
+
+const NOTE_EDIT: &str = "
+  Description
+    Show a live note and interactively choose to confirm it, replace its text,
+    retire it, or toggle its eviction protection. Text replacement creates a
+    successor instead of rewriting the existing note.
+
+  Usage
+    $ lane note edit <id>
 
   Options
     -h, --help    Display this message

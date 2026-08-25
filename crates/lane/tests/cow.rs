@@ -280,3 +280,40 @@ fn directory_clone_falls_back_to_the_walk_when_the_destination_exists() {
     );
     assert_eq!(stats.cloned + stats.copied, 1);
 }
+
+/// Enough subtrees to cross the threshold where the fixup spreads across threads.
+#[test]
+fn a_wide_tree_is_fixed_up_on_every_core() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let src = src.path().canonicalize().unwrap();
+
+    for i in 0..128 {
+        let dir = src.join(format!("d{i}/nested"));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("f.bin"), vec![1u8; 64]).unwrap();
+    }
+    std::os::unix::fs::symlink(src.join("d0/nested/f.bin"), src.join("d7/absolute")).unwrap();
+    std::os::unix::fs::symlink("nested/f.bin", src.join("d8/relative")).unwrap();
+
+    let stats = cow::clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+    assert_eq!(stats.cloned + stats.copied, 128);
+    assert_eq!(stats.links, 2);
+    assert_eq!(stats.bytes_shared + stats.bytes_copied, 128 * 64);
+    assert_eq!(
+        fs::read_link(out.join("d7/absolute")).unwrap(),
+        out.join("d0/nested/f.bin")
+    );
+    assert_eq!(
+        fs::read_link(out.join("d8/relative")).unwrap(),
+        Path::new("nested/f.bin")
+    );
+    for i in 0..128 {
+        assert_eq!(
+            fs::read(out.join(format!("d{i}/nested/f.bin"))).unwrap(),
+            vec![1u8; 64]
+        );
+    }
+}

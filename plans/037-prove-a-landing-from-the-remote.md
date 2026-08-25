@@ -124,11 +124,14 @@ G2.  Marked, gone, tip recorded, 2 commits after   → ls `landed`; prune skips,
                                                      "2 commit(s) after landing"
 G3.  Marked, gone, NO tip (marker from an older
      lane)                                         → ls says `landed`, because gone is
-                                                     proof of arrival. prune falls back
-                                                     to contained_in, because an unknown
-                                                     tip is never the same answer as
-                                                     "nothing followed". Never assume the
-                                                     current tip is the landing tip.
+                                                     proof of arrival. prune keeps it and
+                                                     says "landed, later commits unknown".
+                                                     An unknown tip is never the same
+                                                     answer as "nothing followed", and the
+                                                     trunk message would be false here —
+                                                     the base does have the work. Never
+                                                     assume the current tip is the landing
+                                                     tip.
 G4.  Marked, tracking, contained_in true           → ls `landed`; prune collects
 G5.  Marked, tracking, contained_in false          → ls `open`; prune skips with
                                                      today's message. This is an open

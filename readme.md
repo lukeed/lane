@@ -112,13 +112,13 @@ lane new fix-login                   # CoW worktree + branch
 lane new spike --dirty               # carry uncommitted work too
 lane ls
 lane anchors src/auth.rs             # discover canonical anchors and line ranges
-lane note add src/auth.rs -a "fn verify" "..."
-lane note replace <id> "replacement text"
-lane note confirm <id>
-lane note retire <id>
-lane note restore <id>
-lane note pin <id>
-lane note unpin <id>
+lane note add src/auth.rs -a "fn verify" "..."  # record a finding
+lane note replace <id> "replacement text"       # queue a successor
+lane note confirm <id>                           # re-vouch for a drifted note
+lane note retire <id>                            # move a live note to the attic
+lane note restore <id>                           # restore a retired note
+lane note pin <id>                               # protect a note from eviction
+lane note unpin <id>                             # remove eviction protection
 lane why src/auth.rs                 # read what earlier lanes learned
 lane merge                           # rebase, audit memory, fast-forward, remove
 lane push                            # rebase, audit, and push for a pull request

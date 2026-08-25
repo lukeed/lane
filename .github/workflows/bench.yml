@@ -13,6 +13,9 @@ on:
       files:
         description: ignored files in the synthetic repository
         default: "20000"
+      order:
+        description: which binary runs first, to separate a code difference from a position one
+        default: "base head"
       runs:
         description: timed runs per measurement, best of
         default: "3"
@@ -92,30 +95,34 @@ jobs:
         env:
           FILES: ${{ inputs.files || '20000' }}
           RUNS: ${{ inputs.runs || '3' }}
+          ORDER: ${{ inputs.order || 'base head' }}
         run: |
           set -uo pipefail
-          for which in base head; do
+          for which in $ORDER; do
             bin="$RUNNER_TEMP/lane-$which"
             [ -x "$bin" ] || continue
             echo "== $which =="
             ./scripts/bench.sh "$bin" "$BENCH_DIR/$which" "$FILES" "$RUNS" \
               | tee "$RUNNER_TEMP/$which.txt"
-            # Leave the filesystem as the next binary found it. The first run measured
-            # `lane rm` at 0.02s and the second at 0.88s from the same code, because the
-            # first repository was still on the disk and still being unlinked.
-            rm -rf "${BENCH_DIR:?}/$which"
-            sync
-            sleep 5
+            # Leave the filesystem as the next binary found it, but keep the last repo:
+            # the syscall profile runs in it.
+            if [ "$which" != "${ORDER##* }" ]; then
+              rm -rf "${BENCH_DIR:?}/$which"
+              sync
+              sleep 5
+            fi
           done
 
       # Where the time goes, rather than how much of it there is. On Darwin the answer was
       # one clonefile per file; this is the same question asked of FICLONE.
       - name: Profile the syscalls
+        env:
+          ORDER: ${{ inputs.order || 'base head' }}
         run: |
           set -euo pipefail
           sudo apt-get install -y -qq strace
-          bin="$RUNNER_TEMP/lane-head"; which=head
-          [ -x "$bin" ] || { bin="$RUNNER_TEMP/lane-base"; which=base; }
+          which="${ORDER##* }"
+          bin="$RUNNER_TEMP/lane-$which"
           cd "$BENCH_DIR/$which/repo"
           strace -f -c -o "$RUNNER_TEMP/strace.txt" "$bin" new profiled >/dev/null 2>&1
           "$bin" rm profiled --force >/dev/null 2>&1

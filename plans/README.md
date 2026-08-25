@@ -8,6 +8,9 @@ Plan 033 landed in `5f3742f` and was reconciled into this index on 2026-08-24.
 Plans 034-036 were written against `ae4343c` on 2026-08-24. They form one
 recommended sequence: structured reads, then anchor discovery, then the note lifecycle.
 
+Plan 037 was written against `16c1b05` on 2026-08-25, from two lanes in this repository
+that had landed and could not be collected. It revises one row of 033's case table.
+
 Each executor: read the plan fully, honour its STOP conditions, record the baseline test
 counts before starting, and update your row when done.
 
@@ -43,6 +46,7 @@ counts before starting, and update your row when done.
 | 034 | Make lane inventory and context machine-readable | P2 | M | — | DONE |
 | 035 | Make resolvable anchors discoverable and canonical | P2 | L | 034 | DONE |
 | 036 | Make the note lifecycle explicit behind one command family | P2 | L | 035 | DONE |
+| 037 | Prove a landing from the remote, not from a patch | P1 | M | — | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

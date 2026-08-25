@@ -4,6 +4,10 @@ Re-audited 2026-08-18 against commit `43e404f`, after the Rust rewrite; 013 and 
 added 2026-08-19 against `43e404f`. Every finding
 below was re-verified against the current tree, not carried over on trust.
 
+Plan 033 landed in `5f3742f` and was reconciled into this index on 2026-08-24.
+Plans 034-036 were written against `ae4343c` on 2026-08-24. They form one
+recommended sequence: structured reads, then anchor discovery, then the note lifecycle.
+
 Each executor: read the plan fully, honour its STOP conditions, record the baseline test
 counts before starting, and update your row when done.
 
@@ -35,6 +39,10 @@ counts before starting, and update your row when done.
 | 030 | Make the state file impossible to half-write | P2 | S | — | DONE |
 | 031 | Take the model out of the binary, and make the verdicts verbs | P2 | L | — | DONE |
 | 032 | Take derived state out of git, and make a `holds` a decision | P1 | L | — | DONE |
+| 033 | Drop the log, and let a note carry its own baseline | P1 | M | — | DONE |
+| 034 | Make lane inventory and context machine-readable | P2 | M | — | TODO |
+| 035 | Make resolvable anchors discoverable and canonical | P2 | L | 034 | TODO |
+| 036 | Make the note lifecycle explicit behind one command family | P2 | L | 035 | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |
@@ -92,6 +100,23 @@ immutable-notes design forced the question of what a note's path really is.
   is the one plan with a real, unsynthesised fixture: this repository's own stale protocol.
 - **015 is independent of everything.** It adds a producer for `pending.jsonl`; nothing
   downstream knows where a pending note came from.
+- **033 supersedes the log half of 032.** Both stay DONE as the historical record: 032
+  enabled pull-request lanes, then 033 removed the shared file that made those pull requests
+  conflict.
+- **034 is independent of 012.** It adds renderers around data `ls` and `why` already load;
+  it does not change grammars, storage, or human output.
+- **035 depends on 034.** Both add agent-readable JSON and touch the same parser, help,
+  shell-test, skill, and website surfaces. Landing the smaller existing read contract first
+  gives anchor discovery one JSON convention and prevents two plans from editing those files
+  concurrently.
+- **036 depends on 035** (and transitively 034). Its interactive `note add` selector consumes
+  the exact candidates and qualification rules from `lane anchors`; it must not grow a second
+  tree-sitter walk in prompt code. This ordering also settles the user's product sequence:
+  discovery first, lifecycle second.
+- **Do not execute 034-036 in parallel.** Their dependency chain is semantic, and they share
+  most command/help/documentation files. Each later plan describes the earlier plan's expected
+  drift explicitly.
+- **The current frontier is 012 and 034.** Either can start immediately.
 - Everything else is independent. 010 is a good warm-up.
 
 Assertion counts are expressed as deltas from whatever `cargo test` and `./scripts/test.sh`
@@ -152,9 +177,8 @@ Verified against the tree, not assumed. The plan files were deleted; this is the
 - **An environment variable for the warm list.** A third way to say the same thing.
 - **Keeping `ctx` as a shim.** An undocumented alias for a subset of `lane`; a second CLI
   surface to test and document forever.
-- **CI.** Still a real gap — `cargo test`, `cargo clippy`, `cargo fmt --check` and
-  `./scripts/test.sh` are the whole gate and nothing runs them automatically. Choosing a
-  provider is the maintainer's call, not an executor's.
+- **CI (historical rejection, now closed).** GitHub Actions now runs formatting, Clippy,
+  Rust tests, and `scripts/test.sh` on macOS and Linux. Do not re-audit the old gap.
 
 ## Not audited
 

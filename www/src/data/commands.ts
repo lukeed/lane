@@ -36,12 +36,11 @@ export let commands: Command[] = [
 	},
 	{
 		name: "new",
-		usage: "lane new <name> [--base <ref>] [--dirty] [--cd]",
+		usage: "lane new <name> [--base <ref>] [--dirty]",
 		summary: "creates a branch and a copy-on-write worktree under .lane/trees/, cloning everything git ignores by reference.",
 		options: [
 			{ flag: "--base", arg: "<ref>", about: "ref the lane branches from; defaults to the repo's trunk." },
 			{ flag: "--dirty", arg: null, about: "carry uncommitted work into the lane." },
-			{ flag: "--cd", arg: null, about: "print the path last on stdout, for the shell function." },
 		],
 		example: "$ lane new fix-login\n  reflink: yes (reflink available)\n  1284 files cloned (612.4 MiB shared, 0 copied)\n/w/proj/.lane/trees/fix-login",
 	},
@@ -55,11 +54,18 @@ export let commands: Command[] = [
 		example: '$ lane ls --json\n[{"name":"agent-a","path":"/w/proj/.lane/trees/agent-a","branch":"agent-a","state":"open","dirty":false,"pending_notes":3}]',
 	},
 	{
-		name: "path",
-		usage: "lane path <name>",
-		summary: "prints the absolute path of a lane's worktree.",
+		name: "enter",
+		usage: "lane enter <name>",
+		summary: "changes directory into a lane; also spelled `switch`.",
 		options: [],
-		example: "$ lane path fix-login\n/w/proj/.lane/trees/fix-login",
+		example: "$ lane enter fix-login\n/w/proj/.lane/trees/fix-login",
+	},
+	{
+		name: "exit",
+		usage: "lane exit",
+		summary: "changes directory back to the main worktree.",
+		options: [],
+		example: "$ lane exit\n/w/proj",
 	},
 	{
 		name: "anchors",
@@ -170,7 +176,6 @@ export let commands: Command[] = [
 			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto and advance; defaults to the lane's recorded base." },
 			{ flag: "--keep", arg: null, about: "keep the lane worktree and branch after landing." },
 			{ flag: "--squash", arg: null, about: "squash the lane's commits into one landing commit." },
-			{ flag: "--cd", arg: null, about: "print the main root path last on stdout, for the shell function." },
 			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 		],
@@ -238,7 +243,7 @@ export let commands: Command[] = [
 		usage: "lane shellenv",
 		summary: "prints the shell function that makes new, cd and merge leave you in the right directory.",
 		options: [],
-		example: "$ eval \"$(lane shellenv)\"\n$ lane shellenv\nlane() {\n  case \"$1\" in\n    new)   shift; p=$(command lane new --cd \"$@\") ...\n    cd)    shift; p=$(command lane path \"$@\") ...\n    merge) shift; p=$(command lane merge --cd \"$@\") ...\n    *)     command lane \"$@\" ;;\n  esac\n}",
+		example: "$ eval \"$(lane shellenv)\"\n$ lane shellenv\nlane() {\n  local p\n  case \"$1\" in\n    new|enter|switch|exit) p=$(command lane \"$@\") || return; cd \"$p\" ;;\n    merge) p=$(command lane exit) || return; command lane \"$@\" || return\n           cd \"$PWD\" 2>/dev/null || cd \"$p\" ;;\n    *)     command lane \"$@\" ;;\n  esac\n}",
 	},
 	{
 		name: "capture",

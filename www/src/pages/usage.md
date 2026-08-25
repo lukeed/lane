@@ -26,7 +26,7 @@ $ lane merge                # rebase, distill memory, fast-forward, delete
 
 ```bash
 $ cargo install --path crates/lane
-$ eval "$(lane shellenv)"   # add to .zshrc: makes `lane new` cd into the lane
+$ eval "$(lane shellenv)"   # add to .zshrc: makes `lane new` and `lane enter` cd
 $ cd yourproject && lane init
 $ git add .lane .gitattributes AGENTS.md
 $ git commit -m "lane: context memory"
@@ -355,7 +355,8 @@ The short version. See [commands](/commands) for full information.
 | `lane init` | scaffold, probe reflink |
 | `lane new <name> [--dirty] [--base <ref>]` | create a lane |
 | `lane ls` | lanes, whether they landed, dirt, pending notes |
-| `lane path <name>` | print a lane's path |
+| `lane enter <name>` | change directory into a lane; also spelled `switch` |
+| `lane exit` | change directory back to the main worktree |
 | `lane anchors <file> [--json]` | list canonical anchors and line ranges |
 | `lane note add <file> [-a <anchor>] [<text>]` | record a finding; omit text for interaction |
 | `lane note edit <id>` | interactively confirm, replace, retire, pin, or unpin a live note |
@@ -370,7 +371,7 @@ The short version. See [commands](/commands) for full information.
 | `lane why <path> [-a <anchor>]` | read the notes on a file or a directory; changes nothing |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
-| `lane merge [<name>] [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
+| `lane merge [<name>] [--keep] [--base <ref>] [--squash]` | rebase, audit, fast-forward, remove |
 | `lane push [<name>] [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
 | `lane prune [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |

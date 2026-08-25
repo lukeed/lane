@@ -16,7 +16,7 @@ use std::io::{IsTerminal, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-/// Takes the stream it will be written to; under --cd that is stderr, not stdout.
+/// Takes the stream it will be written to; for `new` that is stderr, not stdout.
 fn bold(text: &str, tty: bool) -> String {
     if tty {
         format!("\x1b[1m{text}\x1b[0m")
@@ -46,9 +46,10 @@ pub fn run() -> Result<i32> {
             Ok(0)
         }
         Parsed::Init => init(),
-        Parsed::New(args) => new(&args.name, args.base.as_deref(), args.dirty, args.cd),
+        Parsed::New(args) => new(&args.name, args.base.as_deref(), args.dirty),
         Parsed::Ls { json } => ls(json),
-        Parsed::Path { name } => path(&name),
+        Parsed::Enter { name } => enter(&name),
+        Parsed::Exit => exit(),
         Parsed::Anchors { path, json } => anchors(&path, json),
         Parsed::Note(command) => match command {
             NoteCommand::Add(args) => note_add(args),
@@ -79,7 +80,6 @@ pub fn run() -> Result<i32> {
             args.name.as_deref(),
             args.base.as_deref(),
             args.keep,
-            args.cd,
             args.squash,
             &args.budget,
         ),
@@ -551,27 +551,17 @@ fn init() -> Result<i32> {
     Ok(0)
 }
 
-fn new(name: &str, base: Option<&str>, dirty: bool, cd: bool) -> Result<i32> {
+fn new(name: &str, base: Option<&str>, dirty: bool) -> Result<i32> {
     let created = wt::create(name, base, dirty)?;
-    // With --cd, stdout is reserved for the path so the shell can capture it without a pipe.
-    let tty = if cd {
-        std::io::stderr().is_terminal()
-    } else {
-        std::io::stdout().is_terminal()
-    };
-    let info: &mut dyn std::io::Write = if cd {
-        &mut std::io::stderr()
-    } else {
-        &mut std::io::stdout()
-    };
+    // Progress goes to stderr so stdout carries the path alone, as `enter` does. Bold only
+    // for a terminal: a captured path must not carry escapes.
+    let info = &mut std::io::stderr();
     for note in &created.notes {
         writeln!(info, "  {note}")?;
     }
     writeln!(info, "  {}", created.stats)?;
-    writeln!(info, "{}", bold(&created.path.to_string_lossy(), tty))?;
-    if cd {
-        println!("{}", created.path.display());
-    }
+    let tty = std::io::stdout().is_terminal();
+    println!("{}", bold(&created.path.to_string_lossy(), tty));
     Ok(0)
 }
 
@@ -718,9 +708,15 @@ fn lane_named(root: &Path, name: &str) -> Result<PathBuf> {
     Ok(dest)
 }
 
-fn path(name: &str) -> Result<i32> {
-    let dest = lane_named(&wt::main_root()?, name)?;
-    println!("{}", dest.display());
+/// Both print a destination and nothing else: the shell function turns that into a cd,
+/// and `cd "$(lane enter x)"` is the same thing typed by hand.
+fn enter(name: &str) -> Result<i32> {
+    println!("{}", lane_named(&wt::main_root()?, name)?.display());
+    Ok(0)
+}
+
+fn exit() -> Result<i32> {
+    println!("{}", wt::main_root()?.display());
     Ok(0)
 }
 
@@ -1290,16 +1286,10 @@ fn merge(
     name: Option<&str>,
     base: Option<&str>,
     keep: bool,
-    cd: bool,
     squash: bool,
     budget: &Budget,
 ) -> Result<i32> {
-    let info: &mut dyn Write = if cd {
-        &mut std::io::stderr()
-    } else {
-        &mut std::io::stdout()
-    };
-    let origin = std::env::current_dir().ok();
+    let info: &mut dyn Write = &mut std::io::stdout();
     let prepared = match prepare(name, base, budget, true, info)? {
         Preparation::Ready(prepared) => prepared,
         Preparation::Exit(code) => return Ok(code),
@@ -1312,11 +1302,6 @@ fn merge(
         _lock,
     } = prepared;
     let upstream = upstream_branch(&lane_path, &branch);
-    let departing = origin
-        .as_deref()
-        .and_then(|origin| origin.canonicalize().ok())
-        .zip(lane_path.canonicalize().ok())
-        .is_some_and(|(origin, lane)| origin.starts_with(lane));
 
     if squash {
         git(&["merge", "--squash", &branch], Some(&root))?;
@@ -1352,12 +1337,6 @@ fn merge(
             .unwrap_or_default();
         wt::remove(&name)?;
         writeln!(info, "removed lane {branch}")?;
-    }
-    if cd {
-        println!(
-            "{}",
-            origin.filter(|_| !departing).unwrap_or(root).display()
-        );
     }
     Ok(0)
 }
@@ -1462,10 +1441,13 @@ fn rm(name: &str, force: bool) -> Result<i32> {
 fn shellenv() -> Result<i32> {
     println!(
         r#"lane() {{
+  local p
   case "$1" in
-    new)   shift; local p; p=$(command lane new --cd "$@")   || return; cd "$p" ;;
-    cd)    shift; local p; p=$(command lane path "$1")       || return; cd "$p" ;;
-    merge) shift; local p; p=$(command lane merge --cd "$@") || return; cd "$p" ;;
+    new|enter|switch|exit) p=$(command lane "$@") || return; cd "$p" ;;
+    # Read the destination first: merge deletes the worktree, and nothing runs from a
+    # directory that no longer exists. Stay put unless it was ours that went away.
+    merge) p=$(command lane exit) || return; command lane "$@" || return
+           cd "$PWD" 2>/dev/null || cd "$p" ;;
     *)     command lane "$@" ;;
   esac
 }}"#

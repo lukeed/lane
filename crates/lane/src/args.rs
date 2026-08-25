@@ -20,8 +20,10 @@ const MAX_CHARS: usize = 1200;
 const COMMANDS: &[&str] = &[
     "init",
     "new",
+    "enter",
+    "switch",
+    "exit",
     "ls",
-    "path",
     "anchors",
     "note",
     "install",
@@ -68,7 +70,6 @@ pub struct NewArgs {
     pub name: String,
     pub base: Option<String>,
     pub dirty: bool,
-    pub cd: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,7 +118,6 @@ pub struct MergeArgs {
     pub name: Option<String>,
     pub base: Option<String>,
     pub keep: bool,
-    pub cd: bool,
     pub squash: bool,
     pub budget: Budget,
 }
@@ -142,7 +142,8 @@ pub enum Parsed {
     Init,
     New(NewArgs),
     Ls { json: bool },
-    Path { name: String },
+    Enter { name: String },
+    Exit,
     Anchors { path: String, json: bool },
     Note(NoteCommand),
     Install(Installable),
@@ -174,9 +175,10 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("init") => bare(rest(raw), Help::Init, Parsed::Init),
         Some("new") => parse_new(rest(raw)),
         Some("ls") => parse_ls(rest(raw)),
-        Some("path") => parse_one(rest(raw), Help::Path, "<NAME>", |name| Parsed::Path {
-            name,
+        Some("enter" | "switch") => parse_one(rest(raw), Help::Enter, "<NAME>", |name| {
+            Parsed::Enter { name }
         }),
+        Some("exit") => bare(rest(raw), Help::Exit, Parsed::Exit),
         Some("anchors") => parse_anchors(rest(raw)),
         Some("note") => parse_note(rest(raw)),
         Some("install") => parse_installable(rest(raw), Help::Install, Parsed::Install),
@@ -310,14 +312,8 @@ fn parse_new(raw: Vec<OsString>) -> Result<Parsed> {
     }
     let base = pargs.opt_value_from_str("--base")?;
     let dirty = pargs.contains("--dirty");
-    let cd = pargs.contains("--cd");
     let name = one(positionals(pargs, after, Help::New)?, "<NAME>", Help::New)?;
-    Ok(Parsed::New(NewArgs {
-        name,
-        base,
-        dirty,
-        cd,
-    }))
+    Ok(Parsed::New(NewArgs { name, base, dirty }))
 }
 
 fn parse_ls(raw: Vec<OsString>) -> Result<Parsed> {
@@ -499,7 +495,6 @@ fn parse_merge(raw: Vec<OsString>) -> Result<Parsed> {
     }
     let base = pargs.opt_value_from_str("--base")?;
     let keep = pargs.contains("--keep");
-    let cd = pargs.contains("--cd");
     let squash = pargs.contains("--squash");
     let budget = budget(&mut pargs)?;
     let name = at_most_one(positionals(pargs, after, Help::Merge)?, Help::Merge)?;
@@ -507,7 +502,6 @@ fn parse_merge(raw: Vec<OsString>) -> Result<Parsed> {
         name,
         base,
         keep,
-        cd,
         squash,
         budget,
     }))

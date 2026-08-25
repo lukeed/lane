@@ -42,7 +42,9 @@ fn every_command_answers_its_own_help_flag() {
         ("init", Help::Init),
         ("new", Help::New),
         ("ls", Help::Ls),
-        ("path", Help::Path),
+        ("enter", Help::Enter),
+        ("switch", Help::Enter),
+        ("exit", Help::Exit),
         ("anchors", Help::Anchors),
         ("note", Help::Note),
         ("install", Help::Install),
@@ -104,14 +106,13 @@ fn new_reads_its_flags_before_or_after_the_name() {
         name: "fix-login".into(),
         base: Some("main".into()),
         dirty: true,
-        cd: true,
     });
     assert_eq!(
-        ok(&["new", "fix-login", "--base", "main", "--dirty", "--cd"]),
+        ok(&["new", "fix-login", "--base", "main", "--dirty"]),
         expected
     );
     assert_eq!(
-        ok(&["new", "--cd", "--base", "main", "--dirty", "fix-login"]),
+        ok(&["new", "--base", "main", "--dirty", "fix-login"]),
         expected
     );
 }
@@ -124,31 +125,41 @@ fn new_defaults_the_flags_it_was_not_given() {
             name: "spike".into(),
             base: None,
             dirty: false,
-            cd: false,
         })
     );
 }
 
 #[test]
 fn the_shell_function_s_own_invocation_still_parses() {
-    // `lane shellenv` writes `command lane new --cd "$@"`, so the flag
-    // arrives before the name and must not swallow it.
+    // `lane shellenv` writes `command lane "$@"` for each of the four verbs it wraps,
+    // so every one of them must parse with nothing added.
     assert_eq!(
-        ok(&["new", "--cd", "fix-login"]),
+        ok(&["new", "fix-login"]),
         Parsed::New(NewArgs {
             name: "fix-login".into(),
             base: None,
             dirty: false,
-            cd: true,
         })
     );
     assert_eq!(
-        ok(&["merge", "--cd"]),
+        ok(&["enter", "fix-login"]),
+        Parsed::Enter {
+            name: "fix-login".into()
+        }
+    );
+    assert_eq!(
+        ok(&["switch", "fix-login"]),
+        Parsed::Enter {
+            name: "fix-login".into()
+        }
+    );
+    assert_eq!(ok(&["exit"]), Parsed::Exit);
+    assert_eq!(
+        ok(&["merge"]),
         Parsed::Merge(MergeArgs {
             name: None,
             base: None,
             keep: false,
-            cd: true,
             squash: false,
             budget: Budget::default(),
         })
@@ -571,7 +582,6 @@ fn merge_and_rm_read_the_rest_of_their_flags() {
             name: None,
             base: Some("release".into()),
             keep: true,
-            cd: false,
             squash: true,
             budget: Budget::default(),
         })
@@ -585,11 +595,12 @@ fn merge_and_rm_read_the_rest_of_their_flags() {
     );
     assert_eq!(ok(&["check", "--json"]), Parsed::Check { json: true });
     assert_eq!(
-        ok(&["path", "spike"]),
-        Parsed::Path {
+        ok(&["enter", "spike"]),
+        Parsed::Enter {
             name: "spike".into()
         }
     );
+    assert_eq!(ok(&["exit"]), Parsed::Exit);
 }
 
 #[test]
@@ -643,7 +654,7 @@ fn every_command_the_root_screen_lists_parses() {
         .take_while(|line| !line.trim().is_empty())
         .filter_map(|line| line.split_whitespace().next())
         .collect();
-    assert_eq!(listed.len(), 16, "{listed:?}");
+    assert_eq!(listed.len(), 17, "{listed:?}");
     for name in listed {
         assert!(matches!(ok(&[name, "--help"]), Parsed::Help(_)), "{name}");
     }
@@ -656,7 +667,8 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::Init,
         Help::New,
         Help::Ls,
-        Help::Path,
+        Help::Enter,
+        Help::Exit,
         Help::Anchors,
         Help::Note,
         Help::NoteAdd,

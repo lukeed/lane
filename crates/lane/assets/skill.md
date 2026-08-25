@@ -5,7 +5,7 @@ description: Use lane in this repository — open a worktree with `lane new`, re
 
 # lane
 
-This repository keeps memory about its own code in `.lane/`. Notes are plain markdown, written once and never rewritten. Read them before you edit, and leave one behind when you learn something the next agent would otherwise rediscover.
+This repository keeps memory about its own code in `.lane/`. Notes are plain markdown. Their text is replaced with a successor rather than edited in place; explicit confirmation and pinning update metadata. Read them before you edit, and leave one behind when you learn something the next agent would otherwise rediscover.
 
 ## The loop
 
@@ -34,13 +34,15 @@ Do this for every file you are about to change. `lane why` is the compact readin
 
 Before `lane merge`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 
-- `lane holds <id>` when the note is still true. This updates that note's own baseline, so commit it — a confirmation you do not commit is one nobody else gets.
-- `lane note -p <path> -a <anchor> --supersedes <id> "<rewrite>"` when the subject is still right but the sentence is wrong.
-- Delete the note file and commit when the constraint is gone.
+- `lane note confirm <id>` when the note is still true. This updates that note's own baseline, so commit it — a confirmation you do not commit is one nobody else gets.
+- `lane note replace <id> "<rewrite>"` when the subject is still right but the sentence is wrong. It inherits the predecessor's path and anchor unless you override them.
+- `lane note retire <id>` when the constraint is gone.
 
 Any unambiguous prefix of an id works, so the ten characters `lane check` and `lane why` print are enough. `lane check --json` carries the same rows plus each note's body and current span, for when you would rather not open the files.
 
 A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone; let audit move that note to the attic instead of vouching for it.
+
+Use `lane note restore <id>` to recover a retired note. `lane note pin <id>` protects a live note from eviction; `lane note unpin <id>` removes that protection.
 
 Notes are evicted oldest and stalest first, and only when an anchor is over budget.
 
@@ -61,10 +63,10 @@ The form is `Why: <path>[#<anchor>] | <text>`, in the trailer block at the end. 
 When the insight does not arrive at a commit boundary:
 
 ```bash
-lane note -p src/auth.rs -a "fn verify" "must stay constant-time"
+lane note add src/auth.rs -a "fn verify" "must stay constant-time"
 ```
 
-`-p` is required.
+Supplying text is always non-interactive and defaults an omitted anchor to `@file`. Omit text only when you want an interactive anchor selector and one-line note prompt.
 
 ## The one rule
 
@@ -92,7 +94,7 @@ One note, one thought. Do not classify it — a note costs one command, on purpo
 
 ## Do not
 
-- Rewrite anything under `.lane/` by hand; delete a note only to retire its constraint.
+- Rewrite anything under `.lane/` by hand; use the `lane note` lifecycle commands.
 - Pass `--dirty` unless you want the parent tree's uncommitted work in your lane.
 - Write notes about what a commit changed, or notes you have not read the file to confirm.
 

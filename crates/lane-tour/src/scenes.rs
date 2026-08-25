@@ -97,7 +97,7 @@ pub const SCENES: &[Scene] = &[
         steps: &[
             Say("You have learned something about `verify` that the code does not say."),
             Do(
-                "lane note -p src/auth.rs -a 'fn verify' 'must stay constant-time; an early return leaks token length'",
+                "lane note add src/auth.rs -a 'fn verify' 'must stay constant-time; an early return leaks token length'",
             ),
             Say(
                 "`-a` is the anchor: what the note is *about*. `fn verify` binds it to that\n\
@@ -230,15 +230,15 @@ pub const SCENES: &[Scene] = &[
             ),
             In(
                 ".lane/trees/agent-a",
-                "lane note -p src/auth.rs -a 'fn verify' 'agent-a: rejects empty tokens first'",
+                "lane note add src/auth.rs -a 'fn verify' 'agent-a: rejects empty tokens first'",
             ),
             In(
                 ".lane/trees/agent-b",
-                "lane note -p src/auth.rs -a 'fn verify' 'agent-b: parse is total, never panics'",
+                "lane note add src/auth.rs -a 'fn verify' 'agent-b: parse is total, never panics'",
             ),
             In(
                 ".lane/trees/agent-c",
-                "lane note -p src/auth.rs -a 'fn verify' 'agent-c: called on every request, keep it allocation-free'",
+                "lane note add src/auth.rs -a 'fn verify' 'agent-c: called on every request, keep it allocation-free'",
             ),
             Say(
                 "Nothing conflicts, because a note file is written once and never modified.\n\

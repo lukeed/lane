@@ -59,7 +59,7 @@ printf 'func verify() {}\n' > src/Auth.swift
 is "an unknown extension reports only the file anchor" \
    "$("$LANE" anchors src/Auth.swift)" $'@file\t1-1'
 is "unique shorthand prints its canonical anchor" \
-   "$("$LANE" note -p src/auth.rs -a verify "shorthand stays canonical")" \
+   "$("$LANE" note add src/auth.rs -a verify "shorthand stays canonical")" \
    "noted -> src/auth.rs#fn verify"
 "$LANE" audit > /dev/null
 is "the promoted shorthand note stores its canonical anchor" \
@@ -76,7 +76,7 @@ pending_lines() {
   fi
 }
 BEFORE_AMBIGUOUS=$(pending_lines)
-"$LANE" note -p src/ambiguous.rs -a run "must choose a declaration" > /tmp/ambiguous.out 2>&1
+"$LANE" note add src/ambiguous.rs -a run "must choose a declaration" > /tmp/ambiguous.out 2>&1
 AMBIGUOUS_STATUS=$?
 is "ambiguous shorthand fails and lists both canonical choices" \
    "$([ "$AMBIGUOUS_STATUS" -ne 0 ] && grep -q '^  fn run$' /tmp/ambiguous.out && grep -q '^  const run$' /tmp/ambiguous.out && echo yes)" "yes"
@@ -129,7 +129,7 @@ setup
 LP="$TMP/repo/.lane/trees/fix-login"
 cd "$LP"
 sedi 's|    parse(token).is_valid()|    let p = parse(token);\n    p.is_valid()|' src/auth.rs
-"$LANE" note -p src/auth.rs -a "fn verify" \
+"$LANE" note add src/auth.rs -a "fn verify" \
   "must be constant-time; early return leaks token length" > /dev/null
 git add -A && git commit -qm "refactor verify"
 "$LANE" merge > /tmp/merge.out 2>&1
@@ -152,8 +152,8 @@ cat > src/Editor.svelte <<'EOF'
 </style>
 EOF
 git add -A && git commit -qm sfc
-"$LANE" note -p src/Editor.svelte -a "#script" "clear undo stack on doc swap" > /dev/null
-"$LANE" note -p src/Editor.svelte -a "#style" "auto not scroll; ios safari jank" > /dev/null
+"$LANE" note add src/Editor.svelte -a "#script" "clear undo stack on doc swap" > /dev/null
+"$LANE" note add src/Editor.svelte -a "#style" "auto not scroll; ios safari jank" > /dev/null
 "$LANE" audit > /dev/null
 sedi 's|  let undoStack = \[\];|  let undoStack = [];\n  let cursor = 0;|' src/Editor.svelte
 "$LANE" check --json > /tmp/c.json
@@ -168,10 +168,10 @@ git add -A && git commit -qm sfc2
 echo "== 6. PARALLEL: two lanes, same anchor, both land clean =="
 "$LANE" new thread-a > /dev/null 2>&1
 "$LANE" new thread-b > /dev/null 2>&1
-( cd "$TMP/repo/.lane/trees/thread-a" && "$LANE" note -p src/auth.rs -a "fn verify" \
+( cd "$TMP/repo/.lane/trees/thread-a" && "$LANE" note add src/auth.rs -a "fn verify" \
     "a: callers rely on false-on-expiry, not an error" > /dev/null && "$LANE" merge > /tmp/a.out 2>&1 )
 is "lane a landed" "$?" "0"
-( cd "$TMP/repo/.lane/trees/thread-b" && "$LANE" note -p src/auth.rs -a "fn verify" \
+( cd "$TMP/repo/.lane/trees/thread-b" && "$LANE" note add src/auth.rs -a "fn verify" \
     "b: token parse allocates; hot path, do not add regex" > /dev/null && "$LANE" merge > /tmp/b.out 2>&1 )
 is "lane b landed after a, no conflict" "$?" "0"
 cd "$TMP/repo"
@@ -180,7 +180,7 @@ is "both memories on trunk" \
 
 echo "== 7. anchor deleted -> attic =="
 sedi 's|pub fn refresh|pub fn rotate_token|' src/auth.rs
-"$LANE" note -p src/auth.rs -a "fn refresh" "rotation is idempotent upstream" > /dev/null
+"$LANE" note add src/auth.rs -a "fn refresh" "rotation is idempotent upstream" > /dev/null
 "$LANE" audit > /dev/null
 is "evicted to attic" "$(find .lane/attic -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
@@ -207,10 +207,10 @@ is "--force discards the branch" "$(git branch --list scrap | wc -l | tr -d ' ')
 is "--force discards the worktree" \
    "$([ -d "$TMP/repo/.lane/trees/scrap" ] && echo yes || echo no)" "no"
 
-# Memory is the thing a lane holds that no branch can give back.
+# Memory is the thing a lane carries that no branch can give back.
 "$LANE" new notes > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/notes" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "only in the lane" > /dev/null )
+  && "$LANE" note add src/auth.rs -a "fn verify" "only in the lane" > /dev/null )
 "$LANE" rm notes > /tmp/notes.out 2>&1
 is "rm counts pending notes as loss" \
    "$(grep -c 'kept lane notes: 1 pending note(s)' /tmp/notes.out)" "1"
@@ -280,7 +280,7 @@ is "AGENTS.md has the protocol" "$(grep -c 'Context memory' AGENTS.md)" "1"
 is "init does not touch .gitignore" "$(grep -c 'pending.jsonl' .gitignore)" "0"
 
 for i in 1 2 3 4 5; do
-  "$LANE" note -p src/auth.rs -a "fn verify" "filler note number $i about verify" > /dev/null
+  "$LANE" note add src/auth.rs -a "fn verify" "filler note number $i about verify" > /dev/null
 done
 "$LANE" audit > /dev/null
 "$LANE" why src/auth.rs -a "fn verify" > /dev/null
@@ -293,7 +293,7 @@ is "eviction reason is recorded" \
 is "evicted notes are recoverable from the attic" \
    "$(find .lane/attic -name '*.md' | wc -l | tr -d ' ')" "3"
 
-"$LANE" note -p src/auth.rs -a "fn verify" "a note the parent has not promoted" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "a note the parent has not promoted" > /dev/null
 "$LANE" new inherit > /dev/null 2>&1
 is "a fresh lane does not inherit the parent's queue" \
    "$("$LANE" ls | grep -c 'inherit.*0 pending')" "1"
@@ -301,15 +301,15 @@ is "a fresh lane does not inherit the parent's queue" \
 
 echo "== 13. two branches writing memory merge without conflict =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 
 git checkout -qb branch-a
-"$LANE" note -p src/auth.rs -a "fn verify" "a: alpha" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "a: alpha" > /dev/null
 "$LANE" audit > /dev/null && git add -A && git commit -qm a
 git checkout -q main && git checkout -qb branch-b
-"$LANE" note -p src/auth.rs -a "fn verify" "b: beta" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "b: beta" > /dev/null
 "$LANE" audit > /dev/null && git add -A && git commit -qm b
 git merge -q --no-edit branch-a > /tmp/merge.out 2>&1
 is "parallel memory merges without conflict" "$?" "0"
@@ -318,7 +318,7 @@ is "both notes survived" \
 
 echo "== 14. audit is idempotent and a damaged note stays readable =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 "$LANE" audit > /dev/null
@@ -342,7 +342,7 @@ is "and the damaged file is left alone" "$(cksum < "$F")" "$BEFORE"
 
 echo "== 15. a renamed file keeps its memory =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 git mv src/auth.rs src/token.rs && git commit -qm rename
@@ -362,7 +362,7 @@ is "a genuine deletion still evicts" \
 
 echo "== 16. a lane that renames a file lands its memory on the new path =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 "$LANE" new refactor > /dev/null 2>&1
@@ -376,7 +376,7 @@ is "trunk has the note on the new path" \
 
 echo "== 17. notes are immutable and nothing derived is committed =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "seed: constant time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A && git commit -qm seed
 N=$(find .lane/memory -name '*.md' | head -1)
@@ -393,7 +393,7 @@ is "an audit that finds drift creates no shared log" \
 
 mkdir -p attic && echo "user content" > attic/f.txt
 git add -A && git commit -qm user-attic
-"$LANE" note -p attic/f.txt -a "@file" "a repo may have its own attic" > /dev/null
+"$LANE" note add attic/f.txt -a "@file" "a repo may have its own attic" > /dev/null
 "$LANE" audit > /dev/null
 is "a user path named attic does not collide" \
    "$(find '.lane/memory/attic' -name '*.md' | wc -l | tr -d ' ')" "1"
@@ -401,7 +401,7 @@ git add -A && git commit -qm memory
 
 "$LANE" new land > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/land" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "from the lane" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "from the lane" > /dev/null \
   && "$LANE" merge > /dev/null 2>&1 )
 cd "$TMP/repo"
 is "merge leaves no shared landing record" \
@@ -411,9 +411,9 @@ echo "== 18. anchors we cannot resolve are kept, not discarded =="
 setup
 printf 'func verify(_ t: String) -> Bool {\n    return ok(t)\n}\n' > src/Auth.swift
 git add -A && git commit -qm swift
-"$LANE" note -p src/Auth.swift -a "func verify" "swift: constant time" 2> /tmp/w.out
+"$LANE" note add src/Auth.swift -a "func verify" "swift: constant time" 2> /tmp/w.out
 is "note on an unparsed language warns" "$(grep -c 'warning:' /tmp/w.out)" "1"
-"$LANE" note -p src/auth.rs -a "fn verfy" "typo anchor" > /dev/null 2>&1
+"$LANE" note add src/auth.rs -a "fn verfy" "typo anchor" > /dev/null 2>&1
 "$LANE" audit > /dev/null
 "$LANE" audit > /dev/null
 is "the unparsed note survives" \
@@ -583,7 +583,7 @@ is "it has frontmatter naming the skill" \
 is "it teaches the Why trailer form" \
    "$(grep -c '^Why: src/auth.rs#fn verify' .agents/skills/lane/SKILL.md)" "1"
 is "it teaches lane note with a path" \
-   "$(grep -Fc 'lane note -p src/auth.rs -a "fn verify" "must stay constant-time"' .agents/skills/lane/SKILL.md)" "1"
+   "$(grep -Fc 'lane note add src/auth.rs -a "fn verify" "must stay constant-time"' .agents/skills/lane/SKILL.md)" "1"
 "$LANE" install skill > /tmp/skill2.out 2>&1
 is "installing twice is a no-op" "$?" "0"
 echo "edited by hand" >> .agents/skills/lane/SKILL.md
@@ -617,7 +617,7 @@ cat > AGENTS.md <<'AGENTSEOF'
 AGENTSEOF
 "$LANE" init > /dev/null 2>&1
 is "a legacy protocol is upgraded" \
-   "$(grep -c 'lane note -p <path>' AGENTS.md)" "1"
+   "$(grep -c 'lane note add <path>' AGENTS.md)" "1"
 is "an upgraded legacy protocol ends with a newline" \
    "$([ -z "$(tail -c 1 AGENTS.md)" ] && echo yes || echo no)" "yes"
 printf '# AGENTS\n\n## Context memory\n\n- my own notes, do not touch\n' > AGENTS.md
@@ -654,7 +654,7 @@ is "a dirty lane contains no other lanes" \
 
 echo "== 27. unresolved drift stays flagged =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
 "$LANE" audit > /dev/null
@@ -687,7 +687,7 @@ echo "== 29. reading context does not modify the tree =="
 setup
 is "why json is an empty array before a note exists" \
    "$("$LANE" why --json | python3 -c 'import json,sys; print(json.load(sys.stdin) == [])')" "True"
-"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 WHY_NOTE=$(find .lane/memory/src/auth.rs -type f -name '*.md' | head -n 1)
 WHY_FULL_ID=$(basename "$WHY_NOTE" | cut -d- -f1)
@@ -719,7 +719,7 @@ is "an audit that changes nothing writes nothing" "$(git status --porcelain)" ""
 
 echo "== 30. drift survives a landing =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "callers rely on the parsed shape" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "callers rely on the parsed shape" > /dev/null
 "$LANE" audit > /dev/null
 git add -A .lane && git commit -qm memory > /dev/null
 "$LANE" new carry > /dev/null 2>&1
@@ -736,11 +736,11 @@ is "and the drift survives the landing" \
 is "and is still reported by a later audit" \
    "$("$LANE" audit > /dev/null; "$LANE" check --json | python3 -c "import json,sys; print(sum(1 for n in json.load(sys.stdin) if n['tier']=='content-changed'))")" "1"
 
-echo "== 31. holds survives a landing =="
+echo "== 31. confirmation survives a landing =="
 setup
-"$LANE" new holds > /dev/null 2>&1
-cd "$TMP/repo/.lane/trees/holds"
-"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" new confirm > /dev/null 2>&1
+cd "$TMP/repo/.lane/trees/confirm"
+"$LANE" note add src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 git add -A .lane && git commit -qm memory
 sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
@@ -749,13 +749,13 @@ git add src/auth.rs && git commit -qm drift
 ID=$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["id"])')
 is "note starts drifted" \
    "$(python3 -c 'import json;print(json.load(open("/tmp/holds-before.json"))[0]["tier"])')" "content-changed"
-"$LANE" holds "$ID" > /tmp/holds.out 2>&1
-is "holds succeeds" "$?" "0"
-is "holds makes the note fresh" \
+"$LANE" note confirm "$ID" > /tmp/holds.out 2>&1
+is "confirm succeeds" "$?" "0"
+is "confirm makes the note fresh" \
    "$("$LANE" check --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["tier"])')" "fresh"
-is "holds clears body drift" \
+is "confirm clears body drift" \
    "$("$LANE" check | awk '/^content-changed/{print $2}')" "0"
-git add -A .lane && git commit -qm holds
+git add -A .lane && git commit -qm confirm
 ( "$LANE" merge > /tmp/holds-merge.out 2>&1 )
 cd "$TMP/repo"
 is "fresh state and change survive merge" \
@@ -763,7 +763,7 @@ is "fresh state and change survive merge" \
 
 echo "== 31b. damaged frontmatter is never re-vouched =="
 setup
-"$LANE" note -p src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
+"$LANE" note add src/auth.rs -a "fn verify" "must stay constant-time" > /dev/null
 "$LANE" audit > /dev/null
 F=$(find .lane/memory -name '*.md' | head -1)
 ID=$(basename "$F" | cut -d- -f1)
@@ -774,9 +774,95 @@ s = io.open(p, encoding="utf-8").read()
 io.open(p, "w", encoding="utf-8").write(s.replace("created:", "created: broken\ncreated:", 1))
 DUP
 BEFORE=$(cksum < "$F")
-is "holds refuses damaged frontmatter" \
-   "$("$LANE" holds "$ID" 2>&1 | grep -c 'frontmatter is unreadable')" "1"
-is "holds leaves damaged frontmatter byte-identical" "$(cksum < "$F")" "$BEFORE"
+is "confirm refuses damaged frontmatter" \
+   "$("$LANE" note confirm "$ID" 2>&1 | grep -c 'frontmatter is unreadable')" "1"
+is "confirm leaves damaged frontmatter byte-identical" "$(cksum < "$F")" "$BEFORE"
+
+echo "== 31c. the explicit note lifecycle is guarded and reversible =="
+setup
+"$LANE" note -p src/auth.rs "legacy" > /tmp/legacy-note.out 2>&1
+is "legacy lane note -p exits 2" "$?" "2"
+"$LANE" holds 01M0A > /tmp/legacy-holds.out 2>&1
+is "legacy lane holds exits 2" "$?" "2"
+
+ADD_OUTPUT=$("$LANE" note add src/auth.rs "whole-file rule" < /dev/null 2> /tmp/add.err)
+is "explicit-text add never prompts and stores the file anchor" \
+   "$([ "$ADD_OUTPUT" = 'noted -> src/auth.rs#@file' ] \
+      && [ ! -s /tmp/add.err ] \
+      && python3 -c 'import json; r=json.loads(open(".git/lane/pending.jsonl").readline()); raise SystemExit(0 if r["anchor"]=="@file" else 1)' \
+      && echo yes)" "yes"
+BEFORE_PENDING=$(pending_lines)
+"$LANE" note add src/auth.rs < /dev/null > /tmp/nonterminal.out 2>&1
+is "missing text over non-terminal stdin fails without appending" \
+   "$([ "$?" -eq 1 ] && grep -q 'pass text explicitly' /tmp/nonterminal.out \
+      && [ "$(pending_lines)" = "$BEFORE_PENDING" ] && echo yes)" "yes"
+
+"$LANE" audit > /dev/null
+OLD_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
+OLD_ID=$(basename "$OLD_FILE" | cut -d- -f1)
+"$LANE" note replace "$OLD_ID" "replacement rule" > /dev/null
+is "replace inherits the predecessor path" \
+   "$(python3 -c 'import json; print(json.loads(open(".git/lane/pending.jsonl").readline())["path"])')" \
+   "src/auth.rs"
+is "replace inherits the predecessor anchor" \
+   "$(python3 -c 'import json; print(json.loads(open(".git/lane/pending.jsonl").readline())["anchor"])')" \
+   "@file"
+is "the predecessor stays live before replacement promotion" \
+   "$([ -f "$OLD_FILE" ] && [ ! -d .lane/attic/src/auth.rs ] && echo yes)" "yes"
+"$LANE" note replace "$OLD_ID" "duplicate replacement" > /tmp/duplicate-replace.out 2>&1
+is "a second pending replacement is refused" \
+   "$([ "$?" -eq 1 ] && grep -q 'already has a pending replacement' /tmp/duplicate-replace.out && echo yes)" \
+   "yes"
+"$LANE" audit > /dev/null
+SUCCESSOR_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
+SUCCESSOR_ID=$(basename "$SUCCESSOR_FILE" | cut -d- -f1)
+is "promotion creates the successor and retires the predecessor" \
+   "$([ -f "$SUCCESSOR_FILE" ] && grep -q 'replacement rule' "$SUCCESSOR_FILE" \
+      && find .lane/attic/src/auth.rs -name "$OLD_ID-*" | grep -q . && echo yes)" "yes"
+
+SUCCESSOR_BYTES=$(cksum < "$SUCCESSOR_FILE")
+"$LANE" note retire "$SUCCESSOR_ID" > /dev/null
+RETIRED_FILE=$(find .lane/attic/src/auth.rs -name "$SUCCESSOR_ID-*" | head -1)
+is "explicit retire moves exact bytes to the attic" \
+   "$([ ! -f "$SUCCESSOR_FILE" ] && [ "$(cksum < "$RETIRED_FILE")" = "$SUCCESSOR_BYTES" ] && echo yes)" \
+   "yes"
+"$LANE" note restore "$SUCCESSOR_ID" > /dev/null
+is "restore moves the same bytes back to live memory" \
+   "$([ -f "$SUCCESSOR_FILE" ] && [ ! -f "$RETIRED_FILE" ] \
+      && [ "$(cksum < "$SUCCESSOR_FILE")" = "$SUCCESSOR_BYTES" ] && echo yes)" "yes"
+"$LANE" note replace "$SUCCESSOR_ID" "guarded replacement" > /dev/null
+"$LANE" note retire "$SUCCESSOR_ID" > /tmp/guarded-retire.out 2>&1
+is "retire is refused while a replacement is pending" \
+   "$([ "$?" -eq 1 ] && [ -f "$SUCCESSOR_FILE" ] \
+      && grep -q 'pending replacement' /tmp/guarded-retire.out && echo yes)" "yes"
+
+setup
+"$LANE" note add src/auth.rs -a "fn verify" "pinned rule" > /dev/null
+"$LANE" audit > /dev/null
+PIN_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
+PIN_ID=$(basename "$PIN_FILE" | cut -d- -f1)
+"$LANE" note pin "$PIN_ID" > /dev/null
+PIN_HASH=$(cksum < "$PIN_FILE")
+printf 'pub fn refresh() {}\n' > src/auth.rs
+"$LANE" audit > /dev/null
+is "pin writes true and protects a missing anchor from eviction" \
+   "$([ -f "$PIN_FILE" ] && grep -q '^pinned: true$' "$PIN_FILE" \
+      && [ ! -d .lane/attic/src/auth.rs ] && echo yes)" "yes"
+"$LANE" note pin "$PIN_ID" > /dev/null
+is "pin is idempotent" "$(cksum < "$PIN_FILE")" "$PIN_HASH"
+"$LANE" note unpin "$PIN_ID" > /dev/null
+is "unpin removes the serialized field" "$(grep -c '^pinned:' "$PIN_FILE")" "0"
+
+setup
+"$LANE" note add src/auth.rs -a "fn verify" "confirmed rule" > /dev/null
+"$LANE" audit > /dev/null
+CONFIRM_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
+CONFIRM_ID=$(basename "$CONFIRM_FILE" | cut -d- -f1)
+sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& true/' src/auth.rs
+"$LANE" note confirm "$CONFIRM_ID" > /dev/null
+is "confirm makes a drifted note fresh" \
+   "$("$LANE" check --json | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["tier"])')" \
+   "fresh"
 
 echo "== 32. a pushed lane merges elsewhere, then prunes =="
 setup
@@ -785,7 +871,7 @@ remote_setup
 BEFORE=$(git rev-parse main)
 ( cd "$TMP/repo/.lane/trees/feat" \
   && sedi 's/parse(token).is_valid()/parse(token).is_valid() \&\& fresh()/' src/auth.rs \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "the freshness check is not optional" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "the freshness check is not optional" > /dev/null \
   && git add -A && git commit -qm work > /dev/null \
   && "$LANE" push > /tmp/push.out 2>&1 )
 cd "$TMP/repo"
@@ -816,10 +902,10 @@ remote_setup
 "$LANE" new a > /dev/null 2>&1
 "$LANE" new b > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/a" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "a: callers rely on false-on-expiry" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "a: callers rely on false-on-expiry" > /dev/null \
   && "$LANE" push > /dev/null 2>&1 )
 ( cd "$TMP/repo/.lane/trees/b" \
-  && "$LANE" note -p src/auth.rs -a "fn refresh" "b: rotation is not idempotent" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn refresh" "b: rotation is not idempotent" > /dev/null \
   && "$LANE" push > /dev/null 2>&1 )
 cd "$TMP/repo"
 # Neither rebased onto the other: this is what two open pull requests look like.
@@ -850,7 +936,7 @@ setup
 remote_setup
 "$LANE" new rb > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/rb" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "rb: the note" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "rb: the note" > /dev/null \
   && "$LANE" push > /dev/null 2>&1 )
 # A rebase merge replays onto a trunk that moved, so every SHA differs and `-d` refuses.
 echo "// unrelated" >> src/auth.rs && git add -A && git commit -qm "trunk moved"
@@ -865,7 +951,7 @@ setup
 remote_setup
 "$LANE" new after > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/after" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "pushed" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "pushed" > /dev/null \
   && "$LANE" push > /dev/null 2>&1 )
 git merge -q --squash after && git commit -qm "squash after" > /dev/null
 # Work that arrived after the pull request merged never reached trunk.
@@ -881,7 +967,7 @@ setup
 remote_setup
 "$LANE" new fix > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/fix" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "first time round" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "first time round" > /dev/null \
   && "$LANE" merge > /dev/null 2>&1 )
 is "landing leaves no committed marker" \
    "$(find .lane -name 'log.jsonl' | wc -l | tr -d ' ')" "0"
@@ -895,7 +981,7 @@ echo "== 37. nothing removes the directory you are standing in =="
 setup
 "$LANE" new here > /dev/null 2>&1
 ( cd "$TMP/repo/.lane/trees/here" \
-  && "$LANE" note -p src/auth.rs -a "fn verify" "n" > /dev/null \
+  && "$LANE" note add src/auth.rs -a "fn verify" "n" > /dev/null \
   && "$LANE" push > /dev/null 2>&1 )
 git merge -q --squash here && git commit -qm "squash here" > /dev/null
 is "prune refuses from inside the lane" \

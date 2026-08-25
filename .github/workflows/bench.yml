@@ -95,7 +95,7 @@ jobs:
         env:
           FILES: ${{ inputs.files || '20000' }}
           RUNS: ${{ inputs.runs || '3' }}
-          ORDER: ${{ inputs.order || 'head base' }}
+          ORDER: ${{ inputs.order || 'base head' }}
         run: |
           set -uo pipefail
           for which in $ORDER; do
@@ -117,7 +117,7 @@ jobs:
       # one clonefile per file; this is the same question asked of FICLONE.
       - name: Profile the syscalls
         env:
-          ORDER: ${{ inputs.order || 'head base' }}
+          ORDER: ${{ inputs.order || 'base head' }}
         run: |
           set -euo pipefail
           sudo apt-get install -y -qq strace

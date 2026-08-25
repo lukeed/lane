@@ -20,9 +20,10 @@ The repository's default branch. Only ever a fallback, used when a lane has no r
 _Avoid_: main, master, mainline — the default branch is frequently none of these.
 
 **Landing record**:
-An entry in the log marking a lane's memory as final. Its presence in the base's copy of the
-log is what proves the branch merged, whichever merge strategy was used.
-_Avoid_: merge marker, landing commit — it is tree content, not a commit.
+A marker in the lane's own git directory, written when a lane is prepared, holding the lane id
+and the branch tip. Never committed. It records that a landing was prepared, not that one
+arrived; the tip is what makes work added afterwards countable.
+_Avoid_: merge marker, landing commit — it is worktree state, not history.
 
 **Open**:
 A lane whose work is not on the remote and not in its base.
@@ -32,4 +33,5 @@ A lane whose branch is on the remote at exactly its local tip. Committing again 
 to open, because the remote no longer has everything.
 
 **Landed**:
-A lane whose landing record has reached its base. Collectable by prune.
+A marked lane whose branch its remote retired, or whose work its base already contains.
+Collectable by prune once nothing has been added since the landing.

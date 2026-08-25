@@ -85,19 +85,20 @@ Encode this trap in a comment: `%(push:track)` also reports `[gone]` for a branc
 
 ### Step 3: `losses` counts what arrived after landing
 
-`worktree.rs:487` reports `commits {trunk} does not have` and says in a comment that it cannot count. With a tip it can. New order inside `losses`:
+`worktree.rs:487` reports `commits {trunk} does not have` and says in a comment that it cannot count. With a tip it can. `losses` asks two questions in order, where today it asks one:
 
-- a tip is recorded → `rev-list <tip>..<branch>`; when above zero, `N commit(s) after landing`, which is exact;
-- else the upstream is `gone` → the branch puts nothing at stake;
-- else `!contained_in` → today's message, unchanged.
+1. **Did it land?** A retired upstream and a recorded tip settle this together. Missing either one, `contained_in` is still the only witness.
+2. **Did anything follow?** With a tip, `rev-list <tip>..<branch>` — exact, where a collapsed patch never was.
+
+`gone` alone must not clear a lane, and this is the trap in the step. A marker with no tip cannot prove nothing followed the landing, and a lane whose pull request is merely open has not landed at all. Both fall back to the probe.
 
 The uncommitted-change and pending-note losses are untouched and still run first.
 
-### Step 4: `ls` and `prune` gate on gone or contained
+### Step 4: `ls` labels a retired upstream as landed
 
-Both call sites (`cli.rs:602`, `cli.rs:654`) treat a lane as landed when it is marked **and** (`upstream_gone` **or** `contained_in`). Order the `or` so `upstream_gone` runs first: it is one `for-each-ref` against a local ref, where `contained_in` can reach `commit-tree`.
+`ls` (`cli.rs:602`) treats a lane as landed when it is marked **and** (`upstream_gone` **or** `contained_in`), in that order: one `for-each-ref` against a local ref before a probe that can reach `commit-tree`. The marker stays the first gate and short-circuits both, so an unmarked lane still costs no extra git process.
 
-The marker stays the first gate and short-circuits both probes, so an unmarked lane still costs no extra git process.
+`prune` needs no change here. It gates on the marker and then on `losses`, which Step 3 has already taught to answer without a patch.
 
 ### Step 5: `prune` fetches before it decides
 
@@ -122,10 +123,12 @@ G1.  Marked, gone, tip recorded, nothing after     → ls `landed`; prune collec
 G2.  Marked, gone, tip recorded, 2 commits after   → ls `landed`; prune skips,
                                                      "2 commit(s) after landing"
 G3.  Marked, gone, NO tip (marker from an older
-     lane)                                         → tip unknown; fall back to
-                                                     contained_in for losses. Never
-                                                     assume the current tip is the
-                                                     landing tip.
+     lane)                                         → ls says `landed`, because gone is
+                                                     proof of arrival. prune falls back
+                                                     to contained_in, because an unknown
+                                                     tip is never the same answer as
+                                                     "nothing followed". Never assume the
+                                                     current tip is the landing tip.
 G4.  Marked, tracking, contained_in true           → ls `landed`; prune collects
 G5.  Marked, tracking, contained_in false          → ls `open`; prune skips with
                                                      today's message. This is an open
@@ -170,7 +173,7 @@ G17. Marked and gone, but the worktree is dirty
 - A repro of the fast-clone shape — lane branched, another pull request lands touching an adjacent context line, lane squash-merged, head branch deleted — reports `landed` and is collected.
 - A repro of the fix-merge-staging shape — commits added after the merge — is skipped with an exact count, not with `commits main does not have`.
 - `lane prune` with the network unplugged still runs, warns once, and collects nothing it would not have collected before.
-- `rg 'push:track'` returns no hits in Rust source.
+- `rg 'push:track'` finds it only inside the comment warning against it, never in a git invocation.
 - `cargo test`, `./scripts/test.sh`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` all clean.
 
 ## STOP conditions

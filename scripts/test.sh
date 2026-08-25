@@ -1164,6 +1164,26 @@ is "a failed fetch warns instead of stopping prune" \
 is "and the open lane is still kept" \
    "$("$LANE" prune 2>&1 | grep -c 'skipped open-pr')" "1"
 
+
+echo "== 43. a landing with no recorded tip says so =="
+setup
+remote_setup
+"$LANE" new legacy > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/legacy"
+( cd "$LP" && echo one > src/one.rs && git add -A && git commit -qm one && "$LANE" push > /dev/null 2>&1 )
+MARK="$TMP/repo/.git/worktrees/legacy/lane/landed"
+is "a landing records the tip alongside the id and stamp" "$(wc -w < "$MARK" | tr -d ' ')" "3"
+# Roll the marker back to the two-field shape a lane written before tips would carry.
+cut -d' ' -f1,2 "$MARK" > "$MARK.old" && mv "$MARK.old" "$MARK"
+git --git-dir="$TMP/origin.git" branch -q -D legacy && git fetch -q --prune
+is "ls still reads the retired upstream as landed" "$("$LANE" ls | grep -c 'legacy .*landed')" "1"
+is "prune names the gap instead of the trunk" \
+   "$("$LANE" prune 2>&1 | grep -c 'skipped legacy: landed, later commits unknown')" "1"
+is "and never claims main lacks work it has" \
+   "$("$LANE" prune 2>&1 | grep -c 'legacy: commits main does not have')" "0"
+is "the lane survives" "$([ -d .lane/trees/legacy ] && echo yes || echo no)" "yes"
+is "force is the way out" "$("$LANE" rm legacy --force 2>&1 | grep -c 'removed lane legacy')" "1"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

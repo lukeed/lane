@@ -414,7 +414,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
 }
 
 /// True while git still has a worktree registered at this path, prunable ones included.
-fn registered(root: &Path, dest: &Path) -> bool {
+pub fn registered(root: &Path, dest: &Path) -> bool {
     let target = dest.canonicalize().ok();
     list_lanes(root).iter().any(|lane| {
         lane.path == dest || (target.is_some() && lane.path.canonicalize().ok() == target)

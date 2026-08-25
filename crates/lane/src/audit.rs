@@ -63,7 +63,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     let touched: HashSet<String> = if opts.base.is_empty() {
         HashSet::new()
     } else {
-        git::touched_paths(&opts.base)
+        git::touched_paths(root, &opts.base)
     };
 
     let mut notes = store::load_notes(root, None);
@@ -72,7 +72,7 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     // one loses it. Costs a git call only when something is actually missing.
     let mut moved = Vec::new();
     if store::has_missing_sources(root, &notes) {
-        for (old, new) in git::renames(&opts.base) {
+        for (old, new) in git::renames(root, &opts.base) {
             let count = store::move_notes(root, &old, &new)?;
             if count > 0 {
                 moved.push((old, new, count));

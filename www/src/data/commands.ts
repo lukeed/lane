@@ -164,7 +164,7 @@ export let commands: Command[] = [
 	},
 	{
 		name: "merge",
-		usage: "lane merge [--base <ref>] [--keep] [--squash]",
+		usage: "lane merge [<name>] [--base <ref>] [--keep] [--squash]",
 		summary: "rebases the lane onto its base, audits memory, commits it, fast-forwards the base, and removes the lane.",
 		options: [
 			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto and advance; defaults to the lane's recorded base." },
@@ -178,7 +178,7 @@ export let commands: Command[] = [
 	},
 	{
 		name: "push",
-		usage: "lane push [--base <ref>]",
+		usage: "lane push [<name>] [--base <ref>]",
 		summary: "rebases the lane onto its base, audits and commits memory, then pushes it for a pull request.",
 		options: [
 			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto; defaults to the lane's recorded base." },

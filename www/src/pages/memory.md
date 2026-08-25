@@ -25,7 +25,7 @@ writing.
 Today the reason gets typed twice, in two places, at the same moment:
 
 ```
-$ lane note -p src/auth.rs -a "fn verify" "early return leaks token length"
+$ lane note add src/auth.rs -a "fn verify" "early return leaks token length"
 $ git commit -am "make verify constant-time"
 ```
 
@@ -120,7 +120,7 @@ a malformed note is worse than losing the note.
 ```
 git commit  →  Why: trailer  →  post-commit hook  ┐
                                                   ├─→  .git/lane/pending.jsonl  →  audit  →  note
-lane note -p … -a … "…"  ───────────────────────  ┘
+lane note add … -a … "…"  ──────────────────────  ┘
 ```
 
 Nothing downstream knows which one a note came from. Same promotion, same

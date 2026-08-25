@@ -74,7 +74,7 @@ export let list: Act[] = [
 		cwd: '~/…/fix-login',
 		from: 'lane',
 		session: [
-			{ kind: 'cmd', text: 'lane note -p src/auth.rs -a "fn verify" \\' },
+			{ kind: 'cmd', text: 'lane note add src/auth.rs -a "fn verify" \\' },
 			{ kind: 'con', text: '"early return leaks token length"' },
 			{ kind: 'out', text: 'noted -> src/auth.rs#fn verify' },
 			{ kind: 'gap', text: '' },
@@ -124,10 +124,9 @@ export let list: Act[] = [
 		cwd: '~/…/fix-login',
 		from: 'fanout',
 		session: [
-			{ kind: 'cmd', text: 'lane note -p src/auth.rs -a "fn verify" \\' },
-			{ kind: 'con', text: '--supersedes 01M0B4KQTX7H3EZ8FE7S6BJ91N \\' },
+			{ kind: 'cmd', text: 'lane note replace 01M0B4KQTX7H3EZ8FE7S6BJ91N \\' },
 			{ kind: 'con', text: '"constant-time; no early return"' },
-			{ kind: 'out', text: 'noted -> src/auth.rs#fn verify' },
+			{ kind: 'out', text: 'replacement queued -> 01M0B4KQTX7H3EZ8FE7S6BJ91N src/auth.rs#fn verify' },
 			{ kind: 'gap', text: '' },
 			{ kind: 'cmd', text: 'lane merge   # in each lane, in any order' },
 			{ kind: 'out', text: 'rebased onto main' },

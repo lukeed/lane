@@ -156,7 +156,7 @@ let tiers = [
 					not what you changed.
 				</p>
 
-				<pre class="block"><span class="p">$ </span><b>lane note -p src/auth.rs -a "fn verify" \</b>
+				<pre class="block"><span class="p">$ </span><b>lane note add src/auth.rs -a "fn verify" \</b>
 <b>    "must stay constant-time; early return leaks token length"</b>
 noted -&gt; src/auth.rs#fn verify
 
@@ -222,7 +222,7 @@ noted -&gt; src/auth.rs#fn verify
 					Each anchor is hashed on its own span, normalized, so running a formatter stales nothing
 					and editing <b>#script</b> leaves a note on <b>#style</b> alone. A moved or renamed file is
 					followed, not evicted — <b>lane audit</b> reads git's own rename detection. A drifted note
-					keeps getting reported until you hold it, supersede it, or delete it.
+					keeps getting reported until you confirm, replace, or retire it.
 				</p>
 			</div>
 		</section>
@@ -233,8 +233,8 @@ noted -&gt; src/auth.rs#fn verify
 				<p class="tagline tagline-solo">The next agent reads the constraints before it edits.</p>
 				<p class="lede">
 					Two agents can annotate the same file, and the same anchor, in the same second. A note
-					file is written once and never modified, so there is nothing to lock and nothing to
-					resolve. Land them in any order; both notes are there afterwards.
+					text is written as a new file, so independent findings never lock the same bytes.
+					Land them in any order; both notes are there afterwards.
 				</p>
 				<pre class="block"><span class="p">$ </span><b>lane why src/auth.rs</b>
 

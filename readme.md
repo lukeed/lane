@@ -7,7 +7,7 @@ Lane opens an isolated branch and worktree without giving up the ignored build c
 ```bash
 lane new fix-login
 lane why src/auth.rs
-lane note -p src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
+lane note add src/auth.rs -a 'fn verify' 'tokens rotate on refresh'
 # edit and commit as usual
 lane check
 lane merge
@@ -82,7 +82,7 @@ lane why src/auth.rs
 Record what must stay true, not a summary of the change:
 
 ```bash
-lane note -p src/auth.rs -a 'fn verify' \
+lane note add src/auth.rs -a 'fn verify' \
   'must stay constant-time; early return leaks token length'
 ```
 
@@ -112,7 +112,13 @@ lane new fix-login                   # CoW worktree + branch
 lane new spike --dirty               # carry uncommitted work too
 lane ls
 lane anchors src/auth.rs             # discover canonical anchors and line ranges
-lane note -p src/auth.rs -a "fn verify" "..."
+lane note add src/auth.rs -a "fn verify" "..."
+lane note replace <id> "replacement text"
+lane note confirm <id>
+lane note retire <id>
+lane note restore <id>
+lane note pin <id>
+lane note unpin <id>
 lane why src/auth.rs                 # read what earlier lanes learned
 lane merge                           # rebase, audit memory, fast-forward, remove
 lane push                            # rebase, audit, and push for a pull request
@@ -130,7 +136,7 @@ Memory is ordinary Markdown committed with the repository:
   trees/<name>/                    local worktrees, never committed
 ```
 
-New notes use distinct files, so parallel lanes can annotate the same code without editing the same bytes. `lane holds <id>` is the deliberate exception: it re-vouches for a drifted note by updating that note's confirmed fingerprint. If two branches make conflicting judgments about the same note, Git should make that disagreement visible.
+New notes use distinct files, so parallel lanes can annotate the same code without editing the same bytes. `lane note confirm <id>` is the deliberate exception: it re-vouches for a drifted note by updating that note's confirmed fingerprint. Pin and unpin likewise update retention metadata. If two branches make conflicting judgments about the same note, Git should make that disagreement visible.
 
 Pending notes live in the lane's own Git directory until the next audit. Audit promotes them, follows source-file renames, and moves superseded, unpinned missing, or unpinned over-budget notes to `.lane/attic/` rather than deleting them.
 
@@ -149,10 +155,12 @@ Anchors include declarations such as `fn verify`, Markdown headings such as `## 
 Resolve drift with exactly one of these actions:
 
 ```bash
-lane holds <id>
-lane note -p <path> -a <anchor> --supersedes <id> '<replacement>'
-# or delete the note file and commit when the constraint is gone
+lane note confirm <id>
+lane note replace <id> '<replacement>'
+lane note retire <id>
 ```
+
+Replacement inherits the live note's path and anchor. Retire and restore move bytes unchanged between live memory and the attic; pin and unpin control eviction. For a new note, supplied text never prompts and defaults to `@file` without `-a`; omit text to opt into the interactive anchor selector and one-line prompt.
 
 ## Development
 

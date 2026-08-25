@@ -87,9 +87,12 @@ suits the moment, or both.
 **Option one — a command, whenever you notice something.**
 
 ```bash
-$ lane note -p src/auth.rs -a "fn verify" \
+$ lane note add src/auth.rs -a "fn verify" \
 >   "must stay constant-time; early return leaks token length"
 ```
+
+Supplied text never prompts and an omitted `-a` defaults to `@file`. Omit the
+text only when you want an interactive anchor selector and one-line note prompt.
 
 **Option two — a trailer, in the commit you were already writing.** Install the
 hooks once per repository, then never think about it again.
@@ -208,8 +211,8 @@ A renamed or moved file is followed, not evicted: `lane audit` reads git's own r
 detection and moves the notes with it. Eviction means the file or the symbol is
 genuinely gone.
 
-A drifted note stays flagged until you run `lane holds <id>`, replace it with
-`lane note --supersedes <id>`, or delete its note file and commit. Until then,
+A drifted note stays flagged until you run `lane note confirm <id>`, replace it
+with `lane note replace <id>`, or run `lane note retire <id>`. Until then,
 `lane check` keeps reporting it.
 
 Editing `#script` never stales a note on `#style`. Running a formatter stales
@@ -239,17 +242,18 @@ unverifiable       0
 ~ 01M0B4KQTX  src/auth.rs#fn verify
 ```
 
-Read the note and the code it points at, then take one action: `lane holds <id>`
-when the sentence remains true; `lane note -p <path> -a <anchor> --supersedes
-<id> "<rewrite>"` when the subject is right but the sentence must change; or
-delete the note file and commit when the constraint is gone. Lane never calls a
-model.
+Read the note and the code it points at, then take one action: `lane note confirm
+<id>` when the sentence remains true; `lane note replace <id> "<rewrite>"` when
+the subject is right but the sentence must change; or `lane note retire <id>`
+when the constraint is gone. Replacement inherits the predecessor's path and
+anchor unless you override them. Lane never calls a model.
 
 Any unambiguous prefix of an id works, so the ten characters above are enough;
 an ambiguous one is refused and names what it matched. Add `--json` for the same
 rows plus each note's body and current span, which is what an agent reads.
 
-Supersede writes a new file and moves the predecessor to the attic. A `?` has no
+Replace writes a new file and moves the predecessor to the attic when audit
+promotes it. A `?` has no
 grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves
 the note to the attic instead of vouching for it.
 
@@ -262,15 +266,17 @@ Nothing is deleted.
 
 Keep something permanently:
 
-```
-pinned: true        # add to the note's frontmatter
+```bash
+$ lane note pin 01M0B4KQTX
 ```
 
-Recover something:
+Use `lane note unpin <id>` to return it to ordinary retention. Recover something:
 
 ```bash
-$ git mv .lane/attic/src/auth.rs/01M0B4KQTX-*.md .lane/memory/src/auth.rs/
+$ lane note restore 01M0B4KQTX
 ```
+
+Retire and restore move the note bytes unchanged.
 
 ---
 
@@ -282,7 +288,7 @@ you keep both:
 ```
 ## Context memory
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.
-- Record non-obvious findings with `lane note -p <path> -a <anchor> "..."`.
+- Record non-obvious findings with `lane note add <path> -a <anchor> "..."`.
 - Do not edit `.lane/` by hand; `lane merge` manages it.
 - Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.
 ```
@@ -317,8 +323,8 @@ If the anchor is not already known, `lane anchors <path> --json` supplies the
 canonical candidates without requiring the agent to guess.
 
 Each has its own warm build cache at no disk cost. They can annotate the same
-file, the same anchor, at the same time: a note file is written once and never
-modified, so there is nothing to lock and nothing to conflict.
+file, the same anchor, at the same time: each new finding gets its own note file,
+so there is nothing to lock and nothing to conflict.
 
 Land them in any order.
 
@@ -335,11 +341,16 @@ The short version. See [commands](/commands) for full information.
 | `lane ls` | lanes, whether they landed, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
 | `lane anchors <file> [--json]` | list canonical anchors and line ranges |
-| `lane note -p <file> -a <anchor> [--supersedes <id>] "<text>"` | record or replace a finding |
+| `lane note add <file> [-a <anchor>] [<text>]` | record a finding; omit text for interaction |
+| `lane note replace <id> [<text>]` | queue a successor, inheriting path and anchor |
+| `lane note confirm <id>` | re-vouch for a resolved live note |
+| `lane note retire <id>` | move a live note to the attic |
+| `lane note restore <id>` | restore a retired note |
+| `lane note pin <id>` | protect a live note from eviction |
+| `lane note unpin <id>` | remove eviction protection |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
 | `lane uninstall skill|hooks` | remove them |
 | `lane why <file> [-a <anchor>]` | read the notes on a file; changes nothing |
-| `lane holds <id>` | re-vouch for a resolved note |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
 | `lane merge [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |

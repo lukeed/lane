@@ -5,13 +5,18 @@
 # that matters and the byte total is not. Run it on the filesystem you care about: ext4
 # has no reflink at all, and the fallback copy it forces is a different measurement.
 #
-#   scripts/bench.sh <lane-binary> <workdir> [files] [runs]
+#   scripts/bench.sh <lane-binary> <workdir> [files] [runs] [synthetic|cargo]
+#
+# `cargo` builds this workspace inside the repository under test, so the ignored tree is a
+# real target/ — a few large archives among many small ones — rather than uniform stubs.
 set -uo pipefail
 
 LANE="${1:?usage: bench.sh <lane-binary> <workdir> [files] [runs]}"
 WORK="${2:?usage: bench.sh <lane-binary> <workdir> [files] [runs]}"
 FILES="${3:-20000}"
 RUNS="${4:-3}"
+MODE="${5:-synthetic}"
+SOURCE="$(cd "$(dirname "$0")/.." && pwd)"
 command -v "$LANE" >/dev/null 2>&1 || [ -x "$LANE" ] || { echo "no binary at $LANE" >&2; exit 1; }
 LANE="$(cd "$(dirname "$LANE")" && pwd)/$(basename "$LANE")"
 
@@ -46,18 +51,29 @@ build_tree() {
 REPO="$WORK/repo"
 rm -rf "$REPO"; mkdir -p "$REPO"; cd "$REPO" || exit 1
 
-git init -qb main .
-git config user.email bench@example.com
-git config user.name bench
-mkdir -p src
-for i in $(seq 1 20); do printf 'pub fn f%d() {}\n' "$i" > "src/m$i.rs"; done
-printf 'target/\nnode_modules/\n' > .gitignore
-git add -A && git commit -qm base
+if [ "$MODE" = cargo ]; then
+  # Tracked files only, then build: target/ has to be made here, on the filesystem under
+  # test, or it is not the thing being measured.
+  git -C "$SOURCE" archive HEAD | tar -x -C "$REPO"
+  git init -qb main .
+  git config user.email bench@example.com
+  git config user.name bench
+  git add -A && git commit -qm base
+  cargo build --release --all-targets --quiet 2>/dev/null || cargo build --release --all-targets 2>&1 | tail -5
+else
+  git init -qb main .
+  git config user.email bench@example.com
+  git config user.name bench
+  mkdir -p src
+  for i in $(seq 1 20); do printf 'pub fn f%d() {}\n' "$i" > "src/m$i.rs"; done
+  printf 'target/\nnode_modules/\n' > .gitignore
+  git add -A && git commit -qm base
 
-build_tree target $((FILES * 2 / 3))
-build_tree node_modules $((FILES - FILES * 2 / 3))
-ln -sf ../src/m1.rs node_modules/relative-link
-ln -sf "$REPO/src/m2.rs" node_modules/absolute-link
+  build_tree target $((FILES * 2 / 3))
+  build_tree node_modules $((FILES - FILES * 2 / 3))
+  ln -sf ../src/m1.rs node_modules/relative-link
+  ln -sf "$REPO/src/m2.rs" node_modules/absolute-link
+fi
 
 "$LANE" init >/dev/null 2>&1
 git add -A >/dev/null 2>&1 && git commit -qm lane >/dev/null 2>&1
@@ -67,7 +83,9 @@ echo "kernel=$(uname -sr | tr ' ' '-')"
 fs=$(df -PT . 2>/dev/null | awk 'NR==2{print $2}')
 [ -n "$fs" ] || fs=$(mount | awk -v m="$(df -P . | awk 'NR==2{print $NF}')" '$3==m{print $4}' | tr -d '(,' | head -1)
 echo "filesystem=${fs:-unknown}"
-echo "ignored_files=$(find target node_modules -type f | wc -l | tr -d ' ')"
+echo "mode=$MODE"
+echo "ignored_files=$(find target node_modules -type f 2>/dev/null | wc -l | tr -d ' ')"
+echo "ignored_bytes=$(du -sk target node_modules 2>/dev/null | awk '{s+=$1} END{printf "%.0fMiB", s/1024}')"
 
 "$LANE" new probe > /tmp/bench-probe.out 2>&1
 echo "reflink=$(awk '/reflink:/{print $2; exit}' /tmp/bench-probe.out)"

@@ -35,7 +35,11 @@ jobs:
       fail-fast: false
       matrix:
         fs: [ext4, btrfs, xfs]
+        # Uniform stubs measure syscall count alone; a built target/ puts real archives
+        # among them, which is where sharing extents rather than copying them shows.
+        workload: [synthetic, cargo]
     runs-on: ubuntu-latest
+    name: ${{ matrix.fs }} / ${{ matrix.workload }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,13 +100,14 @@ jobs:
           FILES: ${{ inputs.files || '20000' }}
           RUNS: ${{ inputs.runs || '3' }}
           ORDER: ${{ inputs.order || 'base head' }}
+          WORKLOAD: ${{ matrix.workload }}
         run: |
           set -uo pipefail
           for which in $ORDER; do
             bin="$RUNNER_TEMP/lane-$which"
             [ -x "$bin" ] || continue
             echo "== $which =="
-            ./scripts/bench.sh "$bin" "$BENCH_DIR/$which" "$FILES" "$RUNS" \
+            ./scripts/bench.sh "$bin" "$BENCH_DIR/$which" "$FILES" "$RUNS" "$WORKLOAD" \
               | tee "$RUNNER_TEMP/$which.txt"
             # Leave the filesystem as the next binary found it, but keep the last repo:
             # the syscall profile runs in it.
@@ -134,11 +139,11 @@ jobs:
           BASELINE: ${{ inputs.baseline || 'main' }}
         run: |
           {
-            echo "## ${{ matrix.fs }}"
+            echo "## ${{ matrix.fs }} / ${{ matrix.workload }}"
             echo
             echo "| key | baseline (${BASELINE:-none}) | this ref |"
             echo '| --- | --- | --- |'
-            for key in kernel filesystem ignored_files reflink lane_new lane_rm; do
+            for key in kernel filesystem mode ignored_files ignored_bytes reflink lane_new lane_rm; do
               b=$(awk -F= -v k="$key" '$1==k{print $2}' "$RUNNER_TEMP/base.txt" 2>/dev/null)
               h=$(awk -F= -v k="$key" '$1==k{print $2}' "$RUNNER_TEMP/head.txt" 2>/dev/null)
               echo "| $key | ${b:-—} | ${h:-—} |"

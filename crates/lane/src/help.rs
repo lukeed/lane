@@ -232,7 +232,7 @@ const LS: &str = "
 
 const ENTER: &str = "
   Description
-    Change directory into a lane. Also spelled `switch`.
+    Change directory into a lane. Or `switch` alias.
 
   Usage
     $ lane enter <name>

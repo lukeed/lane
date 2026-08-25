@@ -355,7 +355,7 @@ The short version. See [commands](/commands) for full information.
 | `lane init` | scaffold, probe reflink |
 | `lane new <name> [--dirty] [--base <ref>]` | create a lane |
 | `lane ls` | lanes, whether they landed, dirt, pending notes |
-| `lane enter <name>` | change directory into a lane; also spelled `switch` |
+| `lane enter <name>` | change directory into a lane. Or `switch` alias |
 | `lane exit` | change directory back to the main worktree |
 | `lane anchors <file> [--json]` | list canonical anchors and line ranges |
 | `lane note add <file> [-a <anchor>] [<text>]` | record a finding; omit text for interaction |

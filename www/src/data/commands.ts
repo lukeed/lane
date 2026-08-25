@@ -56,7 +56,7 @@ export let commands: Command[] = [
 	{
 		name: "enter",
 		usage: "lane enter <name>",
-		summary: "changes directory into a lane; also spelled `switch`.",
+		summary: "changes directory into a lane. Or `switch` alias.",
 		options: [],
 		example: "$ lane enter fix-login\n/w/proj/.lane/trees/fix-login",
 	},

@@ -13,17 +13,23 @@ fn spawn(args: &[&str], cwd: Option<&Path>) -> Result<std::process::Output> {
     Ok(cmd.output()?)
 }
 
-/// Run git, failing with its stderr.
+/// Run git, failing with its diagnosis.
 pub fn git(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let out = spawn(args, cwd)?;
     if !out.status.success() {
-        bail!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!("git {} failed: {}", args.join(" "), diagnosis(&out));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Some refusals are reported on stdout alone; `git commit` with an empty index is one.
+fn diagnosis(out: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    [stderr.trim(), stdout.trim()]
+        .into_iter()
+        .find(|text| !text.is_empty())
+        .map_or_else(|| out.status.to_string(), str::to_string)
 }
 
 /// Run git, treating failure as empty output.
@@ -287,6 +293,26 @@ mod tests {
             layout.main_root,
             std::fs::canonicalize(alternate_common.parent().unwrap()).unwrap()
         );
+    }
+
+    #[test]
+    fn a_failure_reported_on_stdout_alone_is_still_named() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        for args in [
+            &["init", "-qb", "main"][..],
+            &["config", "user.email", "t@t.t"],
+            &["config", "user.name", "t"],
+        ] {
+            git(args, Some(root)).unwrap();
+        }
+        std::fs::write(root.join("untracked.txt"), "x").unwrap();
+
+        let error = git(&["commit", "-q", "-m", "empty"], Some(root))
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("nothing added to commit"), "{error}");
     }
 
     #[test]

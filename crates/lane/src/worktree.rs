@@ -249,13 +249,7 @@ fn clone_entry(root: &Path, dest: &Path, entry: &str) -> Result<cow::CloneStats>
     let source = root.join(entry);
     let target = dest.join(entry);
     if std::fs::symlink_metadata(&source)?.is_dir() {
-        return Ok(cow::clone_tree_rooted(
-            &source,
-            &target,
-            &|_, _| false,
-            root,
-            dest,
-        )?);
+        return Ok(cow::clone_dir_tree(&source, &target, root, dest)?);
     }
     let Some(name) = source.file_name().map(|name| name.to_string_lossy()) else {
         bail!("ignored entry has no file name: {entry}");

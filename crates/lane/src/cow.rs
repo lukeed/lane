@@ -115,6 +115,22 @@ pub fn clone_file(src: &Path, dst: &Path) -> Result<(), CloneError> {
     }
 }
 
+/// Clone a whole directory in one call.
+///
+/// Darwin's clonefile takes a directory and clones the tree under it; Linux's FICLONE takes
+/// a file alone, which is why the per-file walk exists at all.
+#[cfg(target_os = "macos")]
+fn clone_dir(src: &Path, dst: &Path) -> Result<(), CloneError> {
+    clone_file(src, dst)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clone_dir(_src: &Path, _dst: &Path) -> Result<(), CloneError> {
+    Err(CloneError::Unsupported(
+        "no directory clone primitive on this platform".into(),
+    ))
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn clone_file(_src: &Path, _dst: &Path) -> Result<(), CloneError> {
     Err(CloneError::Unsupported(
@@ -172,6 +188,56 @@ impl fmt::Display for CloneStats {
             )
         }
     }
+}
+
+/// Clone a directory whole where the kernel can, walking it only to fix what it copied
+/// verbatim: an absolute symlink into the source still points at the source.
+///
+/// Falls back to the per-file walk when the tree cannot be cloned in one call.
+pub fn clone_dir_tree(
+    src: &Path,
+    dst: &Path,
+    src_root: &Path,
+    dst_root: &Path,
+) -> std::io::Result<CloneStats> {
+    let walk = || clone_tree_rooted(src, dst, &|_, _| false, src_root, dst_root);
+    // clonefile refuses an existing destination, and a destination inside the source needs
+    // the walk's pruning to avoid cloning the clone.
+    if fs::symlink_metadata(dst).is_ok() || dst.starts_with(src) {
+        return walk();
+    }
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match clone_dir(src, dst) {
+        Ok(()) => {}
+        Err(CloneError::Unsupported(_)) => return walk(),
+        Err(CloneError::Io(e)) => return Err(e),
+    }
+
+    let src_roots = root_spellings(src_root)?;
+    let mut stats = CloneStats::default();
+    for entry in walkdir::WalkDir::new(dst) {
+        let Ok(entry) = entry else { continue };
+        let kind = entry.file_type();
+        if kind.is_dir() {
+            continue;
+        }
+        if kind.is_symlink() {
+            stats.links += 1;
+            let target = fs::read_link(entry.path())?;
+            if let Some(retargeted) = retarget(&target, &src_roots, dst_root) {
+                fs::remove_file(entry.path())?;
+                std::os::unix::fs::symlink(retargeted, entry.path())?;
+            }
+            continue;
+        }
+        if kind.is_file() {
+            stats.cloned += 1;
+            stats.bytes_shared += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        }
+    }
+    Ok(stats)
 }
 
 /// Recursively clone `src` into `dst`; `skip(relpath, is_dir)` prunes.

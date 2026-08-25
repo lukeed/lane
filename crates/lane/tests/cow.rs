@@ -2,6 +2,7 @@
 
 use lane::cow::{self, CloneError};
 use std::fs;
+use std::path::Path;
 
 /// Available bytes on the filesystem holding `path`, via df so no platform code is needed.
 fn free_bytes(path: &std::path::Path) -> u64 {
@@ -221,4 +222,61 @@ fn cloning_onto_an_existing_path_is_not_reported_as_unsupported() {
         }
         Err(CloneError::Io(_)) | Ok(()) => {}
     }
+}
+
+/// The one-call directory clone must land what the per-file walk lands.
+#[test]
+fn directory_clone_is_byte_identical_and_retargets_absolute_links() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let src = src.path().canonicalize().unwrap();
+
+    fs::create_dir_all(src.join("sub")).unwrap();
+    fs::write(src.join("a.bin"), vec![7u8; 4096]).unwrap();
+    fs::write(src.join("sub/b.bin"), vec![9u8; 4096]).unwrap();
+    std::os::unix::fs::symlink("a.bin", src.join("relative")).unwrap();
+    std::os::unix::fs::symlink(src.join("a.bin"), src.join("absolute")).unwrap();
+
+    let stats = cow::clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+    assert_eq!(
+        fs::read(src.join("sub/b.bin")).unwrap(),
+        fs::read(out.join("sub/b.bin")).unwrap()
+    );
+    assert_eq!(
+        fs::read_link(out.join("relative")).unwrap(),
+        Path::new("a.bin")
+    );
+    assert_eq!(
+        fs::read_link(out.join("absolute")).unwrap(),
+        out.join("a.bin")
+    );
+
+    // The retargeted link must read the clone's copy, not the source's.
+    fs::write(src.join("a.bin"), b"source").unwrap();
+    fs::write(out.join("a.bin"), b"clone").unwrap();
+    assert_eq!(fs::read(out.join("absolute")).unwrap(), b"clone");
+
+    assert_eq!(stats.links, 2);
+    assert_eq!(stats.cloned + stats.copied, 2);
+}
+
+#[test]
+fn directory_clone_falls_back_to_the_walk_when_the_destination_exists() {
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let out = dst.path().join("out");
+    let src = src.path().canonicalize().unwrap();
+
+    fs::write(src.join("a.bin"), vec![3u8; 4096]).unwrap();
+    fs::create_dir_all(&out).unwrap();
+
+    let stats = cow::clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+    assert_eq!(
+        fs::read(src.join("a.bin")).unwrap(),
+        fs::read(out.join("a.bin")).unwrap()
+    );
+    assert_eq!(stats.cloned + stats.copied, 1);
 }

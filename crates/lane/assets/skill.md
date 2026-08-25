@@ -19,6 +19,9 @@ lane merge             # rebase, audit memory, fast-forward trunk, delete the la
 
 Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the lane to the remote. Once it merges run `lane prune` to remove the lane. `lane ls` marks a lane `pushed` while the remote has its tip and `landed` when trunk carries its landing record.
 
+Use `lane ls --json` as the reliable machine-readable inventory when coordinating
+multiple lanes.
+
 ## Read before you edit
 
 ```bash
@@ -26,7 +29,8 @@ lane why src/auth.rs
 ```
 
 Do this for every file you are about to change. `lane why` is the compact reading view;
-run `lane check` when you need freshness and the ids of notes that require action.
+`lane why --json` returns full ids, paths, anchors, timestamps, and note text. Run
+`lane check` when you need freshness and the ids of notes that require action.
 
 Before `lane merge`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
 

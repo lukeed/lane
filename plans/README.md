@@ -40,7 +40,7 @@ counts before starting, and update your row when done.
 | 031 | Take the model out of the binary, and make the verdicts verbs | P2 | L | — | DONE |
 | 032 | Take derived state out of git, and make a `holds` a decision | P1 | L | — | DONE |
 | 033 | Drop the log, and let a note carry its own baseline | P1 | M | — | DONE |
-| 034 | Make lane inventory and context machine-readable | P2 | M | — | TODO |
+| 034 | Make lane inventory and context machine-readable | P2 | M | — | DONE |
 | 035 | Make resolvable anchors discoverable and canonical | P2 | L | 034 | TODO |
 | 036 | Make the note lifecycle explicit behind one command family | P2 | L | 035 | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |

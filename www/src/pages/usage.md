@@ -290,6 +290,16 @@ $ lane ls
   agent-b    landed   dirty   1 pending note(s)
 ```
 
+For a stable machine-readable inventory, orchestrators can use:
+
+```bash
+$ lane ls --json
+[{"name":"agent-a","path":"/w/proj/.lane/trees/agent-a","branch":"agent-a","state":"open","dirty":false,"pending_notes":3}]
+```
+
+Before editing a file, `lane why <path> --json` provides its full note ids,
+timestamps, anchors, and text without scraping the compact human view.
+
 Each has its own warm build cache at no disk cost. They can annotate the same
 file, the same anchor, at the same time: a note file is written once and never
 modified, so there is nothing to lock and nothing to conflict.

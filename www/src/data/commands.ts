@@ -47,10 +47,12 @@ export let commands: Command[] = [
 	},
 	{
 		name: "ls",
-		usage: "lane ls",
+		usage: "lane ls [--json]",
 		summary: "lists every lane's landing state, dirty state, and pending note count.",
-		options: [],
-		example: "$ lane ls\nagent-a    open     clean   3 pending note(s)\nagent-b    landed   dirty   1 pending note(s)",
+		options: [
+			{ flag: "--json", arg: null, about: "print the lane inventory as machine-readable JSON." },
+		],
+		example: '$ lane ls --json\n[{"name":"agent-a","path":"/w/proj/.lane/trees/agent-a","branch":"agent-a","state":"open","dirty":false,"pending_notes":3}]',
 	},
 	{
 		name: "path",
@@ -72,12 +74,13 @@ export let commands: Command[] = [
 	},
 	{
 		name: "why",
-		usage: "lane why [<path>] [-a <anchor>]",
+		usage: "lane why [<path>] [-a <anchor>] [--json]",
 		summary: "prints the notes for a path in compact form. A pure read; it changes nothing.",
 		options: [
 			{ flag: "-a, --anchor", arg: "<anchor>", about: "show only the notes on this anchor." },
+			{ flag: "--json", arg: null, about: "print full note fields as machine-readable JSON." },
 		],
-		example: "$ lane why src/auth.rs\n\n[fn verify]\n  - 01M0B4KQTX · 2026-07-30\n    callers rely on false-on-expiry\n  - 01M0B9MBYB · 2026-08-14\n    must stay constant-time; early return leaks length",
+		example: '$ lane why src/auth.rs --json\n[{"id":"01M0B4KQTX7H3EZ8FE7S6BJ91N","path":"src/auth.rs","anchor":"fn verify","created":"2026-08-19T00:00:00Z","note":"must stay constant-time"}]',
 	},
 	{
 		name: "holds",

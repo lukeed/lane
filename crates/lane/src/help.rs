@@ -59,7 +59,7 @@ impl Help {
             Help::Root => "lane <COMMAND>",
             Help::Init => "lane init",
             Help::New => "lane new [OPTIONS] <NAME>",
-            Help::Ls => "lane ls",
+            Help::Ls => "lane ls [--json]",
             Help::Path => "lane path <NAME>",
             Help::Note => "lane note [OPTIONS] --path <PATH> <TEXT>",
             Help::Install => "lane install <hooks|skill>",
@@ -187,9 +187,10 @@ const LS: &str = "
     notes it has yet to land.
 
   Usage
-    $ lane ls
+    $ lane ls [--json]
 
   Options
+    --json        Emit machine-readable JSON
     -h, --help    Display this message
 ";
 
@@ -262,6 +263,7 @@ const WHY: &str = "
 
   Options
     -a, --anchor <anchor>  Only notes held for this anchor
+        --json             Emit machine-readable JSON
     -h, --help             Display this message
 
   Examples

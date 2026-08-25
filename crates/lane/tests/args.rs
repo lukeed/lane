@@ -145,6 +145,7 @@ fn the_shell_function_s_own_invocation_still_parses() {
     assert_eq!(
         ok(&["merge", "--cd"]),
         Parsed::Merge(MergeArgs {
+            name: None,
             base: None,
             keep: false,
             cd: true,
@@ -567,6 +568,7 @@ fn merge_and_rm_read_the_rest_of_their_flags() {
     assert_eq!(
         ok(&["merge", "--base", "release", "--keep", "--squash"]),
         Parsed::Merge(MergeArgs {
+            name: None,
             base: Some("release".into()),
             keep: true,
             cd: false,
@@ -691,6 +693,7 @@ fn push_takes_a_base_and_budget() {
     assert_eq!(
         ok(&["push", "--base", "release", "--max-notes", "3"]),
         Parsed::Push(PushArgs {
+            name: None,
             base: Some("release".into()),
             budget: Budget {
                 max_notes: 3,
@@ -708,4 +711,21 @@ fn prune_takes_only_its_dry_run() {
     assert!(err(&["prune", "extra"]).contains("unexpected argument 'extra' found"));
     assert!(err(&["prune", "--dry"]).contains("unexpected argument '--dry' found"));
     assert!(err(&["sweep"]).contains("unrecognized subcommand 'sweep'"));
+}
+
+#[test]
+fn merge_and_push_name_a_lane_or_take_the_current_one() {
+    let Parsed::Merge(merge) = ok(&["merge", "fix-login", "--squash"]) else {
+        panic!("expected merge");
+    };
+    assert_eq!(merge.name.as_deref(), Some("fix-login"));
+    assert!(merge.squash);
+
+    let Parsed::Push(push) = ok(&["push", "fix-login"]) else {
+        panic!("expected push");
+    };
+    assert_eq!(push.name.as_deref(), Some("fix-login"));
+
+    assert!(err(&["merge", "one", "two"]).contains("unexpected argument 'two' found"));
+    assert!(err(&["push", "one", "two"]).contains("unexpected argument 'two' found"));
 }

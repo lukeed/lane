@@ -92,8 +92,8 @@ impl Help {
             Help::Why => "lane why [OPTIONS] [PATH]",
             Help::Check => "lane check [--json]",
             Help::Audit => "lane audit [OPTIONS]",
-            Help::Merge => "lane merge [OPTIONS]",
-            Help::Push => "lane push [OPTIONS]",
+            Help::Merge => "lane merge [OPTIONS] [NAME]",
+            Help::Push => "lane push [OPTIONS] [NAME]",
             Help::Prune => "lane prune [--dry-run]",
             Help::Rm => "lane rm [--force] <NAME>",
             Help::Shellenv => "lane shellenv",
@@ -459,7 +459,7 @@ const MERGE: &str = "
     the worktree. Landings are locked, so two at once serialize.
 
   Usage
-    $ lane merge [options]
+    $ lane merge [name] [options]
 
   Options
     --base <ref>        Rebase onto <ref> instead of the recorded base
@@ -481,7 +481,7 @@ const PUSH: &str = "
     pull request. The remote is the branch's upstream or origin.
 
   Usage
-    $ lane push [options]
+    $ lane push [name] [options]
 
   Options
     --base <ref>        Rebase onto <ref> instead of the recorded base

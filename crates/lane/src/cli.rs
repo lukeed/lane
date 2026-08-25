@@ -76,13 +76,14 @@ pub fn run() -> Result<i32> {
         Parsed::Check { json } => check(json),
         Parsed::Audit(args) => audit_cmd(&args.base, &args.budget, args.json),
         Parsed::Merge(args) => merge(
+            args.name.as_deref(),
             args.base.as_deref(),
             args.keep,
             args.cd,
             args.squash,
             &args.budget,
         ),
-        Parsed::Push(args) => push(args.base.as_deref(), &args.budget),
+        Parsed::Push(args) => push(args.name.as_deref(), args.base.as_deref(), &args.budget),
         Parsed::Prune { dry_run } => prune(dry_run),
         Parsed::Rm(args) => rm(&args.name, args.force),
         Parsed::Shellenv => shellenv(),
@@ -699,11 +700,26 @@ fn prune(dry_run: bool) -> Result<i32> {
     Ok(i32::from(skipped > 0))
 }
 
-fn path(name: &str) -> Result<i32> {
-    let dest = wt::lanes_dir(&wt::main_root()?).join(name);
+/// A named lane git still holds; an unregistered directory would resolve to the primary
+/// worktree and land trunk onto itself.
+fn registered_lane(root: &Path, name: &str) -> Result<PathBuf> {
+    let dest = lane_named(root, name)?;
+    if !wt::registered(root, &dest) {
+        bail!("{name} is not a lane; git has no worktree there");
+    }
+    Ok(dest)
+}
+
+fn lane_named(root: &Path, name: &str) -> Result<PathBuf> {
+    let dest = wt::lanes_dir(root).join(name);
     if !dest.exists() {
         bail!("no lane named {name}");
     }
+    Ok(dest)
+}
+
+fn path(name: &str) -> Result<i32> {
+    let dest = lane_named(&wt::main_root()?, name)?;
     println!("{}", dest.display());
     Ok(0)
 }
@@ -1193,18 +1209,22 @@ enum Preparation {
 }
 
 fn prepare(
+    name: Option<&str>,
     base: Option<&str>,
     budget: &Budget,
     check_blocking: bool,
     info: &mut dyn Write,
 ) -> Result<Preparation> {
-    let lane_path = git::repo_root()?;
     let root = wt::main_root()?;
+    let lane_path = match name {
+        Some(name) => registered_lane(&root, name)?,
+        None => git::repo_root()?,
+    };
     if lane_path == root {
-        eprintln!("error: not inside a lane");
+        eprintln!("error: not inside a lane; name one");
         return Ok(Preparation::Exit(2));
     }
-    let branch = git::current_branch();
+    let branch = git::current_branch(&lane_path);
     let base = base
         .map(str::to_string)
         .unwrap_or_else(|| wt::lane_base(&root, &branch));
@@ -1266,13 +1286,21 @@ fn stage_memory(lane_path: &Path) -> bool {
     !git::git_ok(&["diff", "--cached", "--quiet"], Some(lane_path))
 }
 
-fn merge(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget) -> Result<i32> {
+fn merge(
+    name: Option<&str>,
+    base: Option<&str>,
+    keep: bool,
+    cd: bool,
+    squash: bool,
+    budget: &Budget,
+) -> Result<i32> {
     let info: &mut dyn Write = if cd {
         &mut std::io::stderr()
     } else {
         &mut std::io::stdout()
     };
-    let prepared = match prepare(base, budget, true, info)? {
+    let origin = std::env::current_dir().ok();
+    let prepared = match prepare(name, base, budget, true, info)? {
         Preparation::Ready(prepared) => prepared,
         Preparation::Exit(code) => return Ok(code),
     };
@@ -1284,6 +1312,11 @@ fn merge(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget
         _lock,
     } = prepared;
     let upstream = upstream_branch(&lane_path, &branch);
+    let departing = origin
+        .as_deref()
+        .and_then(|origin| origin.canonicalize().ok())
+        .zip(lane_path.canonicalize().ok())
+        .is_some_and(|(origin, lane)| origin.starts_with(lane));
 
     if squash {
         git(&["merge", "--squash", &branch], Some(&root))?;
@@ -1321,7 +1354,10 @@ fn merge(base: Option<&str>, keep: bool, cd: bool, squash: bool, budget: &Budget
         writeln!(info, "removed lane {branch}")?;
     }
     if cd {
-        println!("{}", root.display());
+        println!(
+            "{}",
+            origin.filter(|_| !departing).unwrap_or(root).display()
+        );
     }
     Ok(0)
 }
@@ -1383,8 +1419,8 @@ fn pull_request_number(lane_path: &Path, remote: &str, tip: &str) -> Option<Stri
     })
 }
 
-fn push(base: Option<&str>, budget: &Budget) -> Result<i32> {
-    let prepared = match prepare(base, budget, false, &mut std::io::stdout())? {
+fn push(name: Option<&str>, base: Option<&str>, budget: &Budget) -> Result<i32> {
+    let prepared = match prepare(name, base, budget, false, &mut std::io::stdout())? {
         Preparation::Ready(prepared) => prepared,
         Preparation::Exit(code) => return Ok(code),
     };
@@ -1763,6 +1799,28 @@ mod tests {
         assert_eq!(
             git(&["diff", "--cached", "--name-only"], Some(root)).unwrap(),
             ".lane/memory/main.rs/01M0A-note.md\nAGENTS.md"
+        );
+    }
+
+    #[test]
+    fn a_directory_git_does_not_know_is_not_a_lane() {
+        let temp = repository();
+        let root = temp.path();
+
+        assert!(
+            registered_lane(root, "ghost")
+                .unwrap_err()
+                .to_string()
+                .contains("no lane named ghost")
+        );
+
+        std::fs::create_dir_all(wt::lanes_dir(root).join("ghost")).unwrap();
+
+        assert!(
+            registered_lane(root, "ghost")
+                .unwrap_err()
+                .to_string()
+                .contains("git has no worktree there")
         );
     }
 }

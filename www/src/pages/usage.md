@@ -370,8 +370,8 @@ The short version. See [commands](/commands) for full information.
 | `lane why <path> [-a <anchor>]` | read the notes on a file or a directory; changes nothing |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
-| `lane merge [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
-| `lane push [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
+| `lane merge [<name>] [--keep] [--base <ref>] [--squash] [--cd]` | rebase, audit, fast-forward, remove |
+| `lane push [<name>] [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
 | `lane prune [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |
 | `lane shellenv` | shell integration |

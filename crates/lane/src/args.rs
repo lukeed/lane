@@ -114,6 +114,7 @@ pub struct AuditArgs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeArgs {
+    pub name: Option<String>,
     pub base: Option<String>,
     pub keep: bool,
     pub cd: bool,
@@ -123,6 +124,7 @@ pub struct MergeArgs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PushArgs {
+    pub name: Option<String>,
     pub base: Option<String>,
     pub budget: Budget,
 }
@@ -500,8 +502,9 @@ fn parse_merge(raw: Vec<OsString>) -> Result<Parsed> {
     let cd = pargs.contains("--cd");
     let squash = pargs.contains("--squash");
     let budget = budget(&mut pargs)?;
-    none(positionals(pargs, after, Help::Merge)?, Help::Merge)?;
+    let name = at_most_one(positionals(pargs, after, Help::Merge)?, Help::Merge)?;
     Ok(Parsed::Merge(MergeArgs {
+        name,
         base,
         keep,
         cd,
@@ -518,8 +521,8 @@ fn parse_push(raw: Vec<OsString>) -> Result<Parsed> {
     }
     let base = pargs.opt_value_from_str("--base")?;
     let budget = budget(&mut pargs)?;
-    none(positionals(pargs, after, Help::Push)?, Help::Push)?;
-    Ok(Parsed::Push(PushArgs { base, budget }))
+    let name = at_most_one(positionals(pargs, after, Help::Push)?, Help::Push)?;
+    Ok(Parsed::Push(PushArgs { name, base, budget }))
 }
 
 fn parse_prune(raw: Vec<OsString>) -> Result<Parsed> {

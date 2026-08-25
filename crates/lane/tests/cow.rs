@@ -191,10 +191,17 @@ fn clone_shares_extents_where_supported() {
     fs::write(&big, vec![0xABu8; 64 * 1024 * 1024]).unwrap();
     let _ = std::process::Command::new("sync").status();
 
-    let before = free_bytes(dir.path());
-    cow::clone_file(&big, &dir.path().join("clone.bin")).expect("clone");
-    let _ = std::process::Command::new("sync").status();
-    let spent = before.saturating_sub(free_bytes(dir.path()));
+    // free_bytes reads the whole volume, so anything else writing to it lands in the
+    // measurement. Noise only ever adds, so the cheapest of several clones is the answer.
+    let spent = (0..3)
+        .map(|i| {
+            let before = free_bytes(dir.path());
+            cow::clone_file(&big, &dir.path().join(format!("clone{i}.bin"))).expect("clone");
+            let _ = std::process::Command::new("sync").status();
+            before.saturating_sub(free_bytes(dir.path()))
+        })
+        .min()
+        .unwrap();
 
     assert!(
         spent < 16 * 1024 * 1024,
@@ -202,7 +209,7 @@ fn clone_shares_extents_where_supported() {
     );
     assert_eq!(
         fs::read(&big).unwrap(),
-        fs::read(dir.path().join("clone.bin")).unwrap()
+        fs::read(dir.path().join("clone0.bin")).unwrap()
     );
 }
 

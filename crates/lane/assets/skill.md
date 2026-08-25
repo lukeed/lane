@@ -84,6 +84,10 @@ An anchor is what the note is *about*, not where it lives.
 | `## Rate limiting` | a markdown section |
 | `@file` | the whole file — the default |
 
+When you do not already know a valid anchor, run `lane anchors <path> --json`
+and prefer the canonical value it returns. A unique bare declaration name is
+canonicalized when recorded; an ambiguous one is refused with its choices.
+
 One note, one thought. Do not classify it — a note costs one command, on purpose.
 
 ## Do not

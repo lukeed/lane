@@ -62,6 +62,15 @@ export let commands: Command[] = [
 		example: "$ lane path fix-login\n/w/proj/.lane/trees/fix-login",
 	},
 	{
+		name: "anchors",
+		usage: "lane anchors [--json] <path>",
+		summary: "lists every canonical anchor in source order with its inclusive line range; @file is always present.",
+		options: [
+			{ flag: "--json", arg: null, about: "print exact anchor, start, and end fields as machine-readable JSON." },
+		],
+		example: "$ lane anchors src/auth.rs\n@file\t1-8\nfn verify\t1-4\nfn refresh\t6-8",
+	},
+	{
 		name: "note",
 		usage: "lane note -p <path> [-a <anchor>] [--supersedes <id>] <text>",
 		summary: "records a pending finding against a file and an anchor.",

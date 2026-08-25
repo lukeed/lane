@@ -111,6 +111,7 @@ lane init                            # probe reflink, scaffold memory + context 
 lane new fix-login                   # CoW worktree + branch
 lane new spike --dirty               # carry uncommitted work too
 lane ls
+lane anchors src/auth.rs             # discover canonical anchors and line ranges
 lane note -p src/auth.rs -a "fn verify" "..."
 lane why src/auth.rs                 # read what earlier lanes learned
 lane merge                           # rebase, audit memory, fast-forward, remove
@@ -143,7 +144,7 @@ Freshness is computed for the anchored span, not the whole file:
 | `anchor-missing` | the symbol no longer resolves |
 | `unverifiable` | lane has no grammar for that anchor |
 
-Anchors include declarations such as `fn verify`, Markdown headings such as `## Rate limiting`, component blocks such as `#script`, and `@file` for a whole file. Comments and whitespace are normalized out of fingerprints.
+Anchors include declarations such as `fn verify`, Markdown headings such as `## Rate limiting`, component blocks such as `#script`, and `@file` for a whole file. Run `lane anchors src/auth.rs` to list the canonical values and their line ranges. A unique bare name such as `verify` is stored as its canonical value; a name shared by multiple declaration kinds is refused with the available choices. Comments and whitespace are normalized out of fingerprints.
 
 Resolve drift with exactly one of these actions:
 

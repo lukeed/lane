@@ -119,6 +119,20 @@ stay true, not what you did.
 | `## Rate limiting` | a markdown section |
 | `@file` | the whole file (default) |
 
+Discover the exact canonical values and their inclusive line ranges before
+recording a note:
+
+```bash
+$ lane anchors src/auth.rs
+@file       1-8
+fn verify   1-4
+fn refresh  6-8
+```
+
+Use `lane anchors <path> --json` for structured output. A unique bare name such
+as `verify` is stored as its canonical value; a name shared by multiple
+declaration kinds is refused and lists the available choices.
+
 One note, one thought. Don't classify it, don't decide whether it's an
 invariant or a rationale — the whole point is that a note costs a single
 command with no taxonomy decision.
@@ -299,6 +313,8 @@ $ lane ls --json
 
 Before editing a file, `lane why <path> --json` provides its full note ids,
 timestamps, anchors, and text without scraping the compact human view.
+If the anchor is not already known, `lane anchors <path> --json` supplies the
+canonical candidates without requiring the agent to guess.
 
 Each has its own warm build cache at no disk cost. They can annotate the same
 file, the same anchor, at the same time: a note file is written once and never
@@ -318,6 +334,7 @@ The short version. See [commands](/commands) for full information.
 | `lane new <name> [--dirty] [--base <ref>]` | create a lane |
 | `lane ls` | lanes, whether they landed, dirt, pending notes |
 | `lane path <name>` | print a lane's path |
+| `lane anchors <file> [--json]` | list canonical anchors and line ranges |
 | `lane note -p <file> -a <anchor> [--supersedes <id>] "<text>"` | record or replace a finding |
 | `lane install skill|hooks` | install the agent skill, or the commit decision capture hooks |
 | `lane uninstall skill|hooks` | remove them |

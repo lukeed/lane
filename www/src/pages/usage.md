@@ -95,7 +95,8 @@ Supplied text never prompts and an omitted `-a` defaults to `@file`. Omit the
 text only when you want an interactive anchor selector and one-line note prompt.
 
 **Option two — a trailer, in the commit you were already writing.** Install the
-hooks once per repository, then never think about it again.
+hooks once per repository. `lane check` tells you when a release has changed
+them and the copy on disk needs installing again.
 
 ```bash
 $ lane install hooks

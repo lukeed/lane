@@ -70,6 +70,9 @@ lane install hooks    # capture targeted Why: trailers from commits
 lane install skill    # install the fuller workflow for coding agents
 ```
 
+A hook is a copy on disk, so a release that changes one needs `lane install hooks`
+again. `lane check` and `lane init` name a hook block that an older release wrote.
+
 ## Daily workflow
 
 Open a lane and read its existing context before editing:

@@ -30,9 +30,9 @@ export let commands: Command[] = [
 	{
 		name: "init",
 		usage: "lane init",
-		summary: "scaffolds .lane/, adds the union merge rule, writes the AGENTS.md protocol, and probes reflink support.",
+		summary: "scaffolds .lane/, adds the union merge rule, writes the AGENTS.md protocol, probes reflink support, and reports whether the installed hooks match this release.",
 		options: [],
-		example: "$ lane init\nwrote /w/proj/AGENTS.md protocol\ninitialized .lane/, union merge rules, AGENTS.md protocol\nreflink on this filesystem: yes (reflink available)",
+		example: "$ lane init\nwrote /w/proj/AGENTS.md protocol\ninitialized .lane/, union merge rules, AGENTS.md protocol\nreflink on this filesystem: yes (reflink available)\ncommit hooks are current",
 	},
 	{
 		name: "new",
@@ -144,7 +144,7 @@ export let commands: Command[] = [
 	{
 		name: "check",
 		usage: "lane check [--json]",
-		summary: "counts the notes in each staleness tier, lists the ones that are not fresh under their tier, and exits 1 if any anchor is missing.",
+		summary: "counts the notes in each staleness tier, lists the ones that are not fresh under their tier, and exits 1 if any anchor is missing. Names a stale hook block on stderr.",
 		options: [
 			{ flag: "--json", arg: null, about: "print each note as JSON, with current spans on non-fresh work items." },
 		],

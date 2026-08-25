@@ -317,6 +317,53 @@ fn hook_action(existing: &str, spec: &HookSpec) -> HookAction {
     HookAction::Refuse
 }
 
+/// What the hook files hold, next to the blocks this binary ships.
+#[derive(Debug, PartialEq, Eq)]
+enum HooksState {
+    Absent,
+    Current,
+    Stale(Vec<PathBuf>),
+}
+
+/// A hook is written once, at install, so a block that changed in a later release
+/// reaches an existing repository only through another install. Nothing else rewrites
+/// it, and a stale block goes on running the behavior its release shipped.
+fn hooks_state(dir: &Path) -> HooksState {
+    let mut stale = Vec::new();
+    let mut current = false;
+    for spec in hook_specs(dir) {
+        let Ok(existing) = std::fs::read_to_string(&spec.path) else {
+            continue;
+        };
+        match hook_action(&existing, &spec) {
+            HookAction::Current(_) => current = true,
+            HookAction::Replace(_) | HookAction::Upgrade(_) => stale.push(spec.path),
+            // Someone else's hook, or ours past recognition; install already says so.
+            HookAction::Foreign | HookAction::Refuse => {}
+        }
+    }
+    match (stale.is_empty(), current) {
+        (false, _) => HooksState::Stale(stale),
+        (true, true) => HooksState::Current,
+        (true, false) => HooksState::Absent,
+    }
+}
+
+/// Named on stderr, so a `--json` reader keeps one parseable document on stdout.
+fn warn_stale_hooks() {
+    let Ok(dir) = hooks_dir() else {
+        return;
+    };
+    if let HooksState::Stale(paths) = hooks_state(&dir) {
+        for path in paths {
+            eprintln!(
+                "warning: {} is out of date; run `lane install hooks`",
+                path.display()
+            );
+        }
+    }
+}
+
 fn hooks_dir() -> Result<PathBuf> {
     Ok(PathBuf::from(git(
         &["rev-parse", "--git-path", "hooks"],
@@ -486,9 +533,20 @@ fn init() -> Result<i32> {
     if !ok {
         println!("  lanes will still work as plain worktrees; ignored files will not be cloned");
     }
-    println!(
-        "capture commit decisions with `lane install hooks` (`lane uninstall hooks` removes them)"
-    );
+    match hooks_state(&hooks_dir()?) {
+        HooksState::Absent => println!(
+            "capture commit decisions with `lane install hooks` (`lane uninstall hooks` removes them)"
+        ),
+        HooksState::Current => println!("commit hooks are current"),
+        HooksState::Stale(paths) => {
+            for path in paths {
+                println!(
+                    "{} is out of date; run `lane install hooks`",
+                    path.display()
+                );
+            }
+        }
+    }
     Ok(0)
 }
 
@@ -1025,6 +1083,7 @@ fn check_json_rows(
 }
 
 fn check(json: bool) -> Result<i32> {
+    warn_stale_hooks();
     let root = git::repo_root()?;
     let notes = store::load_notes(&root, None);
     let mut checker = store::Checker::new(&root);
@@ -1454,6 +1513,51 @@ mod tests {
             hook_action("#!/bin/sh\necho mine\n", &specs[0]),
             HookAction::Foreign
         ));
+    }
+
+    fn hooks_dir_holding(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, body) in files {
+            std::fs::write(dir.path().join(name), body).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn hooks_nobody_installed_are_absent() {
+        let dir = hooks_dir_holding(&[]);
+        assert_eq!(hooks_state(dir.path()), HooksState::Absent);
+
+        let foreign = hooks_dir_holding(&[("post-commit", "#!/bin/sh\necho mine\n")]);
+        assert_eq!(hooks_state(foreign.path()), HooksState::Absent);
+    }
+
+    #[test]
+    fn hooks_holding_the_shipped_blocks_are_current() {
+        let dir = hooks_dir_holding(&[
+            ("post-commit", &format!("#!/bin/sh\n{POST_COMMIT_BLOCK}")),
+            ("prepare-commit-msg", &format!("#!/bin/sh\n{PREPARE_BLOCK}")),
+        ]);
+        assert_eq!(hooks_state(dir.path()), HooksState::Current);
+    }
+
+    #[test]
+    fn a_block_from_an_earlier_release_is_stale() {
+        let older = POST_COMMIT_BLOCK.replace("lane capture HEAD", "lane capture");
+        let dir = hooks_dir_holding(&[
+            ("post-commit", &format!("#!/bin/sh\n{older}")),
+            ("prepare-commit-msg", &format!("#!/bin/sh\n{PREPARE_BLOCK}")),
+        ]);
+        assert_eq!(
+            hooks_state(dir.path()),
+            HooksState::Stale(vec![dir.path().join("post-commit")])
+        );
+
+        let legacy = hooks_dir_holding(&[("post-commit", &format!("#!/bin/sh\n{POST_COMMIT_V1}"))]);
+        assert_eq!(
+            hooks_state(legacy.path()),
+            HooksState::Stale(vec![legacy.path().join("post-commit")])
+        );
     }
 
     #[test]

@@ -4,6 +4,19 @@
 
 Lane creates isolated worktrees without leaving behind the ignored build caches that make a checkout fast. It can also attach durable notes to a file or symbol, then flag them when the relevant code changes. Lane never calls a model.
 
+> [!TIP]
+> **Why another worktree tool?**
+>
+> When you run `git worktree add`, it creates a clean checkout but leaves behind everything Git ignores: `target/`, `node_modules/`, virtual environments, generated files, and local `.env` files. This means you must reinstall and/or build from scratch, despite already having all your caches warm on disk. On a reflink filesystem, lane clones those entries by reference. The new lane starts warm while allocating new storage only for the blocks it changes.
+> 
+> Lane uses `clonefile(2)` on APFS and `FICLONE` on Linux filesystems that support it, including btrfs and XFS with reflink enabled. If reflinks are unavailable, lane creates a normal worktree and does not byte-copy ignored caches. When desired, `lane new --dirty` also carries tracked edits and untracked, non-ignored files; without reflinks, those changed files are copied normally.
+>
+> Lanes live under `.lane/trees/` and are excluded through `.git/info/exclude`, so the worktrees themselves are never committed.
+>
+> Lane can also attach durable notes/memories to a file or symbol, then flag them when the relevant code changes. 
+>
+> Lane never calls a model.
+
 ## Install
 
 Prebuilt binaries are available for macOS and Linux on arm64 and x86_64:
@@ -26,11 +39,14 @@ Lane requires Rust 1.85 or newer when building from source.
 
 ## Setup
 
-Add the shell wrapper to `.zshrc` or `.bashrc`:
+For each new shell, you will need to install the `lane shellenv` wrapper to automatically `cd` into & out of lanes.
+Or you may add the shell wrapper to `.zshrc` or `.bashrc` to auto-run: 
 
 ```sh
 eval "$(lane shellenv)"
 ```
+
+> While not necessary, this more convenient than manually running `cd .lane/trees/<new lane>` repeatedly.
 
 Then initialize each repository:
 
@@ -46,8 +62,8 @@ This creates the memory store, adds a short agent protocol to `AGENTS.md`, and r
 Optional tooling can capture `Why:` commit trailers or install the fuller agent workflow:
 
 ```sh
-$ lane install hooks
-$ lane install skill
+$ lane install hooks  # capture targeted Why: trailers from commits
+$ lane install skill  # install the fuller workflow for coding agents
 ```
 
 ## Usage
@@ -60,7 +76,10 @@ $ lane note add src/auth.rs -a 'fn verify' \
 
 # edit and commit as usual
 $ lane check
+
 $ lane merge
+# or
+$ lane push
 ```
 
 `lane new` creates a branch and worktree under `.lane/trees/`. On APFS, btrfs, and reflink-enabled XFS, ignored files are cloned by reference. Otherwise, Lane creates a normal Git worktree and skips ignored files.

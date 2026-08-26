@@ -1,107 +1,96 @@
 ---
 name: lane
-description: Use lane in this repository — open a worktree with `lane new`, read what earlier lanes learned about a file before editing it, and record what must stay true as a `Why:` commit trailer or a `lane note`.
+description: Use lane in this repository — create isolated worktrees, read existing context before editing, and record constraints that future work must preserve.
 ---
 
 # lane
 
-This repository keeps memory about its own code in `.lane/`. Notes are plain markdown. Their text is replaced with a successor rather than edited in place; explicit confirmation and pinning update metadata. Read them before you edit, and leave one behind when you learn something the next agent would otherwise rediscover.
+This repository keeps durable context as Markdown under `.lane/`. Read it before editing a file, then record only the non-obvious constraints another agent would otherwise have to rediscover.
 
-## The loop
+## Workflow
 
 ```bash
-lane new fix-login     # branch + worktree; the build cache arrives by reference
+lane new fix-login     # create a branch and worktree
 # edit and commit as usual
-lane merge             # rebase, audit memory, fast-forward trunk, delete the lane
+lane merge             # land on local trunk
+lane merge --squash    # land on local trunk as one commit
+lane push              # push the lane for a pull request
 ```
 
-`lane new` prints the path. Work there, not in the parent tree. `lane merge` rebases, so commit or stash tracked changes first; untracked files are fine.
+`lane new` prints the worktree path. Work there, not in the parent checkout.
 
-Where trunk is protected, `lane push` rebases, audits, commits memory, and sends the lane to the remote. Once it merges run `lane prune` to remove the lane. `lane ls` marks a lane `pushed` while the remote has its tip, and `landed` once its remote branch is retired or trunk already holds the work.
+`lane merge` rebases, audits memory, updates local trunk, and removes the lane. Commit or stash tracked changes first.
 
-Use `lane ls --json` as the reliable machine-readable inventory when coordinating
-multiple lanes.
+When trunk is protected, use `lane push` instead. After the pull request merges, run `lane prune`. Use `lane ls --json` for machine-readable lane state.
 
-## Read before you edit
+## Read before editing
 
 ```bash
 lane why src/auth.rs
-lane why src/            # every note beneath a directory
+lane why src/
 ```
 
-Do this for every file you are about to change. `lane why` is the compact reading view;
-`lane why --json` returns full ids, paths, anchors, timestamps, and note text. Give it a
-directory to survey an area before you know which file you need. Run `lane check` when
-you need freshness and the ids of notes that require action.
+Run `lane why` for every file you intend to edit. A directory returns all notes beneath it; `--json` includes full ids, anchors, timestamps, and note text.
 
-Before `lane merge`, run `lane check`. It lists every note that is not fresh, each with the id you need next. Read the note and its current span, then take exactly one action:
+Run `lane check` before landing. For every stale note, take exactly one action:
 
-- `lane note confirm <id>` when the note is still true. This updates that note's own baseline, so commit it — a confirmation you do not commit is one nobody else gets.
-- `lane note replace <id> "<rewrite>"` when the subject is still right but the sentence is wrong. It inherits the predecessor's path and anchor unless you override them.
-- `lane note retire <id>` when the constraint is gone.
-
-At a terminal, `lane note edit <id>` shows the live note and guides a human through
-the same actions, including pin or unpin. Agents and scripts should use the direct
-commands above so they never depend on prompts.
-
-Any unambiguous prefix of an id works, so the ten characters `lane check` and `lane why` print are enough. `lane check --json` carries the same rows plus each note's body and current span, for when you would rather not open the files.
-
-A `?` cannot be resolved because the file has no grammar. An `x` means the symbol is gone; let audit move that note to the attic instead of vouching for it.
-
-Use `lane note restore <id>` to recover a retired note. `lane note pin <id>` protects a live note from eviction; `lane note unpin <id>` removes that protection.
-
-Notes are evicted oldest and stalest first, and only when an anchor is over budget.
-
-## Record what you learned
-
-IMPORTANT: Not every file nor every commit needs a memory and/or Why trailer! Only significant, non-obvious decisions should be recorded.
-
-You are already writing a commit message, so use it:
-
+```bash
+lane note confirm <id>              # the note is still true
+lane note replace <id> "<rewrite>"  # the constraint has changed
+lane note retire <id>               # the constraint no longer applies
 ```
-make verify constant-time
+
+An unambiguous id prefix is enough. Use `lane note edit <id>` for the interactive menu, or the direct commands above in scripts and agent workflows.
+
+Other lifecycle commands:
+
+```bash
+lane note restore <id>  # restore a retired note
+lane note pin <id>      # protect a note from eviction
+lane note unpin <id>    # remove that protection
+```
+
+## Record what must stay true
+
+Not every file or commit needs a note. Record significant, non-obvious constraints — never a summary of the change.
+
+Add a `Why:` trailer when the finding belongs with a commit:
+
+```text
+make verification constant-time
 
 Why: src/auth.rs#fn verify | early return leaks token length
 ```
 
-The form is `Why: <path>[#<anchor>] | <text>`, in the trailer block at the end. The ` | ` and the path are required; omitting `#<anchor>` means the whole file. If nothing is captured, run `lane install hooks` once.
+The form is `Why: <path>[#<anchor>] | <text>`. The path and ` | ` separator are required; omit the anchor to target the whole file. Run `lane install hooks` once if trailers are not being captured.
 
-When the insight does not arrive at a commit boundary:
+Record a finding directly when it does not belong to a commit:
 
 ```bash
 lane note add src/auth.rs -a "fn verify" "must stay constant-time"
 ```
 
-Supplying text is always non-interactive and defaults an omitted anchor to `@file`. Omit text only when you want an interactive anchor selector and one-line note prompt.
-
-## The one rule
-
-**Record what must stay true, not what you did.**
-
-The subject above already says `make verify constant-time`; the note says why that has to hold. A subject describes a change, a note describes a constraint that outlives it. A trailer that mostly restates its own subject is rejected rather than stored.
+Supplying text is non-interactive and defaults to `@file` when `-a` is omitted. Omit the text only when you want the interactive prompt.
 
 ## Anchors
 
-An anchor is what the note is *about*, not where it lives.
+An anchor describes what a note is about:
 
 | anchor | matches |
 |---|---|
-| `fn verify` | a declaration, by keyword and name |
-| `verify` | any declaration of that name |
-| `#script`, `#style` | a top-level block in `.svelte`, `.vue`, html |
-| `## Rate limiting` | a markdown section |
-| `@file` | the whole file — the default |
+| `fn verify` | a declaration by kind and name |
+| `verify` | a uniquely named declaration |
+| `#script`, `#style` | a top-level component block |
+| `## Rate limiting` | a Markdown section |
+| `@file` | the whole file |
 
-When you do not already know a valid anchor, run `lane anchors <path> --json`
-and prefer the canonical value it returns. A unique bare declaration name is
-canonicalized when recorded; an ambiguous one is refused with its choices.
+Run `lane anchors <path> --json` and prefer the canonical anchor it returns. Ambiguous declaration names are refused with their available choices.
 
-One note, one thought. Do not classify it — a note costs one command, on purpose.
+## Rules
 
-## Do not
+- Never edit `.lane/` by hand; use the `lane note` commands.
+- Do not pass `--dirty` unless the lane should inherit the parent checkout's uncommitted work.
+- Keep each note to one constraint.
+- Do not record what a commit changed.
 
-- Rewrite anything under `.lane/` by hand; use the `lane note` lifecycle commands.
-- Pass `--dirty` unless you want the parent tree's uncommitted work in your lane.
-- Write notes about what a commit changed, or notes you have not read the file to confirm.
-
-`lane --help` lists every command; `lane <command> --help` explains one.
+Run `lane --help` for the command list, or `lane <command> --help` for details.

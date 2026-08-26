@@ -157,22 +157,22 @@ const ROOT: &str = "
     $ lane <command> [options]
 
   Commands
-    init         Scaffold memory + merge rules, probe reflink
-    new          Create a CoW lane
-    enter        Change directory into a lane
-    exit         Change directory back to the main worktree
+    init         Initialize lane in a repository
+    new          Create a copy-on-write worktree
+    enter        Enter a lane
+    exit         Return to the main worktree
     ls           List lanes
-    anchors      List addressable anchors in a file
-    note         Manage memory notes
-    install      Install lane's agent integrations
-    uninstall    Remove lane's agent integrations
-    why          Show context for a path
-    check        Staleness report
-    audit        Promote, re-anchor, rank, evict
-    merge        Rebase, audit, fast-forward, remove
-    push         Rebase, audit, push for a pull request
-    prune        Remove lanes whose branch has landed
-    rm           Discard a lane without landing it
+    anchors      List note anchors in a file
+    note         Manage notes
+    install      Install hooks or the agent skill
+    uninstall    Remove hooks or the agent skill
+    why          Show notes for a path
+    check        Find stale notes
+    audit        Reconcile pending and stale notes
+    merge        Land a lane locally
+    push         Push a lane for review
+    prune        Remove landed lanes
+    rm           Discard a lane
     shellenv     Print shell integration
 
   Options
@@ -188,8 +188,8 @@ const ROOT: &str = "
 
 const INIT: &str = "
   Description
-    Scaffold .lane/, the merge rule, and the AGENTS.md protocol, and report
-    whether this filesystem can reflink. Safe to re-run.
+    Create .lane/, add the AGENTS.md protocol, and check reflink support.
+    Safe to re-run.
 
   Usage
     $ lane init
@@ -200,8 +200,8 @@ const INIT: &str = "
 
 const NEW: &str = "
   Description
-    Create a worktree under .lane/trees/ and the branch it is on. Everything
-    git ignores is cloned by reference, so a build cache costs no disk.
+    Create a branch and worktree under .lane/trees/. Ignored files are cloned
+    by reference when the filesystem supports reflinks.
 
   Usage
     $ lane new <name> [options]
@@ -219,8 +219,7 @@ const NEW: &str = "
 
 const LS: &str = "
   Description
-    Every lane's name, whether it has landed, whether it is clean, and how many
-    notes it has yet to land.
+    List each lane's state, worktree status, and pending note count.
 
   Usage
     $ lane ls [--json]
@@ -232,7 +231,7 @@ const LS: &str = "
 
 const ENTER: &str = "
   Description
-    Change directory into a lane. Or `switch` alias.
+    Change directory into a lane. `switch` is an alias.
 
   Usage
     $ lane enter <name>
@@ -258,8 +257,8 @@ const EXIT: &str = "
 
 const ANCHORS: &str = "
   Description
-    List every addressable anchor in source order with its inclusive line range.
-    @file is always present, including for empty and unparsed files.
+    List note anchors in source order with their line ranges. @file is always
+    available, including for empty and unparsed files.
 
   Usage
     $ lane anchors [--json] <PATH>
@@ -274,7 +273,7 @@ const ANCHORS: &str = "
 
 const NOTE: &str = "
   Description
-    Add or interactively edit a note, or apply one lifecycle action directly.
+    Record, update, or retire a memory note.
 
   Usage
     $ lane note <command>
@@ -295,9 +294,7 @@ const NOTE: &str = "
 
 const NOTE_EDIT: &str = "
   Description
-    Show a live note and interactively choose to confirm it, replace its text,
-    retire it, or toggle its eviction protection. Text replacement creates a
-    successor instead of rewriting the existing note.
+    Interactively confirm, replace, retire, pin, or unpin a live note.
 
   Usage
     $ lane note edit <id>
@@ -308,8 +305,8 @@ const NOTE_EDIT: &str = "
 
 const NOTE_ADD: &str = "
   Description
-    Record one finding about a file or anchor. Supplying text never prompts;
-    omit it to select an anchor and enter the note interactively.
+    Record one finding about a file or anchor. Omit text to choose the anchor
+    and enter the note interactively.
 
   Usage
     $ lane note add [options] <path> [text]
@@ -325,8 +322,8 @@ const NOTE_ADD: &str = "
 
 const NOTE_REPLACE: &str = "
   Description
-    Queue a successor for a live note, inheriting its path and anchor unless
-    either is overridden. The predecessor retires when audit promotes it.
+    Replace a live note on the next audit. Path and anchor are inherited unless
+    overridden.
 
   Usage
     $ lane note replace [options] <id> [text]
@@ -342,8 +339,7 @@ const NOTE_REPLACE: &str = "
 
 const NOTE_CONFIRM: &str = "
   Description
-    Confirm that a drifted live note is still true. Any unambiguous id prefix
-    works.
+    Confirm that a drifted note is still true. An unambiguous id prefix works.
 
   Usage
     $ lane note confirm <id>
@@ -398,8 +394,8 @@ const NOTE_UNPIN: &str = "
 
 const INSTALL: &str = "
   Description
-    Install an agent integration. `hooks` captures a commit's `Why:` trailer
-    as a pending note; `skill` teaches an agent the daily loop.
+    Install Git hooks that capture `Why:` trailers, or the lane skill that
+    teaches coding agents the workflow.
 
   Usage
     $ lane install <hooks|skill>
@@ -414,8 +410,7 @@ const INSTALL: &str = "
 
 const UNINSTALL: &str = "
   Description
-    Remove an agent integration. Only lane's own delimited block is spliced
-    out, so the rest of the file survives.
+    Remove lane's Git hooks or agent skill. Unrelated file content is kept.
 
   Usage
     $ lane uninstall <hooks|skill>
@@ -426,9 +421,7 @@ const UNINSTALL: &str = "
 
 const WHY: &str = "
   Description
-    Print what earlier lanes learned about a path, each note with the id you
-    need to re-vouch for it. A directory reports every note beneath it, and no
-    path at all reports the whole store.
+    Show notes for a file or directory. Omit the path to show every note.
 
   Usage
     $ lane why [path] [options]
@@ -446,7 +439,7 @@ const WHY: &str = "
 
 const CHECK: &str = "
   Description
-    Every note that is not fresh, each with the id you need next.
+    List notes whose anchored content has changed.
 
   Usage
     $ lane check [options]
@@ -458,8 +451,8 @@ const CHECK: &str = "
 
 const AUDIT: &str = "
   Description
-    Resolve pending notes against the working tree, re-anchor what moved, and
-    evict past the budget to the attic. `lane merge` runs this for you.
+    Promote pending notes, follow moved anchors, and move notes over budget to
+    the attic. `lane merge` and `lane push` run this automatically.
 
   Usage
     $ lane audit [options]
@@ -474,8 +467,8 @@ const AUDIT: &str = "
 
 const MERGE: &str = "
   Description
-    Land a lane: rebase onto its base, audit memory, fast-forward, and remove
-    the worktree. Landings are locked, so two at once serialize.
+    Rebase onto the lane's base, audit its notes, update the local base branch,
+    and remove the worktree.
 
   Usage
     $ lane merge [name] [options]
@@ -495,8 +488,8 @@ const MERGE: &str = "
 
 const PUSH: &str = "
   Description
-    Rebase a lane onto its base, audit and commit memory, then push it for a
-    pull request. The remote is the branch's upstream or origin.
+    Rebase onto the lane's base, audit and commit its notes, then push the
+    branch for review.
 
   Usage
     $ lane push [name] [options]
@@ -513,9 +506,8 @@ const PUSH: &str = "
 
 const PRUNE: &str = "
   Description
-    Remove every lane whose branch has landed in trunk. A pushed lane sits here
-    until its pull request merges; this is
-    what collects it. Work committed after the merge is never discarded.
+    Remove lanes whose branches have landed. Uncommitted work and commits made
+    after landing are never discarded.
 
   Usage
     $ lane prune [options]
@@ -527,10 +519,8 @@ const PRUNE: &str = "
 
 const RM: &str = "
   Description
-    Discard a lane and everything it still holds: the worktree, the branch,
-    the pending notes, the per-branch state. Anything that would be lost with
-    it stops the removal and is named instead. A squash or rebase merge counts
-    as landed, where `git branch -d` refuses it.
+    Remove a lane and its branch, worktree, pending notes, and local state.
+    Refuse if anything would be lost unless --force is given.
 
   Usage
     $ lane rm <name> [options]

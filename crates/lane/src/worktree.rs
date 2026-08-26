@@ -725,6 +725,9 @@ mod tests {
         run(&["init", "-qb", "main"]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
+        // A developer signing every commit makes gpg a dependency of the test suite, and
+        // under parallel load it fails to allocate and takes the run with it.
+        run(&["config", "commit.gpgsign", "false"]);
         std::fs::write(r.join(".gitignore"), ".lane/trees/\ncache/\n")?;
         run(&["add", ".gitignore"]);
         run(&["commit", "-qm", "base"]);
@@ -749,6 +752,9 @@ mod tests {
         run(&["init", "-qb", "main"]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
+        // A developer signing every commit makes gpg a dependency of the test suite, and
+        // under parallel load it fails to allocate and takes the run with it.
+        run(&["config", "commit.gpgsign", "false"]);
         std::fs::write(r.join(".gitignore"), "build/\n")?;
         run(&["add", "-A"]);
         run(&["commit", "-qm", "base"]);
@@ -817,6 +823,9 @@ mod tests {
         run(&["init", "-qb", "main"]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
+        // A developer signing every commit makes gpg a dependency of the test suite, and
+        // under parallel load it fails to allocate and takes the run with it.
+        run(&["config", "commit.gpgsign", "false"]);
         std::fs::create_dir_all(r.join("src"))?;
         std::fs::write(r.join("src/a.rs"), "one\n")?;
         std::fs::write(r.join(".gitignore"), "ignored.txt\n")?;
@@ -873,6 +882,9 @@ mod tests {
         run(&["init", "-qb", branch]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
+        // A developer signing every commit makes gpg a dependency of the test suite, and
+        // under parallel load it fails to allocate and takes the run with it.
+        run(&["config", "commit.gpgsign", "false"]);
         std::fs::write(root.path().join("file"), "one\n").unwrap();
         run(&["add", "file"]);
         run(&["commit", "-qm", "base"]);

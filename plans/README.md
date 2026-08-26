@@ -11,6 +11,9 @@ recommended sequence: structured reads, then anchor discovery, then the note lif
 Plan 037 was written against `16c1b05` on 2026-08-25, from two lanes in this repository
 that had landed and could not be collected. It revises one row of 033's case table.
 
+Plan 038 was written against `40cca44` on 2026-08-26, after two captured notes were lost
+without any part of the tool misbehaving. It supersedes 018 by removing what 018 relocated.
+
 Each executor: read the plan fully, honour its STOP conditions, record the baseline test
 counts before starting, and update your row when done.
 
@@ -26,7 +29,7 @@ counts before starting, and update your row when done.
 | 007 | Carry what git ignores, and nothing at all without reflink | P2 | M | — | DONE |
 | 016 | Fail `lane done` before it writes, not after | P2 | S | — | DONE |
 | 010 | Clear the three small things that mislead | P3 | S | — | DONE |
-| 018 | Keep the pending queue out of the worktree | P1 | S | — | DONE |
+| 018 | Keep the pending queue out of the worktree | P1 | S | — | SUPERSEDED by 038 |
 | 017 | Teach agents to use lane, via `lane install skill` | P2 | M | 018 | DONE |
 | 019 | Put lanes inside the repository, and make their paths survive a move | P1 | M | — | DONE |
 | 020 | Let `lane init` repair a protocol it wrote earlier | P1 | S | — | DONE |
@@ -47,6 +50,7 @@ counts before starting, and update your row when done.
 | 035 | Make resolvable anchors discoverable and canonical | P2 | L | 034 | DONE |
 | 036 | Make the note lifecycle explicit behind one command family | P2 | L | 035 | DONE |
 | 037 | Prove a landing from the remote, not from a patch | P1 | M | — | DONE |
+| 038 | Write a note where it lives, and delete the queue | P1 | L | — | TODO |
 | 012 | Make the grammar set a build-time choice | P3 | M | 011 | TODO |
 | 003 | Stop rewriting unchanged notes, so a merge cannot destroy one | P1 | M | — | DONE |
 | 009 | Bound the read ledger and make its counts survive a merge | P3 | M | 003 | SUPERSEDED by 013 |

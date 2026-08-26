@@ -1227,6 +1227,30 @@ is "and never claims main lacks work it has" \
 is "the lane survives" "$([ -d .lane/trees/legacy ] && echo yes || echo no)" "yes"
 is "force is the way out" "$("$LANE" rm legacy --force 2>&1 | grep -c 'removed lane legacy')" "1"
 
+
+echo "== 45. prune names a lane that landed with no record =="
+setup
+remote_setup
+"$LANE" new handlanded > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/handlanded"
+( cd "$LP" && echo one > src/one.rs && git add -A && git commit -qm one > /dev/null \
+  && git push -q -u origin handlanded 2>/dev/null )
+git merge -q --squash handlanded > /dev/null && git commit -qm "squash handlanded" > /dev/null
+is "a hand push leaves no landing record" \
+   "$([ -e "$TMP/repo/.git/worktrees/handlanded/lane/landed" ] && echo yes || echo no)" "no"
+is "so prune passes over it while the branch is still on the remote" \
+   "$("$LANE" prune 2>&1 | grep -c 'handlanded')" "0"
+git --git-dir="$TMP/origin.git" branch -q -D handlanded
+"$LANE" prune > /tmp/prune45.out 2>&1
+is "once the remote retires it, prune names it" \
+   "$(grep -c 'skipped handlanded: landed outside lane' /tmp/prune45.out)" "1"
+is "and never calls the repository clean" \
+   "$(grep -c 'no landed lanes' /tmp/prune45.out)" "0"
+is "it points at both ways out" \
+   "$(grep -c 'lane push <name>' /tmp/prune45.out)" "1"
+is "and it does not remove what it cannot account for" \
+   "$([ -d .lane/trees/handlanded ] && echo yes || echo no)" "yes"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

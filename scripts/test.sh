@@ -631,8 +631,10 @@ setup
 "$LANE" install skill > /tmp/skill.out 2>&1
 is "the skill lands in the harness-neutral tree" \
    "$([ -f .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
-is "the other spelling is a link, not a second copy" \
-   "$(readlink .claude/skills)" "../.agents/skills"
+is "the other spelling is our entry, not the directory a loader scans" \
+   "$(readlink .claude/skills/lane)" "../../.agents/skills/lane"
+is "so the directory it scans is real" \
+   "$([ -L .claude/skills ] && echo link || echo dir)" "dir"
 is "and it resolves to the same file" \
    "$([ -f .claude/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
 is "it has frontmatter naming the skill" \
@@ -655,31 +657,38 @@ is "the skill installs into the worktree you ran it from" \
    "$([ -f "$TMP/repo/.lane/trees/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
 "$LANE" rm skillhome --force > /dev/null 2>&1
 
-echo "== 24b. the alias never clobbers a directory that is not ours =="
+echo "== 24b. the alias is one entry, never the directory =="
 setup
 mkdir -p .claude/skills/other && echo "someone else" > .claude/skills/other/SKILL.md
 "$LANE" install skill > /dev/null 2>&1
-is "a real .claude/skills directory is left alone" \
-   "$([ -L .claude/skills ] && echo link || echo dir)" "dir"
-is "the other skill survives" \
+is "a skill already installed there survives" \
    "$(grep -c 'someone else' .claude/skills/other/SKILL.md)" "1"
-is "ours still installs at its own path" \
-   "$([ -f .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
+is "and ours arrives beside it" \
+   "$(readlink .claude/skills/lane)" "../../.agents/skills/lane"
 
 setup
 "$LANE" install skill > /dev/null 2>&1
 "$LANE" uninstall skill > /dev/null 2>&1
 is "uninstall removes the skill" \
    "$([ -e .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "no"
-is "and takes the alias it created with it" \
-   "$([ -L .claude/skills ] && echo yes || echo no)" "no"
+is "and the alias it created" \
+   "$([ -L .claude/skills/lane ] && echo yes || echo no)" "no"
+is "and the directory it emptied" \
+   "$([ -d .claude/skills ] && echo yes || echo no)" "no"
+
+setup
+mkdir -p .claude/skills/other && echo x > .claude/skills/other/SKILL.md
+"$LANE" install skill > /dev/null 2>&1
+"$LANE" uninstall skill > /dev/null 2>&1
+is "but never a directory holding someone else's skill" \
+   "$([ -d .claude/skills/other ] && echo yes || echo no)" "yes"
 
 setup
 "$LANE" install skill > /dev/null 2>&1
-mkdir -p .agents/skills/other && echo x > .agents/skills/other/SKILL.md
+rm .claude/skills/lane && ln -s ../../elsewhere .claude/skills/lane
 "$LANE" uninstall skill > /dev/null 2>&1
-is "the alias stays while another skill sits beside ours" \
-   "$(readlink .claude/skills)" "../.agents/skills"
+is "an alias pointing somewhere else is not ours to remove" \
+   "$(readlink .claude/skills/lane)" "../../elsewhere"
 
 echo "== 24c. init repairs a protocol it wrote earlier =="
 setup

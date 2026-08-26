@@ -1250,6 +1250,47 @@ is "it points at both ways out" \
    "$(grep -c 'lane push <name>' /tmp/prune45.out)" "1"
 is "and it does not remove what it cannot account for" \
    "$([ -d .lane/trees/handlanded ] && echo yes || echo no)" "yes"
+echo "== 46. a push completes even when the rebase cannot =="
+setup
+remote_setup
+"$LANE" install hooks > /dev/null
+printf 'one\ntwo\nthree\n' > src/shared.rs && git add -A && git commit -qm shared
+"$LANE" new stale > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/stale"
+( cd "$LP" && printf 'one\nLANE\nthree\n' > src/shared.rs \
+  && git commit -qam "fix: lane edits two" -m "Why: src/shared.rs#@file | this finding must survive" > /dev/null )
+printf 'one\nTRUNK\nthree\n' > src/shared.rs && git commit -qam "trunk edits two too" > /dev/null
+is "the finding is queued" \
+   "$(cd "$LP" && grep -c 'must survive' "$(git rev-parse --git-path lane/pending.jsonl)")" "1"
+"$LANE" push stale > /tmp/stalepush.out 2>&1
+is "the push succeeds despite the conflict" "$?" "0"
+is "and says where it pushed from" \
+   "$(grep -c 'pushing from where this lane forked' /tmp/stalepush.out)" "1"
+is "the queue is drained, not stranded" \
+   "$(cd "$LP" && [ -e "$(git rev-parse --git-path lane/pending.jsonl)" ] && echo kept || echo drained)" "drained"
+is "the note reached the remote with the branch" \
+   "$(git --git-dir="$TMP/origin.git" ls-tree -r --name-only stale | grep -c '^\.lane/memory/src/shared.rs/')" "1"
+is "the lane is left on its branch, not mid-rebase" \
+   "$(cd "$LP" && git rev-parse --abbrev-ref HEAD)" "stale"
+is "and nothing is conflicted in it" \
+   "$(cd "$LP" && git status --porcelain | grep -c '^UU')" "0"
+
+echo "== 47. a merge still refuses a conflict only you can resolve =="
+setup
+remote_setup
+printf 'one\ntwo\nthree\n' > src/shared.rs && git add -A && git commit -qm shared
+"$LANE" new mustfix > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/mustfix"
+( cd "$LP" && printf 'one\nLANE\nthree\n' > src/shared.rs && git commit -qam "lane edits two" > /dev/null )
+printf 'one\nTRUNK\nthree\n' > src/shared.rs && git commit -qam "trunk edits two too" > /dev/null
+"$LANE" merge mustfix > /tmp/mustfix.out 2>&1
+is "merge refuses" "$?" "1"
+is "and says what to do about it" \
+   "$(grep -c 'resolve it, then run the command again' /tmp/mustfix.out)" "1"
+is "trunk is not advanced" \
+   "$(git log --oneline -1 --format=%s)" "trunk edits two too"
+is "and the lane still exists" \
+   "$([ -d .lane/trees/mustfix ] && echo yes || echo no)" "yes"
 
 echo
 echo "passed: $pass   failed: $fail"

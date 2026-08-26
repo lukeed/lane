@@ -1277,11 +1277,17 @@ enum Preparation {
     Exit(i32),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Landing {
+    Merge,
+    Push,
+}
+
 fn prepare(
     name: Option<&str>,
     base: Option<&str>,
     budget: &Budget,
-    check_blocking: bool,
+    landing: Landing,
     info: &mut dyn Write,
 ) -> Result<Preparation> {
     let root = wt::main_root()?;
@@ -1305,7 +1311,7 @@ fn prepare(
         return Ok(Preparation::Exit(1));
     }
 
-    if check_blocking {
+    if landing == Landing::Merge {
         let blocked = wt::blocking_changes(&root, &base, &branch);
         if !blocked.is_empty() {
             eprintln!(
@@ -1318,8 +1324,24 @@ fn prepare(
 
     let lock = LandingLock::acquire(&base)?;
 
-    git(&["rebase", &base], Some(&lane_path))?;
-    writeln!(info, "rebased onto {base}")?;
+    // Merge must sit on top of its base to fast-forward it, so a conflict there is the
+    // user's to resolve. Push has no such need: landing from the base the lane already has
+    // is a stale pull request, where failing here is a lane stranded mid-rebase with its
+    // memory still unpromoted.
+    if git(&["rebase", &base], Some(&lane_path)).is_ok() {
+        writeln!(info, "rebased onto {base}")?;
+    } else if landing == Landing::Merge {
+        bail!("rebase onto {base} conflicts; resolve it, then run the command again");
+    } else {
+        try_git(&["rebase", "--abort"], Some(&lane_path));
+        // The abort puts the lane back where it forked, so name that, not the base's tip.
+        let forked = try_git(&["merge-base", &base, &branch], Some(&root));
+        let at = try_git(&["rev-parse", "--short", &forked], Some(&root));
+        writeln!(
+            info,
+            "rebase onto {base} conflicts; pushing from where this lane forked ({at})"
+        )?;
+    }
 
     let out = audit::run(&lane_path, &options(&base, budget))?;
     audit::report(&out, info)?;
@@ -1366,7 +1388,7 @@ fn merge(
     budget: &Budget,
 ) -> Result<i32> {
     let info: &mut dyn Write = &mut std::io::stdout();
-    let prepared = match prepare(name, base, budget, true, info)? {
+    let prepared = match prepare(name, base, budget, Landing::Merge, info)? {
         Preparation::Ready(prepared) => prepared,
         Preparation::Exit(code) => return Ok(code),
     };
@@ -1475,7 +1497,7 @@ fn pull_request_number(lane_path: &Path, remote: &str, tip: &str) -> Option<Stri
 }
 
 fn push(name: Option<&str>, base: Option<&str>, budget: &Budget) -> Result<i32> {
-    let prepared = match prepare(name, base, budget, false, &mut std::io::stdout())? {
+    let prepared = match prepare(name, base, budget, Landing::Push, &mut std::io::stdout())? {
         Preparation::Ready(prepared) => prepared,
         Preparation::Exit(code) => return Ok(code),
     };

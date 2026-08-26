@@ -628,14 +628,20 @@ is "a hook that is not lane's is left alone" \
 echo "== 24. lane install skill =="
 setup
 "$LANE" install skill > /tmp/skill.out 2>&1
-is "the skill lands at the conventional path" \
+is "the skill lands in the harness-neutral tree" \
    "$([ -f .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
+is "the other spelling is a link, not a second copy" \
+   "$(readlink .claude/skills)" "../.agents/skills"
+is "and it resolves to the same file" \
+   "$([ -f .claude/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
 is "it has frontmatter naming the skill" \
    "$(grep -c '^name: lane$' .agents/skills/lane/SKILL.md)" "1"
 is "it teaches the Why trailer form" \
    "$(grep -c '^Why: src/auth.rs#fn verify' .agents/skills/lane/SKILL.md)" "1"
 is "it teaches lane note with a path" \
    "$(grep -Fc 'lane note add src/auth.rs -a "fn verify" "must stay constant-time"' .agents/skills/lane/SKILL.md)" "1"
+is "it teaches lane push, which is how a protected trunk is reached" \
+   "$(grep -c 'lane push' .agents/skills/lane/SKILL.md)" "1"
 "$LANE" install skill > /tmp/skill2.out 2>&1
 is "installing twice is a no-op" "$?" "0"
 echo "edited by hand" >> .agents/skills/lane/SKILL.md
@@ -648,7 +654,33 @@ is "the skill installs into the worktree you ran it from" \
    "$([ -f "$TMP/repo/.lane/trees/skillhome/.agents/skills/lane/SKILL.md" ] && echo yes || echo no)" "yes"
 "$LANE" rm skillhome --force > /dev/null 2>&1
 
-echo "== 24. init repairs a protocol it wrote earlier =="
+echo "== 24b. the alias never clobbers a directory that is not ours =="
+setup
+mkdir -p .claude/skills/other && echo "someone else" > .claude/skills/other/SKILL.md
+"$LANE" install skill > /dev/null 2>&1
+is "a real .claude/skills directory is left alone" \
+   "$([ -L .claude/skills ] && echo link || echo dir)" "dir"
+is "the other skill survives" \
+   "$(grep -c 'someone else' .claude/skills/other/SKILL.md)" "1"
+is "ours still installs at its own path" \
+   "$([ -f .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "yes"
+
+setup
+"$LANE" install skill > /dev/null 2>&1
+"$LANE" uninstall skill > /dev/null 2>&1
+is "uninstall removes the skill" \
+   "$([ -e .agents/skills/lane/SKILL.md ] && echo yes || echo no)" "no"
+is "and takes the alias it created with it" \
+   "$([ -L .claude/skills ] && echo yes || echo no)" "no"
+
+setup
+"$LANE" install skill > /dev/null 2>&1
+mkdir -p .agents/skills/other && echo x > .agents/skills/other/SKILL.md
+"$LANE" uninstall skill > /dev/null 2>&1
+is "the alias stays while another skill sits beside ours" \
+   "$(readlink .claude/skills)" "../.agents/skills"
+
+echo "== 24c. init repairs a protocol it wrote earlier =="
 setup
 is "init writes the marked protocol" \
    "$(grep -c 'lane:protocol' AGENTS.md)" "2"

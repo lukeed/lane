@@ -227,7 +227,10 @@ fn write_protocol(agents: &Path) -> Result<i32> {
 }
 
 const SKILL: &str = include_str!("../assets/skill.md");
+const SKILL_HOME: &str = ".agents/skills";
 const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
+const SKILL_ALIAS: &str = ".claude/skills";
+const SKILL_ALIAS_TARGET: &str = "../.agents/skills";
 
 const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
 const POST_COMMIT_END: &str = "# lane: end";
@@ -478,10 +481,12 @@ fn hooks_uninstall() -> Result<i32> {
 }
 
 fn skill_install() -> Result<i32> {
-    let path = git::repo_root()?.join(SKILL_PATH);
+    let root = git::repo_root()?;
+    let path = root.join(SKILL_PATH);
     if path.exists() {
         if std::fs::read_to_string(&path)? == SKILL {
             println!("{} already installed", path.display());
+            link_alias(&root)?;
             return Ok(0);
         }
         eprintln!(
@@ -495,21 +500,50 @@ fn skill_install() -> Result<i32> {
     }
     std::fs::write(&path, SKILL)?;
     println!("installed {}", path.display());
+    link_alias(&root)?;
     Ok(0)
 }
 
+/// Harnesses disagree on where a skill lives, so the other spelling is a link, never a copy:
+/// one file cannot drift from itself. An alias already on disk is left alone, because a real
+/// `.claude/skills` directory holds skills that are not ours.
+fn link_alias(root: &Path) -> Result<()> {
+    let alias = root.join(SKILL_ALIAS);
+    if std::fs::symlink_metadata(&alias).is_ok() {
+        return Ok(());
+    }
+    if let Some(dir) = alias.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::os::unix::fs::symlink(SKILL_ALIAS_TARGET, &alias)?;
+    println!("linked {} -> {SKILL_ALIAS_TARGET}", alias.display());
+    Ok(())
+}
+
 fn skill_uninstall() -> Result<i32> {
-    let path = git::repo_root()?.join(SKILL_PATH);
+    let root = git::repo_root()?;
+    let path = root.join(SKILL_PATH);
     if !path.exists() {
         return Ok(0);
     }
     std::fs::remove_file(&path)?;
     println!("removed {}", path.display());
-    // Only the lane/ dir we just emptied; never .agents/ or .agents/skills/, which may hold others.
-    if let Some(dir) = path.parent() {
-        if std::fs::read_dir(dir)?.next().is_none() {
-            std::fs::remove_dir(dir)?;
-        }
+    // Only the lane/ dir we just emptied; never .agents/skills/, which may hold others.
+    let Some(dir) = path.parent() else {
+        return Ok(0);
+    };
+    if std::fs::read_dir(dir)?.next().is_some() {
+        return Ok(0);
+    }
+    std::fs::remove_dir(dir)?;
+    // The alias is ours only while it points where we put it, and only until something else
+    // installs a skill beside ours.
+    let alias = root.join(SKILL_ALIAS);
+    let ours =
+        std::fs::read_link(&alias).is_ok_and(|target| target == Path::new(SKILL_ALIAS_TARGET));
+    if ours && std::fs::read_dir(root.join(SKILL_HOME))?.next().is_none() {
+        std::fs::remove_file(&alias)?;
+        println!("removed {}", alias.display());
     }
     Ok(0)
 }

@@ -96,13 +96,54 @@ For repositories with protected branches, use `lane push` instead of `lane merge
 
 Run `lane --help` for the command list, or visit the [usage guide](https://lane.lukeed.com/usage) for the full workflow.
 
+## Memory
+
+Memory is ordinary Markdown committed with the repository:
+
+```text
+.lane/
+  memory/<path>/<ulid>-<slug>.md   live notes and confirmed fingerprints
+  attic/<path>/<ulid>-<slug>.md    retired notes, still recoverable
+  trees/<name>/                    local worktrees, never committed
+```
+
+New notes use distinct files, so parallel lanes can annotate the same code without editing the same bytes. `lane note confirm <id>` re-vouches for a drifted note by updating its confirmed fingerprint. Pin and unpin likewise update retention metadata. If two branches make conflicting judgments about the same note, Git makes that disagreement visible.
+
+Notes are written directly to `.lane/memory/` without a baseline. The next audit baselines them after any rebase, follows source-file renames, and moves superseded, unpinned missing, or unpinned over-budget notes to `.lane/attic/` rather than deleting them.
+
+Freshness is computed for the anchored span, not the whole file:
+
+| result | meaning |
+|---|---|
+| `fresh` | the anchored span is unchanged |
+| `content-changed` | its implementation changed |
+| `contract-changed` | its declaration changed |
+| `anchor-missing` | the symbol no longer resolves |
+| `unverifiable` | lane has no grammar for that anchor |
+
+Anchors include declarations such as `fn verify`, Markdown headings such as `## Rate limiting`, component blocks such as `#script`, and `@file` for a whole file. Run `lane anchors src/auth.rs` to list the canonical values and their line ranges. A unique bare name such as `verify` is stored as its canonical value; a name shared by multiple declaration kinds is refused with the available choices. Comments and whitespace are normalized out of fingerprints.
+
+Resolve drift with exactly one of these actions:
+
+```sh
+$ lane note confirm <id>
+$ lane note replace <id> '<replacement>'
+$ lane note retire <id>
+```
+
+Run `lane note edit <id>` for a guided terminal menu over the same actions, including pinning or unpinning the note.
+
+Replacement inherits the live note's path and anchor. Retire and restore move bytes unchanged between live memory and the attic; pin and unpin control eviction. For a new note, supplied text never prompts and defaults to `@file` without `-a`; omit text to use the interactive anchor selector and one-line prompt.
+
 ## Development
 
 ```sh
+$ ./scripts/build.sh        # release-build and install the local lane binary
 $ cargo fmt --all --check
 $ cargo clippy --workspace --all-targets -- -D warnings
 $ cargo test --workspace
-$ ./scripts/test.sh
+$ ./scripts/test.sh         # end to end against temporary Git repositories
+$ ./scripts/check-linux.sh  # run the same gates without reflink support
 ```
 
 ## License

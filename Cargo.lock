@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "lane"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "jiff",
@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "lane-tour"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

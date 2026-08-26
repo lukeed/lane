@@ -1,7 +1,7 @@
 ---
 import '../styles/app.css';
 
-export let repo = 'https://github.com/lukeed/lane';
+export const repo = 'https://github.com/lukeed/lane';
 
 type Props = {
 	/** the <title>, and the left half of the man rule */
@@ -20,7 +20,6 @@ let nav = [
 	['/usage', 'usage'],
 	['/memory', 'memory'],
 	['/commands', 'commands'],
-	[repo, 'github'],
 ];
 
 let built = new Date().toISOString().slice(0, 10);
@@ -49,6 +48,7 @@ let built = new Date().toISOString().slice(0, 10);
 						{nav.map(([href, label]) => (
 							<a href={href} aria-current={label === here ? 'page' : undefined}>{label}</a>
 						))}
+						<a href={repo} target="_blank">GitHub</a>
 					</nav>
 				</div>
 			</div>

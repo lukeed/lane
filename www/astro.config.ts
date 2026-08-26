@@ -1,7 +1,9 @@
 import { defineConfig } from 'astro/config';
 import { satteri } from '@astrojs/markdown-satteri';
+import cloudflare from '@astrojs/cloudflare';
 import { defineHastPlugin } from 'satteri';
 import { split } from './src/scripts/tty';
+
 
 /**
  * A fence gets the same treatment as the transcripts written by hand: the
@@ -50,11 +52,18 @@ function paint(source: string) {
 }
 
 export default defineConfig({
-	build: { inlineStylesheets: 'always' },
+	adapter: cloudflare({
+		prerenderEnvironment: 'node',
+	}),
+	build: {
+		inlineStylesheets: 'always'
+	},
 	markdown: {
 		// The page has two colours and a terminal for a body font; a highlighter
 		// would put six more in and none of them would mean anything here.
 		syntaxHighlight: false,
-		processor: satteri({ hastPlugins: [terminal] }),
+		processor: satteri({
+			hastPlugins: [terminal]
+		}),
 	},
 });

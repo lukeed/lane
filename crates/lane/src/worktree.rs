@@ -474,6 +474,8 @@ pub fn losses(root: &Path, path: &Path, branch: &str, trunk: &str) -> Vec<String
         let changed = try_git(&["status", "--porcelain"], Some(path))
             .lines()
             .filter(|line| !line.trim().is_empty())
+            // Notes have their own line below; counting them here names one file twice.
+            .filter(|line| !line.contains(".lane/memory"))
             .count();
         if changed > 0 {
             out.push(format!("{changed} uncommitted change(s)"));

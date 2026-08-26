@@ -59,7 +59,7 @@ fn eviction_key(
 
 pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
     store::fold_legacy_log(root)?;
-    let created = store::promote_pending(root)?;
+    let created = store::fold_pending(root)?;
     let touched: HashSet<String> = if opts.base.is_empty() {
         HashSet::new()
     } else {
@@ -96,8 +96,12 @@ pub fn run(root: &Path, opts: &Options) -> Result<Outcome> {
         if res.rebaselined {
             rebaselined += 1;
         }
-        // A normalization change adopts a new baseline without claiming a person vouched.
+        // A first fingerprint, or a normalization change, adopts a baseline without claiming
+        // a person vouched. The span goes with it: nothing else records where a note sits.
         if res.adopted {
+            if let Some(span) = res.span {
+                note.meta.lines = format!("{}-{}", span.start, span.end);
+            }
             store::rebaseline(note, &res.sig, &res.body_hash, &res.raw_hash)?;
         }
         // Seeing drift is not enough to vouch for the new fingerprint, and there is

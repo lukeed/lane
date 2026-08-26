@@ -308,90 +308,84 @@ pub struct PendingNote {
     pub supersedes: String,
 }
 
-/// Pending notes are resolved and fingerprinted here, never at write time, so a rebase
-/// can never leave a note anchored to a commit it rewrote.
-pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
-    let pending = pending_path(root);
-    if !pending.exists() {
-        return Ok(Vec::new());
+/// Record a finding as a note, in the tree, where the note lives.
+///
+/// No fingerprints. The anchor is baselined by the next audit, after any rebase has moved
+/// what it points at; taking one here would measure content a rebase then rewrites. Returns
+/// `None` when a live note already says exactly this.
+pub fn write_note(root: &Path, rec: &PendingNote) -> Result<Option<Note>> {
+    let key = (
+        rec.path.clone(),
+        rec.anchor.clone(),
+        rec.text.trim().to_string(),
+        rec.supersedes.clone(),
+    );
+    let live = load_notes(root, None);
+    let known = live.iter().any(|note| {
+        (
+            note.path(),
+            note.meta.anchor.clone(),
+            note.body.trim().to_string(),
+            note.meta.supersedes.clone(),
+        ) == key
+    });
+    if known {
+        return Ok(None);
     }
-    let text = std::fs::read_to_string(&pending)?;
-    let mut created = Vec::new();
-    let mut seen: HashSet<(String, String, String, String)> = load_notes(root, None)
-        .into_iter()
-        .map(|note| {
-            (
-                note.path(),
-                note.meta.anchor,
-                note.body.trim().to_string(),
-                note.meta.supersedes,
-            )
-        })
-        .collect();
 
+    let meta = Meta {
+        id: ulid(),
+        anchor: rec.anchor.clone(),
+        created: rec.at.clone(),
+        norm: crate::syntax::NORM_VERSION.into(),
+        supersedes: rec.supersedes.clone(),
+        ..Default::default()
+    };
+    let file = note_dir(root, &rec.path).join(format!("{}-{}.md", meta.id, slug(&rec.text, 28)));
+    let mut note = Note::new(meta, rec.text.clone());
+
+    let mut predecessor = if rec.supersedes.is_empty() {
+        None
+    } else {
+        live.into_iter().find(|old| old.meta.id == rec.supersedes)
+    };
+    // Refusing here would lose the finding over a link. Keep the note, drop the link.
+    if predecessor.is_none() && !note.meta.supersedes.is_empty() {
+        eprintln!(
+            "warning: note supersedes {}, which is not live; keeping it as a new note",
+            note.meta.supersedes
+        );
+        note.meta.supersedes.clear();
+    }
+
+    note.write(&file)?;
+    note.file = Some(file);
+    if let Some(old) = predecessor.as_mut() {
+        supersede(root, old, &note)?;
+    }
+    Ok(Some(note))
+}
+
+/// Fold a queue written before notes were written where they live. Idempotent, and a no-op
+/// for the normal case of no queue at all. The file goes with the last record.
+pub fn fold_pending(root: &Path) -> Result<Vec<Note>> {
+    let pending = pending_path(root);
+    let Ok(text) = std::fs::read_to_string(&pending) else {
+        return Ok(Vec::new());
+    };
+    let mut created = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let rec: PendingNote = match serde_json::from_str(line) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("warning: skipping unreadable pending note: {e}");
+            Ok(rec) => rec,
+            Err(err) => {
+                eprintln!("warning: skipping unreadable pending note: {err}");
                 continue;
             }
         };
-        let key = (
-            rec.path.clone(),
-            rec.anchor.clone(),
-            rec.text.trim().to_string(),
-            rec.supersedes.clone(),
-        );
-        if seen.contains(&key) {
-            continue;
+        if let Some(note) = write_note(root, &rec)? {
+            created.push(note);
         }
-        let mut meta = Meta {
-            id: ulid(),
-            anchor: rec.anchor.clone(),
-            created: rec.at,
-            norm: crate::syntax::NORM_VERSION.into(),
-            supersedes: rec.supersedes.clone(),
-            ..Default::default()
-        };
-        if let Ok(body_text) = std::fs::read_to_string(root.join(&rec.path)) {
-            let src = Source::new(&body_text, &rec.path);
-            if let Some(span) = src.resolve(&rec.anchor) {
-                let (sig, body_hash, raw_hash) = src.hashes(span, &rec.anchor);
-                meta.sig = sig;
-                meta.body_hash = body_hash;
-                meta.raw_hash = raw_hash;
-                meta.lines = format!("{}-{}", span.start, span.end);
-            }
-        }
-        let file =
-            note_dir(root, &rec.path).join(format!("{}-{}.md", meta.id, slug(&rec.text, 28)));
-        let mut note = Note::new(meta, rec.text);
-        let mut predecessor = if rec.supersedes.is_empty() {
-            None
-        } else {
-            load_notes(root, None)
-                .into_iter()
-                .find(|old| old.meta.id == rec.supersedes)
-        };
-        // Failing here would strand every note still queued behind this one. The finding is
-        // worth more than the link, so keep it and drop only what cannot be honoured.
-        if predecessor.is_none() && !note.meta.supersedes.is_empty() {
-            eprintln!(
-                "warning: queued note supersedes {}, which is not live; keeping it as a new note",
-                note.meta.supersedes
-            );
-            note.meta.supersedes.clear();
-        }
-        note.write(&file)?;
-        note.file = Some(file);
-        if let Some(old) = predecessor.as_mut() {
-            supersede(root, old, &note)?;
-        }
-        created.push(note);
-        seen.insert(key);
     }
-
     std::fs::remove_file(&pending)?;
     Ok(created)
 }
@@ -580,6 +574,7 @@ impl Checker {
         let (sig, body_hash, raw_hash) = src.hashes(span, &anchor);
 
         // Nothing to compare against yet, so this is a first fingerprint, not a change.
+        // Adopted, because a note written before its baseline exists keeps none otherwise.
         if base.sig.is_empty() && base.body_hash.is_empty() {
             return Check {
                 tier: FRESH,
@@ -593,7 +588,7 @@ impl Checker {
                 ),
                 span: Some(span),
                 rebaselined: false,
-                adopted: false,
+                adopted: true,
             };
         }
 
@@ -695,29 +690,21 @@ pub fn append_pending(root: &Path, rec: &PendingNote) -> Result<()> {
     Ok(())
 }
 
-pub fn pending_supersedes(root: &Path, id: &str) -> Result<bool> {
-    let pending = pending_path(root);
-    if !pending.exists() {
-        return Ok(false);
-    }
-    let text = std::fs::read_to_string(pending)?;
-    let mut found = false;
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let rec: PendingNote = match serde_json::from_str(line) {
-            Ok(rec) => rec,
-            Err(err) => {
-                eprintln!("warning: skipping unreadable pending note: {err}");
-                continue;
-            }
-        };
-        if rec.supersedes == id {
-            found = true;
-        }
-    }
-    Ok(found)
+/// Notes this worktree holds and nobody else does: uncommitted, whether new or re-vouched.
+pub fn pending_count(worktree: &Path) -> usize {
+    let dir = format!("{LANE_DIR}/{NOTES}");
+    crate::git::try_git(
+        &["status", "--porcelain", "--untracked-files=all", "--", &dir],
+        Some(worktree),
+    )
+    .lines()
+    .filter(|line| line.trim_end().ends_with(".md"))
+    .count()
+        + fold_count(worktree)
 }
 
-pub fn pending_count(worktree: &Path) -> usize {
+/// A queue not yet folded still holds findings, and they are this worktree's alone.
+fn fold_count(worktree: &Path) -> usize {
     std::fs::read_to_string(pending_path(worktree))
         .map(|t| t.lines().filter(|l| !l.trim().is_empty()).count())
         .unwrap_or(0)
@@ -948,28 +935,6 @@ mod tests {
         assert!(set_pinned(&mut note, true).is_err());
         assert!(set_pinned(&mut note, false).is_err());
         assert_eq!(std::fs::read_to_string(file).unwrap(), damaged);
-    }
-
-    #[test]
-    fn a_pending_replacement_is_detected_without_rewriting_the_queue() {
-        let root = tempfile::tempdir().unwrap();
-        append_pending(
-            root.path(),
-            &PendingNote {
-                text: "replacement".into(),
-                path: "src/a.rs".into(),
-                anchor: "@file".into(),
-                at: "2026-08-24T00:00:00Z".into(),
-                supersedes: "01M0A".into(),
-            },
-        )
-        .unwrap();
-        let path = pending_path(root.path());
-        let before = std::fs::read(&path).unwrap();
-
-        assert!(pending_supersedes(root.path(), "01M0A").unwrap());
-        assert!(!pending_supersedes(root.path(), "01M0B").unwrap());
-        assert_eq!(std::fs::read(path).unwrap(), before);
     }
 
     #[test]
@@ -1227,15 +1192,11 @@ mod tests {
             supersedes: String::new(),
         };
 
-        append_pending(root.path(), &pending).unwrap();
+        assert!(write_note(root.path(), &pending).unwrap().is_some());
         assert!(
-            !std::fs::read_to_string(pending_path(root.path()))
-                .unwrap()
-                .contains("\"branch\"")
+            write_note(root.path(), &pending).unwrap().is_none(),
+            "the same finding twice is one note"
         );
-        assert_eq!(promote_pending(root.path()).unwrap().len(), 1);
-        append_pending(root.path(), &pending).unwrap();
-        assert!(promote_pending(root.path()).unwrap().is_empty());
         assert_eq!(load_notes(root.path(), Some("src/auth.rs")).len(), 1);
     }
 
@@ -1243,7 +1204,7 @@ mod tests {
     fn pending_supersede_links_and_attics_its_predecessor() {
         let root = tempfile::tempdir().unwrap();
         let old = fixture(root.path(), "pub fn v() {}\n");
-        append_pending(
+        let created = write_note(
             root.path(),
             &PendingNote {
                 text: "replacement note".into(),
@@ -1255,17 +1216,16 @@ mod tests {
         )
         .unwrap();
 
-        let created = promote_pending(root.path()).unwrap();
-
-        assert_eq!(created.len(), 1);
-        assert_eq!(created[0].meta.supersedes, old.meta.id);
+        let created = created.expect("the replacement is written");
+        assert_eq!(created.meta.supersedes, old.meta.id);
         assert_eq!(load_notes(root.path(), Some("src/a.rs")).len(), 1);
         assert!(
             attic_dir(root.path(), "src/a.rs")
                 .join("01M0A-a-note.md")
                 .is_file()
         );
-        // The replacement inherits nothing; its own creation fingerprint is the baseline.
-        assert!(created[0].meta.vouched.is_empty());
+        // The replacement inherits nothing, and carries no baseline until an audit takes one.
+        assert!(created.meta.vouched.is_empty());
+        assert!(created.meta.sig.is_empty());
     }
 }

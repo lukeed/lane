@@ -229,10 +229,9 @@ fn write_protocol(agents: &Path) -> Result<i32> {
 }
 
 const SKILL: &str = include_str!("../assets/skill.md");
-const SKILL_HOME: &str = ".agents/skills";
 const SKILL_PATH: &str = ".agents/skills/lane/SKILL.md";
-const SKILL_ALIAS: &str = ".claude/skills";
-const SKILL_ALIAS_TARGET: &str = "../.agents/skills";
+const SKILL_ALIAS: &str = ".claude/skills/lane";
+const SKILL_ALIAS_TARGET: &str = "../../.agents/skills/lane";
 
 const POST_COMMIT_MARKER: &str = "# lane: capture Why trailers";
 const POST_COMMIT_END: &str = "# lane: end";
@@ -507,8 +506,11 @@ fn skill_install() -> Result<i32> {
 }
 
 /// Harnesses disagree on where a skill lives, so the other spelling is a link, never a copy:
-/// one file cannot drift from itself. An alias already on disk is left alone, because a real
-/// `.claude/skills` directory holds skills that are not ours.
+/// one file cannot drift from itself.
+///
+/// The link is our entry inside `.claude/skills`, never that directory: a loader lists what a
+/// directory holds, and only opts in to descending through a link. Linking the directory it
+/// scans is the one shape that can go unread, which is the failure this exists to prevent.
 fn link_alias(root: &Path) -> Result<()> {
     let alias = root.join(SKILL_ALIAS);
     if std::fs::symlink_metadata(&alias).is_ok() {
@@ -538,14 +540,18 @@ fn skill_uninstall() -> Result<i32> {
         return Ok(0);
     }
     std::fs::remove_dir(dir)?;
-    // The alias is ours only while it points where we put it, and only until something else
-    // installs a skill beside ours.
+    // The alias is ours only while it points where we put it. Its directory is not: other
+    // skills live there, so it goes only when we emptied it.
     let alias = root.join(SKILL_ALIAS);
-    let ours =
-        std::fs::read_link(&alias).is_ok_and(|target| target == Path::new(SKILL_ALIAS_TARGET));
-    if ours && std::fs::read_dir(root.join(SKILL_HOME))?.next().is_none() {
-        std::fs::remove_file(&alias)?;
-        println!("removed {}", alias.display());
+    if !std::fs::read_link(&alias).is_ok_and(|target| target == Path::new(SKILL_ALIAS_TARGET)) {
+        return Ok(0);
+    }
+    std::fs::remove_file(&alias)?;
+    println!("removed {}", alias.display());
+    if let Some(dir) = alias.parent() {
+        if std::fs::read_dir(dir)?.next().is_none() {
+            std::fs::remove_dir(dir)?;
+        }
     }
     Ok(0)
 }

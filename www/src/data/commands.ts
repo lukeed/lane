@@ -154,7 +154,7 @@ export let commands: Command[] = [
 		options: [
 			{ flag: "--json", arg: null, about: "print each note as JSON, with current spans on non-fresh work items." },
 		],
-		example: "$ lane check\nfresh              7\ncontent-changed         1\ncontract-changed  0\nanchor-missing     0\nunverifiable       0\n\n[content-changed]\n~ 01M0B4KQTX  src/auth.rs#fn verify",
+		example: "$ lane check\nfresh              7\ncontent-changed    1\ncontract-changed   0\nanchor-missing     0\nunverifiable       0\n\n[content-changed]\n~ 01M0B4KQTX  src/auth.rs#fn verify",
 	},
 	{
 		name: "audit",

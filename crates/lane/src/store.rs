@@ -370,13 +370,19 @@ pub fn promote_pending(root: &Path) -> Result<Vec<Note>> {
         let mut predecessor = if rec.supersedes.is_empty() {
             None
         } else {
-            Some(
-                load_notes(root, None)
-                    .into_iter()
-                    .find(|old| old.meta.id == rec.supersedes)
-                    .ok_or_else(|| anyhow::anyhow!("live note {} not found", rec.supersedes))?,
-            )
+            load_notes(root, None)
+                .into_iter()
+                .find(|old| old.meta.id == rec.supersedes)
         };
+        // Failing here would strand every note still queued behind this one. The finding is
+        // worth more than the link, so keep it and drop only what cannot be honoured.
+        if predecessor.is_none() && !note.meta.supersedes.is_empty() {
+            eprintln!(
+                "warning: queued note supersedes {}, which is not live; keeping it as a new note",
+                note.meta.supersedes
+            );
+            note.meta.supersedes.clear();
+        }
         note.write(&file)?;
         note.file = Some(file);
         if let Some(old) = predecessor.as_mut() {

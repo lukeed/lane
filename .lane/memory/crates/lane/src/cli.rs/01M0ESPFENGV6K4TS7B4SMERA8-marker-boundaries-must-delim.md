@@ -4,9 +4,9 @@ anchor: PROTOCOL
 created: 2026-08-20T05:09:06Z
 norm: '1'
 sig: ebf04d00814343a4
-body_hash: 99408de2e8eb5879
-raw_hash: ef36aa605c1ad1bb
-vouched: 2026-08-24T21:39:42Z
+body_hash: 88b5e204c08501c1
+raw_hash: 2879438d59e6d950
+vouched: 2026-08-26T03:30:34Z
 lines: 214-220
 ---
 

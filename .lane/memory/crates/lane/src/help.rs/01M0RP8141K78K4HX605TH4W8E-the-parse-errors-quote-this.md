@@ -4,9 +4,9 @@ anchor: fn usage
 created: 2026-08-24T01:30:25Z
 norm: '1'
 sig: b118a8f064d37898
-body_hash: ec4c4b19b5a2ad6c
-raw_hash: facc5de8ba934f74
-vouched: 2026-08-24T21:39:42Z
+body_hash: dcfcd87e505f97c5
+raw_hash: 99a34fed5993bed6
+vouched: 2026-08-26T03:30:35Z
 lines: 55-74
 ---
 

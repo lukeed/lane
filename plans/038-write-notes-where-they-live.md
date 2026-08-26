@@ -43,7 +43,13 @@ The queue was moved out of the worktree to escape a problem it only had because 
 .lane/memory/<path>/<ulid>-<slug>.md      written when the trailer is captured
 ```
 
-Everything the queue deferred, the note already carries: the anchor resolves at write time and fills `sig`, `body_hash`, `raw_hash` and `lines`; an anchor that does not resolve leaves them empty, exactly as a promoted note does today, and `audit` tiers it `unverifiable`. `audit` keeps re-anchoring at landing, which is where a rebase's movement is accounted for.
+The note is written with **no baseline**. That is the one thing the queue was genuinely protecting, and `store.rs` said so outright:
+
+> Pending notes are resolved and fingerprinted here, never at write time, so a rebase can never leave a note anchored to a commit it rewrote.
+
+Fingerprinting at capture would baseline every note against content a later rebase rewrites, and land it showing drift that never happened. So capture writes the finding and nothing else; `audit` takes the first baseline, after any rebase has moved what the anchor points at.
+
+The checker already had the branch for this — *"Nothing to compare against yet, so this is a first fingerprint, not a change"* — but returned `adopted: false`, so `audit` computed the fingerprints and discarded them. It now adopts, which is what a test in the same file already asserted and nothing wired.
 
 Three things follow, and they are the point:
 
@@ -61,7 +67,9 @@ Out: `syntax.rs`, `cow.rs`, `note.rs`'s file format — a note's shape does not 
 
 ### Step 1: Capture writes the note
 
-`capture.rs:180` calls `store::append_pending`. It calls a writer instead, which does what `promote_pending` does per record: resolve the anchor against the file, fill the fingerprints, choose `note_dir(root, path)/<ulid>-<slug>.md`, and write.
+`capture.rs:180` calls `store::append_pending`. It calls `store::write_note` instead: choose `note_dir(root, path)/<ulid>-<slug>.md` and write the finding, with no fingerprints. The anchor is still qualified at capture, because disambiguating `fn verify` needs the file the author was looking at; only the baseline waits.
+
+The checker's empty-baseline branch returns `adopted: true`, and `audit` persists that first baseline along with the span, since nothing else records where a note sits.
 
 Dedup moves with it. `promote_pending` skips a record matching a live note on `(path, anchor, text, supersedes)`; the writer must make the same check before writing, or a re-run of `lane capture HEAD` doubles the note.
 
@@ -69,9 +77,11 @@ Failure stays non-fatal. Capture runs inside `post-commit`, and a commit must no
 
 ### Step 2: `supersedes` is applied when it is written
 
-`lane note replace` queues a `supersedes` id today, so the predecessor only reaches the attic at `audit`. Written directly, the retirement happens at write time.
+`lane note replace` queues a `supersedes` id today, so the predecessor only reaches the attic at `audit`. Written directly, the retirement happens at write time, closing the window between asking and happening.
 
-Carry over the tolerance from `fix(audit): keep the queue`: a `supersedes` target that is no longer live must not fail the write. Warn, clear the link, keep the finding — the same rule, moved.
+Two guards lived in that window and go with it: `note {id} already has a pending replacement` and `note {id} has a pending replacement and cannot be retired`. Both policed a race that no longer exists — `replace` resolves live notes only, so a second replacement of an already-retired note is refused for the plain reason that it is not live. `store::pending_supersedes` goes with them.
+
+Keep the tolerance for a `supersedes` target that is not live: warn, clear the link, keep the finding. After this change it is reachable only from Step 4's fold, which is exactly where a target can have vanished.
 
 ### Step 3: The count becomes what is uncommitted
 
@@ -95,15 +105,16 @@ This is the only code that may still name `PENDING`.
 
 ### Step 6: The pre-push hook loses its subject
 
-`PRE_PUSH_BLOCK` warns that a hand push leaves the queue behind. With no queue it has nothing to say: a note is in the tree, and a push carries whatever was committed. Remove the hook and its spec, and take `pre-push` out of `hook_specs`.
+**Only if #32 lands first.** This branch forked before it, so there is no `pre-push` hook here to remove.
 
-If that hook has already landed, `lane install hooks` must also remove the stale block from an existing `pre-push` file rather than leave it warning about a file that no longer exists.
+`PRE_PUSH_BLOCK` warns that a hand push leaves the queue behind. With no queue it has nothing to say: a note is in the tree, and a push carries whatever was committed. Remove the hook and its spec, take `pre-push` out of `hook_specs`, and make `lane install hooks` strip the stale block from an existing `pre-push` file rather than leave it warning about a file that no longer exists.
 
 ## CASE TABLE — handle and test every row
 
 ```
-W1.  Trailer, anchor resolves            → note written with sig, body_hash, raw_hash, lines
-W2.  Trailer, anchor does not resolve    → note written, fingerprints empty; audit tiers it
+W1.  Trailer, anchor resolves            → note written with the qualified anchor and NO
+                                           baseline; the next audit takes the first one
+W2.  Trailer, anchor does not resolve    → note written anyway; audit tiers it
                                            `unverifiable`. NOT dropped.
 W3.  Trailer naming a path that does not
      exist                               → same as W2, and the commit still succeeds

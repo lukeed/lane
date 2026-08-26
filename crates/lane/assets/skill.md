@@ -22,7 +22,7 @@ lane push              # push the lane for a pull request
 
 `lane merge` rebases, audits memory, updates local trunk, and removes the lane. Commit or stash tracked changes first.
 
-When trunk is protected, use `lane push` instead. After the pull request merges, run `lane prune`. Use `lane ls --json` for machine-readable lane state.
+The push workflow is for protected trunks. After the pull request merges, run `lane prune`. Use `lane ls --json` for machine-readable lane state.
 
 ## Read before editing
 

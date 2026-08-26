@@ -17,7 +17,7 @@ something behind when it closes.
 ```bash
 $ lane new fix-login        # branch + worktree, the build cache by reference
 # work, commit as usual
-$ lane merge                # rebase, distill memory, fast-forward, delete
+$ lane merge                # rebase, audit memory, fast-forward, delete
 ```
 
 ---
@@ -25,10 +25,10 @@ $ lane merge                # rebase, distill memory, fast-forward, delete
 ## Setup
 
 ```bash
-$ cargo install --path crates/lane
+$ curl -fsSL https://lane.lukeed.com | sh
 $ eval "$(lane shellenv)"   # add to .zshrc: makes `lane new` and `lane enter` cd
 $ cd yourproject && lane init
-$ git add .lane .gitattributes AGENTS.md
+$ git add .lane AGENTS.md
 $ git commit -m "lane: context memory"
 ```
 
@@ -80,9 +80,7 @@ $ git config --add lane.exclude packages/legacy/node_modules
 
 ### Leave notes while you work
 
-There are two ways in. They write to the same queue and the next audit promotes
-both, so a note made either way is the same note afterwards. Use whichever
-suits the moment, or both.
+There are two ways in. Both write a note directly to `.lane/memory/`, where it is readable and visible to Git immediately. The next audit records its first baseline after any rebase. Use whichever suits the moment, or both.
 
 **Option one — a command, whenever you notice something.**
 
@@ -177,7 +175,7 @@ whether a note's anchored code has drifted and get the id needed to resolve it.
 ```bash
 $ lane merge
   rebased onto main
-  memory: +2 new; checked 8: 7 fresh, 1 content-changed, 0 contract-changed, 0 missing
+  memory: +0 new; checked 8: 7 fresh, 1 content-changed, 0 contract-changed, 0 missing
   committed memory update
   fast-forwarded main
   removed lane fix-login
@@ -221,6 +219,7 @@ normalized so comments and whitespace don't count:
 | `content-changed` | implementation moved | flagged until you resolve it |
 | `contract-changed` | the described thing changed shape | flagged until you resolve it |
 | `anchor-missing` | symbol gone | evicted to `.lane/attic/` |
+| `unverifiable` | no grammar for this anchor | reported for manual review |
 
 A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
 detection and moves the notes with it. Eviction means the file or the symbol is
@@ -268,9 +267,7 @@ Any unambiguous prefix of an id works, so the ten characters above are enough;
 an ambiguous one is refused and names what it matched. Add `--json` for the same
 rows plus each note's body and current span, which is what an agent reads.
 
-Replace writes a new file and moves the predecessor to the attic when audit
-promotes it. A `?` has no
-grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves
+Replace writes a new file and moves the predecessor to the attic immediately. A `?` has no grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves
 the note to the attic instead of vouching for it.
 
 ### Budget
@@ -305,8 +302,9 @@ you keep both:
 ## Context memory
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.
 - Record non-obvious findings with `lane note add <path> -a <anchor> "..."`.
-- Do not edit `.lane/` by hand; `lane merge` manages it.
-- Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.
+- Do not edit `.lane/` by hand; landing manages it.
+- Land with `lane merge`, or `lane push` where trunk is protected, then `lane prune` once it merges.
+- Detailed workflow lives in `.agents/skills/lane/SKILL.md`; run `lane install skill` if it is absent.
 ```
 
 That stub is always in context and stays short. `lane install skill` writes the
@@ -360,8 +358,8 @@ The short version. See [commands](/commands) for full information.
 | `lane anchors <file> [--json]` | list canonical anchors and line ranges |
 | `lane note add <file> [-a <anchor>] [<text>]` | record a finding; omit text for interaction |
 | `lane note edit <id>` | interactively confirm, replace, retire, pin, or unpin a live note |
-| `lane note replace <id> [<text>]` | queue a successor, inheriting path and anchor |
-| `lane note confirm <id>` | re-vouch for a resolved live note |
+| `lane note replace <id> [<text>]` | replace a live note, inheriting path and anchor |
+| `lane note confirm <id>` | re-vouch for a drifted live note |
 | `lane note retire <id>` | move a live note to the attic |
 | `lane note restore <id>` | restore a retired note |
 | `lane note pin <id>` | protect a live note from eviction |
@@ -387,7 +385,6 @@ yourproject/
     trees/
       fix-login/                  the lane worktree
   AGENTS.md
-  .git/lane/pending.jsonl         notes not yet promoted, per worktree
 ```
 
 Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`,
@@ -398,9 +395,8 @@ so nothing is committed.
 **`trunk has diverged`** — someone else pushed. `git pull --rebase` on trunk,
 then `lane merge` again.
 
-**Rebase conflict** — resolve in the lane, `git rebase --continue`, rerun
-`lane merge`. Pending notes are untouched; they're only resolved after the
-rebase succeeds.
+**Rebase conflict** — resolve in the lane, `git rebase --continue`, then rerun
+`lane merge`. New notes receive their first baseline only after the rebase succeeds.
 
 **`lane has uncommitted changes`** — commit or stash first; the rebase refuses
 tracked changes either way. Untracked files are fine and need no stashing.
@@ -412,4 +408,4 @@ worktree; commit or stash there first. Nothing in the lane was touched.
 holds the memory lock. It exits immediately rather than waiting; rerun the
 command after that operation finishes.
 
-**A note is simply wrong** — delete the file and commit. Nothing else references it.
+**A note is simply wrong** — run `lane note retire <id>` and commit the move to the attic.

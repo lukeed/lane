@@ -5,7 +5,8 @@ description: Use lane in this repository — create isolated worktrees, read exi
 
 # lane
 
-This repository keeps durable context as Markdown under `.lane/`. Read it before editing a file, then record only the non-obvious constraints another agent would otherwise have to rediscover.
+This repository keeps durable context / memories as Markdown under `.lane/`. 
+You must read before editing a file, via `lane why <path>`, then record only the non-obvious constraints or decisions another agent would otherwise have to rediscover.
 
 ## Workflow
 
@@ -52,9 +53,12 @@ lane note unpin <id>    # remove that protection
 
 ## Record what must stay true
 
-Not every file or commit needs a note. Record significant, non-obvious constraints — never a summary of the change.
+Not every file or commit needs a note. Only record significant, non-obvious constraints — never a summary of the change.
 
-Add a `Why:` trailer when the finding belongs with a commit:
+### Commit Message Trailer(s)
+
+If `lane install hooks` has been run, then `git` hooks are active and you can add notes while writing commit messages.
+Include a `Why:` trailer when the finding belongs with a commit:
 
 ```text
 make verification constant-time
@@ -62,9 +66,13 @@ make verification constant-time
 Why: src/auth.rs#fn verify | early return leaks token length
 ```
 
-The form is `Why: <path>[#<anchor>] | <text>`. The path and ` | ` separator are required; omit the anchor to target the whole file. Run `lane install hooks` once if trailers are not being captured.
+The form is `Why: <path>[#<anchor>] | <text>`. The path and ` | ` separator are required; omit the anchor to target the whole file. 
 
-Record a finding directly when it does not belong to a commit:
+Run `lane install hooks` once if trailers are not being captured.
+
+### Manually
+
+Record a finding directly when it does not belong to a commit, or if `lane install hooks` has not been run:
 
 ```bash
 lane note add src/auth.rs -a "fn verify" "must stay constant-time"

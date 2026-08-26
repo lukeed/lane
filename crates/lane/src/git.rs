@@ -304,6 +304,8 @@ mod tests {
             &["init", "-qb", "main"][..],
             &["config", "user.email", "t@t.t"],
             &["config", "user.name", "t"],
+            // Signing makes gpg a dependency of the suite; under load it fails to allocate.
+            &["config", "commit.gpgsign", "false"],
         ] {
             git(args, Some(temp.path())).unwrap();
         }

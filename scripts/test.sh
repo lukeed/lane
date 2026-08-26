@@ -22,6 +22,7 @@ sedi() { local expr="$1"; shift; for f in "$@"; do sed "$expr" "$f" > "$f.sedi" 
 setup() {
   cd "$TMP" && rm -rf repo && mkdir repo && cd repo
   git init -qb main . && git config user.email t@t.t && git config user.name t
+  git config commit.gpgsign false
   mkdir -p src node_modules/pkg
   cat > src/auth.rs <<'EOF'
 pub fn verify(token: &str) -> bool {
@@ -1114,6 +1115,7 @@ is "a re-push carries a moved base" "$(git -C "$LP" merge-base --is-ancestor mai
 git clone -q --branch feat "$TMP/origin.git" "$TMP/other"
 git -C "$TMP/other" config user.email t@t.t
 git -C "$TMP/other" config user.name t
+git -C "$TMP/other" config commit.gpgsign false
 echo "remote" > "$TMP/other/remote.rs"
 git -C "$TMP/other" add -A && git -C "$TMP/other" commit -qm remote && git -C "$TMP/other" push -q
 ( cd "$LP" && echo "local" > src/local.rs && git add -A && git commit -qm local && "$LANE" push > /tmp/lease.out 2>&1 )

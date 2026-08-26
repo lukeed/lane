@@ -4,8 +4,9 @@ anchor: fn losses
 created: 2026-08-25T21:36:22Z
 norm: '1'
 sig: 22381cb7e3c03d76
-body_hash: c9b9b5b075fd3799
-raw_hash: cf627fb8f2fc51f0
+body_hash: 93a33c7140e95f68
+raw_hash: aa73f8adbe9a7c08
+vouched: 2026-08-26T22:48:36Z
 lines: 470-522
 ---
 

@@ -2,6 +2,9 @@
 import Page, { repo } from '../layouts/Page.astro';
 import Workflow from '../components/Workflow.astro';
 
+// Keep `/` in the Worker so it can choose between this page and install.sh.
+export const prerender = false;
+
 let seealso = [
 	['/usage', 'usage', 'every command, in the order you meet them'],
 	['/commands', 'commands', 'every flag, one entry each'],

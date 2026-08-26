@@ -28,10 +28,11 @@ compiler API, which TypeScript 7's native compiler does not expose yet.
 - `https://lane.lukeed.com/install.sh`, a plain static asset.
 - `https://lane.lukeed.com` itself, when the request comes from curl or wget.
 
-The second one is why this deploys as a Worker rather than as static hosting:
-`worker.ts` reads the user agent on `/` and answers with the script or the page.
-`run_worker_first` in `wrangler.jsonc` scopes that to `/` alone, so every other
-asset is served without invoking the Worker.
+The second one is why this deploys as a Worker rather than as static hosting.
+`src/worker.ts` reads the user agent on `/` and answers with the script or the
+page, then uses Astro's Fetch API and Cloudflare handler for every request it
+does not intercept. The root page opts out of prerendering so it reaches the
+Worker; the other pages and files remain static assets.
 
 ```bash
 bun run serve     # astro build && wrangler dev — the real runtime, locally

@@ -1,20 +1,11 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "lane",
-	"main": "worker.ts",
+	"main": "./src/worker.ts",
 	"compatibility_date": "2025-08-01",
 	"workers_dev": false,
 	"route": {
 		"pattern": "lane.lukeed.com",
 		"custom_domain": true
-	},
-	// "assets": {
-	// 	"directory": "./dist",
-	// 	"binding": "ASSETS",
-	// 	// Every other path is served straight from the asset store; only the
-	// 	// root needs the Worker, to look at the user agent.
-	// 	"run_worker_first": [
-	// 		"/"
-	// 	]
-	// }
+	}
 }

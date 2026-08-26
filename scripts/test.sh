@@ -521,14 +521,17 @@ is "and promotes like any other note" \
    "$("$LANE" why src/auth.rs | grep -c 'early return leaks')" "1"
 
 git commit -q --allow-empty -m "tidy imports"
+BEFORE_NOTES=$(find .lane/memory -name '*.md' -type f | wc -l | tr -d ' ')
+git commit -q --allow-empty -m "tidy imports again"
 is "a commit with no trailer records nothing" \
-   "$([ -f .git/lane/pending.jsonl ] && echo yes || echo no)" "no"
+   "$(find .lane/memory -name '*.md' -type f | wc -l | tr -d ' ')" "$BEFORE_NOTES"
 
 git commit -q --allow-empty -m "refactor the parser
 
 Why: refactor the parser" 2> /tmp/cap.out
 is "a pasted subject is refused" "$(grep -c 'warning:' /tmp/cap.out)" "1"
-is "and records nothing" "$([ -f .git/lane/pending.jsonl ] && echo yes || echo no)" "no"
+is "and records nothing" \
+   "$(find .lane/memory -name '*.md' -type f | wc -l | tr -d ' ')" "$BEFORE_NOTES"
 
 git commit -q --allow-empty -m "note it twice
 
@@ -1255,14 +1258,14 @@ LP="$TMP/repo/.lane/trees/stale"
 ( cd "$LP" && printf 'one\nLANE\nthree\n' > src/shared.rs \
   && git commit -qam "fix: lane edits two" -m "Why: src/shared.rs#@file | this finding must survive" > /dev/null )
 printf 'one\nTRUNK\nthree\n' > src/shared.rs && git commit -qam "trunk edits two too" > /dev/null
-is "the finding is queued" \
-   "$(cd "$LP" && grep -c 'must survive' "$(git rev-parse --git-path lane/pending.jsonl)")" "1"
+is "the finding is recorded before the push" \
+   "$(cd "$LP" && grep -rl 'must survive' .lane/memory | wc -l | tr -d ' ')" "1"
 "$LANE" push stale > /tmp/stalepush.out 2>&1
 is "the push succeeds despite the conflict" "$?" "0"
 is "and says where it pushed from" \
    "$(grep -c 'pushing from where this lane forked' /tmp/stalepush.out)" "1"
-is "the queue is drained, not stranded" \
-   "$(cd "$LP" && [ -e "$(git rev-parse --git-path lane/pending.jsonl)" ] && echo kept || echo drained)" "drained"
+is "the finding is committed, not left loose" \
+   "$(cd "$LP" && git status --porcelain --untracked-files=all -- .lane/memory | wc -l | tr -d ' ')" "0"
 is "the note reached the remote with the branch" \
    "$(git --git-dir="$TMP/origin.git" ls-tree -r --name-only stale | grep -c '^\.lane/memory/src/shared.rs/')" "1"
 is "the lane is left on its branch, not mid-rebase" \

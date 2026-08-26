@@ -699,17 +699,25 @@ fn prune(dry_run: bool) -> Result<i32> {
 
     let mut removed = 0;
     let mut skipped = 0;
+    let mut unrecorded = 0;
     for lane in lanes {
-        // Identity, not name. A lane with no id was not made by `lane new`, and prune is
-        // destructive, so an unrecognised lane is left alone rather than guessed at.
-        if !store::is_landed(&lane.path) {
-            continue;
-        }
         let name = lane
             .path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
+        // Identity, not name. A lane with no id was not made by `lane new`, and prune is
+        // destructive, so an unrecognised lane is left alone rather than guessed at.
+        if !store::is_landed(&lane.path) {
+            // A retired upstream says this one did land. Passing over it in silence is what
+            // let two of them sit unexplained through three rounds of asking.
+            if wt::upstream_gone(&root, &lane.branch) {
+                eprintln!("skipped {name}: landed outside lane, so nothing recorded what it held");
+                unrecorded += 1;
+                skipped += 1;
+            }
+            continue;
+        }
         // A landing marker says the work reached trunk, not that the lane kept nothing
         // back: notes written after it, or an edit never committed, are still only here.
         let losses = wt::losses(&root, &lane.path, &lane.branch, &trunk);
@@ -728,6 +736,11 @@ fn prune(dry_run: bool) -> Result<i32> {
         removed += 1;
     }
 
+    if unrecorded > 0 {
+        eprintln!(
+            "  `lane push <name>` records a landing and carries its notes; `lane rm <name> --force` discards both"
+        );
+    }
     if removed == 0 && skipped == 0 {
         println!("no landed lanes");
         let behind = try_git(

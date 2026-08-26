@@ -144,13 +144,13 @@ Pending notes live in the lane's own Git directory until the next audit. Audit p
 
 Freshness is computed for the anchored span, not the whole file:
 
-| result | meaning |
-|---|---|
-| `fresh` | the anchored span is unchanged |
-| `content-changed` | its implementation changed |
-| `contract-changed` | its declaration changed |
-| `anchor-missing` | the symbol no longer resolves |
-| `unverifiable` | lane has no grammar for that anchor |
+| result             | meaning                             |
+| ------------------ | ----------------------------------- |
+| `fresh`            | the anchored span is unchanged      |
+| `content-changed`  | its implementation changed          |
+| `contract-changed` | its declaration changed             |
+| `anchor-missing`   | the symbol no longer resolves       |
+| `unverifiable`     | lane has no grammar for that anchor |
 
 Anchors include declarations such as `fn verify`, Markdown headings such as `## Rate limiting`, component blocks such as `#script`, and `@file` for a whole file. Run `lane anchors src/auth.rs` to list the canonical values and their line ranges. A unique bare name such as `verify` is stored as its canonical value; a name shared by multiple declaration kinds is refused with the available choices. Comments and whitespace are normalized out of fingerprints.
 
@@ -185,3 +185,7 @@ cargo run -p lane-tour -- start
 ```
 
 Full usage and command reference: [lane.lukeed.com/usage](https://lane.lukeed.com/usage).
+
+## License
+
+MIT © [Luke Edwards](https://lukeed.com)

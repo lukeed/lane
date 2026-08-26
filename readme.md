@@ -76,7 +76,6 @@ $ lane note add src/auth.rs -a 'fn verify' \
 
 # edit and commit as usual
 $ lane check
-
 $ lane merge
 # or
 $ lane push
@@ -84,17 +83,11 @@ $ lane push
 
 `lane new` creates a branch and worktree under `.lane/trees/`. On APFS, btrfs, and reflink-enabled XFS, ignored files are cloned by reference. Otherwise, Lane creates a normal Git worktree and skips ignored files.
 
-Notes record what must stay true, not what a commit changed. They are stored as Markdown under `.lane/memory/` and anchored to a declaration, Markdown section, component block, or whole file. When an anchor drifts, choose one action:
-
-```sh
-$ lane note confirm <id>                  # still true
-$ lane note replace <id> '<replacement>'  # needs an update
-$ lane note retire <id>                   # no longer applies
-```
+Notes record what must stay true, not what a commit changed. They are stored as Markdown under `.lane/memory/` and anchored to a declaration, Markdown section, component block, or whole file.
 
 For repositories with protected branches, use `lane push` instead of `lane merge`. After the pull request lands, run `lane prune`.
 
-Run `lane --help` for the command list, or visit the [usage guide](https://lane.lukeed.com/usage) for the full workflow.
+Run `lane --help` for the command list, or visit the [usage guide](https://lane.lukeed.com/usage) for the full workflow. See [Audit](#audit) for how to review existing memories before landing.
 
 ## Memory
 
@@ -111,6 +104,16 @@ New notes use distinct files, so parallel lanes can annotate the same code witho
 
 Notes are written directly to `.lane/memory/` without a baseline. The next audit baselines them after any rebase, follows source-file renames, and moves superseded, unpinned missing, or unpinned over-budget notes to `.lane/attic/` rather than deleting them.
 
+Anchors include declarations such as `fn verify`, Markdown headings such as `## Rate limiting`, component blocks such as `#script`, and `@file` for a whole file. Run `lane anchors src/auth.rs` to list the canonical values and their line ranges. A unique bare name such as `verify` is stored as its canonical value; a name shared by multiple declaration kinds is refused with the available choices. Comments and whitespace are normalized out of fingerprints.
+
+### Audit
+
+Run `lane check` to get the status report for existing memories:
+
+```sh
+$ lane check
+```
+
 Freshness is computed for the anchored span, not the whole file:
 
 | result | meaning |
@@ -121,14 +124,12 @@ Freshness is computed for the anchored span, not the whole file:
 | `anchor-missing` | the symbol no longer resolves |
 | `unverifiable` | lane has no grammar for that anchor |
 
-Anchors include declarations such as `fn verify`, Markdown headings such as `## Rate limiting`, component blocks such as `#script`, and `@file` for a whole file. Run `lane anchors src/auth.rs` to list the canonical values and their line ranges. A unique bare name such as `verify` is stored as its canonical value; a name shared by multiple declaration kinds is refused with the available choices. Comments and whitespace are normalized out of fingerprints.
-
 Resolve drift with exactly one of these actions:
 
 ```sh
-$ lane note confirm <id>
-$ lane note replace <id> '<replacement>'
-$ lane note retire <id>
+$ lane note confirm <id>                  # still true
+$ lane note replace <id> '<replacement>'  # needs an update
+$ lane note retire <id>                   # no longer applies
 ```
 
 Run `lane note edit <id>` for a guided terminal menu over the same actions, including pinning or unpinning the note.

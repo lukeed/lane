@@ -70,11 +70,7 @@ fn run() {}
 const run: u8 = 1;
 EOF
 pending_lines() {
-  if [ -f .git/lane/pending.jsonl ]; then
-    awk 'NF { n++ } END { print n + 0 }' .git/lane/pending.jsonl
-  else
-    echo 0
-  fi
+  git status --porcelain --untracked-files=all -- .lane/memory | grep -c '\.md$' || true
 }
 BEFORE_AMBIGUOUS=$(pending_lines)
 "$LANE" note add src/ambiguous.rs -a run "must choose a declaration" > /tmp/ambiguous.out 2>&1
@@ -519,7 +515,7 @@ git commit -q --allow-empty -m "make verify constant-time
 
 Why: src/auth.rs#fn verify | early return leaks token length"
 is "the trailer became a pending note" \
-   "$(grep -c 'early return leaks' .git/lane/pending.jsonl)" "1"
+   "$(grep -rl 'early return leaks' .lane/memory | wc -l | tr -d ' ')" "1"
 "$LANE" audit > /dev/null
 is "and promotes like any other note" \
    "$("$LANE" why src/auth.rs | grep -c 'early return leaks')" "1"
@@ -550,7 +546,7 @@ git commit -q -m "record replay decision
 
 Why: src/replayed.rs | replaying the commit is not a new decision"
 is "a replay candidate is captured once" \
-   "$(grep -c 'not a new decision' .git/lane/pending.jsonl)" "1"
+   "$(grep -rl 'not a new decision' .lane/memory | wc -l | tr -d ' ')" "1"
 git switch -q main
 printf 'pub fn moved_base() {}\n' > src/base.rs
 git add src/base.rs && git commit -qm "move base"
@@ -558,7 +554,7 @@ git switch -q replay
 git rebase main > /tmp/replay.out 2>&1
 is "the decision-bearing commit rebases cleanly" "$?" "0"
 is "a replayed commit is not captured again" \
-   "$(grep -c 'not a new decision' .git/lane/pending.jsonl)" "1"
+   "$(grep -rl 'not a new decision' .lane/memory | wc -l | tr -d ' ')" "1"
 
 setup
 "$LANE" install hooks > /dev/null
@@ -901,7 +897,7 @@ ADD_OUTPUT=$("$LANE" note add src/auth.rs "whole-file rule" < /dev/null 2> /tmp/
 is "explicit-text add never prompts and stores the file anchor" \
    "$([ "$ADD_OUTPUT" = 'noted -> src/auth.rs#@file' ] \
       && [ ! -s /tmp/add.err ] \
-      && python3 -c 'import json; r=json.loads(open(".git/lane/pending.jsonl").readline()); raise SystemExit(0 if r["anchor"]=="@file" else 1)' \
+      && grep -q "^anchor: '@file'$" "$(grep -rl 'whole-file rule' .lane/memory | head -1)" \
       && echo yes)" "yes"
 BEFORE_PENDING=$(pending_lines)
 "$LANE" note add src/auth.rs < /dev/null > /tmp/nonterminal.out 2>&1
@@ -918,23 +914,23 @@ is "note edit refuses non-terminal use with direct-command guidance" \
       && grep -q 'lane note <action>' /tmp/nonterminal-edit.out && echo yes)" "yes"
 "$LANE" note replace "$OLD_ID" "replacement rule" > /dev/null
 is "replace inherits the predecessor path" \
-   "$(python3 -c 'import json; print(json.loads(open(".git/lane/pending.jsonl").readline())["path"])')" \
+   "$(grep -rl 'replacement rule' .lane/memory | sed 's|^\.lane/memory/||; s|/[^/]*$||')" \
    "src/auth.rs"
 is "replace inherits the predecessor anchor" \
-   "$(python3 -c 'import json; print(json.loads(open(".git/lane/pending.jsonl").readline())["anchor"])')" \
+   "$(grep -h '^anchor:' "$(grep -rl 'replacement rule' .lane/memory | head -1)" | sed "s/^anchor: //; s/'//g")" \
    "@file"
-is "the predecessor stays live before replacement promotion" \
-   "$([ -f "$OLD_FILE" ] && [ ! -d .lane/attic/src/auth.rs ] && echo yes)" "yes"
-"$LANE" note replace "$OLD_ID" "duplicate replacement" > /tmp/duplicate-replace.out 2>&1
-is "a second pending replacement is refused" \
-   "$([ "$?" -eq 1 ] && grep -q 'already has a pending replacement' /tmp/duplicate-replace.out && echo yes)" \
-   "yes"
-"$LANE" audit > /dev/null
+is "replace retires the predecessor at once" \
+   "$([ ! -f "$OLD_FILE" ] && find .lane/attic/src/auth.rs -name "$OLD_ID-*" | grep -q . && echo yes)" "yes"
 SUCCESSOR_FILE=$(find .lane/memory/src/auth.rs -name '*.md' | head -1)
 SUCCESSOR_ID=$(basename "$SUCCESSOR_FILE" | cut -d- -f1)
-is "promotion creates the successor and retires the predecessor" \
-   "$([ -f "$SUCCESSOR_FILE" ] && grep -q 'replacement rule' "$SUCCESSOR_FILE" \
-      && find .lane/attic/src/auth.rs -name "$OLD_ID-*" | grep -q . && echo yes)" "yes"
+is "and the successor is live immediately" \
+   "$([ -f "$SUCCESSOR_FILE" ] && grep -q 'replacement rule' "$SUCCESSOR_FILE" && echo yes)" "yes"
+# The predecessor is already retired, so there is no window left for a second replacement
+# to race into: it is refused for the plain reason that the note is no longer live.
+"$LANE" note replace "$OLD_ID" "second replacement" > /tmp/duplicate-replace.out 2>&1
+is "a second replacement is refused because the note is retired" \
+   "$(grep -c "live note $OLD_ID not found" /tmp/duplicate-replace.out)" "1"
+"$LANE" audit > /dev/null
 
 SUCCESSOR_BYTES=$(cksum < "$SUCCESSOR_FILE")
 "$LANE" note retire "$SUCCESSOR_ID" > /dev/null
@@ -946,11 +942,10 @@ is "explicit retire moves exact bytes to the attic" \
 is "restore moves the same bytes back to live memory" \
    "$([ -f "$SUCCESSOR_FILE" ] && [ ! -f "$RETIRED_FILE" ] \
       && [ "$(cksum < "$SUCCESSOR_FILE")" = "$SUCCESSOR_BYTES" ] && echo yes)" "yes"
-"$LANE" note replace "$SUCCESSOR_ID" "guarded replacement" > /dev/null
-"$LANE" note retire "$SUCCESSOR_ID" > /tmp/guarded-retire.out 2>&1
-is "retire is refused while a replacement is pending" \
-   "$([ "$?" -eq 1 ] && [ -f "$SUCCESSOR_FILE" ] \
-      && grep -q 'pending replacement' /tmp/guarded-retire.out && echo yes)" "yes"
+# Replace retires it, so a later retire has nothing left to refuse.
+"$LANE" note replace "$SUCCESSOR_ID" "another replacement" > /dev/null
+is "replace already moved it to the attic" \
+   "$([ ! -f "$SUCCESSOR_FILE" ] && echo yes)" "yes"
 
 setup
 "$LANE" note add src/auth.rs -a "fn verify" "pinned rule" > /dev/null
@@ -1291,6 +1286,54 @@ is "trunk is not advanced" \
    "$(git log --oneline -1 --format=%s)" "trunk edits two too"
 is "and the lane still exists" \
    "$([ -d .lane/trees/mustfix ] && echo yes || echo no)" "yes"
+echo "== 48. a note is a file the moment it is recorded =="
+setup
+"$LANE" install hooks > /dev/null
+git commit -q --allow-empty -m "make verify constant-time
+
+Why: src/auth.rs#fn verify | early return leaks token length"
+NOTE=$(grep -rl 'early return leaks' .lane/memory | head -1)
+is "the trailer is a note file, not a queue entry" \
+   "$([ -n "$NOTE" ] && echo yes || echo no)" "yes"
+is "it is readable at once, before any audit" \
+   "$("$LANE" why src/auth.rs | grep -c 'early return leaks')" "1"
+is "and carries no baseline yet" \
+   "$(grep -c '^sig:' "$NOTE")" "0"
+git add -A && git commit -qm "keep the finding"
+is "an ordinary commit carries it, with no lane command" \
+   "$(git show --stat --name-only HEAD | grep -c '^\.lane/memory/src/auth\.rs/')" "1"
+"$LANE" audit > /dev/null
+is "the audit takes the first baseline" \
+   "$(grep -c '^sig: [0-9a-f]' "$(grep -rl 'early return leaks' .lane/memory | head -1)")" "1"
+
+echo "== 49. a hand push carries the finding =="
+setup
+remote_setup
+"$LANE" install hooks > /dev/null
+"$LANE" new byhand > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/byhand"
+( cd "$LP" && echo one > src/one.rs && git add -A \
+  && git commit -qm "feat: one" -m "Why: src/one.rs#@file | must reach the remote" > /dev/null \
+  && git add -A && git commit -qm "carry the note" > /dev/null \
+  && git push -q -u origin byhand 2>/dev/null )
+is "the note reached the remote without lane push" \
+   "$(git --git-dir="$TMP/origin.git" ls-tree -r --name-only byhand | grep -c '^\.lane/memory/src/one\.rs/')" "1"
+
+echo "== 50. a queue left by an older lane is folded once =="
+setup
+mkdir -p "$(dirname "$(git rev-parse --git-path lane/pending.jsonl)")"
+cat > "$(git rev-parse --git-path lane/pending.jsonl)" <<'QUEUE'
+{"text":"folded from the queue","path":"src/auth.rs","anchor":"fn verify","at":"2026-08-20T00:00:00Z"}
+QUEUE
+"$LANE" audit > /dev/null
+is "the queued finding became a note" \
+   "$(grep -rl 'folded from the queue' .lane/memory | wc -l | tr -d ' ')" "1"
+is "and the queue is gone" \
+   "$([ -e "$(git rev-parse --git-path lane/pending.jsonl)" ] && echo kept || echo gone)" "gone"
+"$LANE" audit > /tmp/fold2.out 2>&1
+is "a second audit is a no-op, not an error" "$?" "0"
+is "and does not double the note" \
+   "$(grep -rl 'folded from the queue' .lane/memory | wc -l | tr -d ' ')" "1"
 
 echo
 echo "passed: $pass   failed: $fail"

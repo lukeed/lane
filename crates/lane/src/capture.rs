@@ -177,11 +177,15 @@ fn capture_message(root: &Path, subject: &str, message: &str) -> Result<()> {
             at: now_iso(),
             supersedes: String::new(),
         };
-        if let Err(error) = store::append_pending(root, &pending) {
-            eprintln!("warning: could not record Why trailer for {rel}: {error}");
-            continue;
+        match store::write_note(root, &pending) {
+            // A commit must not fail because a note could not be written.
+            Err(error) => {
+                eprintln!("warning: could not record Why trailer for {rel}: {error}");
+                continue;
+            }
+            Ok(None) => eprintln!("known already -> {rel}#{}", captured.anchor),
+            Ok(Some(_)) => eprintln!("captured -> {rel}#{}", captured.anchor),
         }
-        eprintln!("captured -> {rel}#{}", captured.anchor);
     }
     Ok(())
 }
@@ -191,14 +195,9 @@ mod tests {
     use super::*;
 
     fn pending_anchors(root: &Path) -> Vec<String> {
-        std::fs::read_to_string(store::pending_path(root))
-            .unwrap()
-            .lines()
-            .map(|line| {
-                serde_json::from_str::<store::PendingNote>(line)
-                    .unwrap()
-                    .anchor
-            })
+        store::load_notes(root, None)
+            .into_iter()
+            .map(|note| note.meta.anchor)
             .collect()
     }
 

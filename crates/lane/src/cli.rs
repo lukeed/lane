@@ -116,8 +116,10 @@ const PROTOCOL: &str = "\n<!-- lane:protocol -->\n\
 ## Context memory\n\n\
 - Before editing a file, read `.lane/memory/<path>/` if it exists, or run `lane why <path>`.\n\
 - Record non-obvious findings with `lane note add <path> -a <anchor> \"...\"`.\n\
-- Do not edit `.lane/` by hand; `lane merge` manages it.\n\
-- Detailed workflow lives in the `lane` skill; run `lane install skill` if it is absent.\n\
+- Do not edit `.lane/` by hand; landing manages it.\n\
+- Land with `lane merge`, or `lane push` where trunk is protected, then `lane prune` once it merges.\n\
+- Never `git push` a lane: only a landing promotes the notes captured from your commits.\n\
+- Detailed workflow lives in `.agents/skills/lane/SKILL.md`; run `lane install skill` if it is absent.\n\
 <!-- /lane:protocol -->\n";
 
 /// The protocol as shipped before markers, recognised so an upgrade can replace it.

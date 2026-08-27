@@ -616,6 +616,26 @@ struct LaneRow {
     pending_notes: usize,
 }
 
+fn format_lane_rows(rows: &[LaneRow]) -> Vec<String> {
+    let name_width = rows
+        .iter()
+        .map(|row| row.name.chars().count())
+        .max()
+        .unwrap_or(20)
+        .max(20);
+    rows.iter()
+        .map(|row| {
+            let name = &row.name;
+            let state = row.state;
+            let dirty = if row.dirty { "dirty" } else { "clean" };
+            format!(
+                "{name:<name_width$} {state:<7} {dirty:<6} {} pending note(s)",
+                row.pending_notes
+            )
+        })
+        .collect()
+}
+
 fn ls(json: bool) -> Result<i32> {
     let root = wt::main_root()?;
     let lanes = wt::list_lanes(&root);
@@ -672,14 +692,8 @@ fn ls(json: bool) -> Result<i32> {
         println!("no lanes");
         return Ok(0);
     }
-    for row in rows {
-        let name = row.name;
-        let state = row.state;
-        let dirty = if row.dirty { "dirty" } else { "clean" };
-        println!(
-            "{name:<20} {state:<7} {dirty:<6} {} pending note(s)",
-            row.pending_notes
-        );
+    for row in format_lane_rows(&rows) {
+        println!("{row}");
     }
     Ok(0)
 }
@@ -1550,6 +1564,30 @@ fn shellenv() -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_lane_names_keep_following_columns_aligned() {
+        let row = |name: &str, state| LaneRow {
+            name: name.into(),
+            path: String::new(),
+            branch: name.into(),
+            state,
+            dirty: false,
+            pending_notes: 0,
+        };
+        let rows = [
+            row("agent-runtime-config", "pushed"),
+            row("inline-agent-instructions", "open"),
+        ];
+
+        assert_eq!(
+            format_lane_rows(&rows),
+            [
+                "agent-runtime-config      pushed  clean  0 pending note(s)",
+                "inline-agent-instructions open    clean  0 pending note(s)",
+            ]
+        );
+    }
 
     #[test]
     fn replacement_targets_inherit_and_accept_independent_overrides() {

@@ -52,7 +52,7 @@ export type Act = {
 export let list: Act[] = [
 	{
 		label: 'lane new',
-		claim: 'A second worktree in seconds, at no cost on disk.',
+		claim: 'Ignored files arrive by reference. The cache is already warm.',
 		cwd: '~/repo',
 		from: 'seed',
 		session: [
@@ -66,11 +66,11 @@ export let list: Act[] = [
 			{ kind: 'cmd', text: 'cargo build' },
 			{ kind: 'out', text: '   Finished `dev` profile in 0.21s' },
 		],
-		why: 'Every path git ignores, at any depth, arrives as a window onto blocks main/ already holds. Nothing was copied, so the build cache is warm on the first command.',
+		why: '12,283 files, 1358.1 MiB shared, 0 copied. node_modules is there. cargo build finishes in 0.21s because target/ was never missing.',
 	},
 	{
 		label: 'lane note',
-		claim: 'Write down what must stay true, beside the code it constrains.',
+		claim: 'Record what must stay true. Then edit.',
 		cwd: '~/…/fix-login',
 		from: 'lane',
 		session: [
@@ -82,11 +82,11 @@ export let list: Act[] = [
 			{ kind: 'cmd', text: 'git commit -am "make verify constant-time"' },
 			{ kind: 'out', text: '[fix-login 4f1a92c] 1 file changed' },
 		],
-		why: 'The edit un-shares that one file, and only inside the lane — main/ still reads the block it always read. Copy costs nothing until you write, and then it costs one file.',
+		why: 'The note is a new file. Editing src/auth.rs un-shares only that file. main still reads the original block.',
 	},
 	{
 		label: 'lane check',
-		claim: 'Anchored to the symbol, flagged the moment the symbol moves.',
+		claim: 'The rebuild stays in the lane. lane check flags the body.',
 		cwd: '~/…/fix-login',
 		from: 'write',
 		session: [
@@ -96,15 +96,15 @@ export let list: Act[] = [
 			{ kind: 'gap', text: '' },
 			{ kind: 'cmd', text: 'lane check' },
 			{ kind: 'out', text: 'fresh              7' },
-			{ kind: 'warn', text: 'content-changed    1', step: 'drift', hold: 1400 },
-			{ kind: 'out', text: 'contract-changed  0' },
-			{ kind: 'out', text: 'anchor-missing     0' },
+			{ kind: 'warn', text: 'content-changed    1', step: 'drift' },
+			{ kind: 'out', text: 'contract-changed   0' },
+			{ kind: 'out', text: 'anchor-missing     0', hold: 1400 },
 		],
-		why: 'The rebuild rewrote 550 files. Those blocks belong to the lane and leave with it. The note noticed too: fn verify kept its signature and changed its body, so lane flags it rather than guess whether it is still true.',
+		why: '550 files rewritten — 106.5 MiB now owned by the lane. fn verify kept its signature and changed its body, so the note is content-changed.',
 	},
 	{
 		label: 'lane ls',
-		claim: 'One repo, three agents, nothing to lock and nothing to merge.',
+		claim: 'Three worktrees. One set of extents.',
 		cwd: '~/repo',
 		from: 'drift',
 		session: [
@@ -116,11 +116,11 @@ export let list: Act[] = [
 			{ kind: 'out', text: 'agent-b    open    dirty  3 pending note(s)' },
 			{ kind: 'out', text: 'agent-c    open    clean  0 pending note(s)' },
 		],
-		why: 'Three trees, three warm caches, one set of extents. Each agent writes only the blocks it touches, and every note is a new file — so two of them can annotate the same function in the same second.',
+		why: 'Each lane writes only the blocks it touches and carries its own memory notes. Every note is its own file, so two agents can annotate the same function at once.',
 	},
 	{
 		label: 'lane merge',
-		claim: 'The worktree goes. What it learned lands on main.',
+		claim: 'The worktree is removed. Commits and notes stay.',
 		cwd: '~/…/fix-login',
 		from: 'fanout',
 		session: [
@@ -137,6 +137,6 @@ export let list: Act[] = [
 			{ kind: 'out', text: 'fast-forwarded main', step: 'land', hold: 1300 },
 			{ kind: 'gone', text: 'removed lane fix-login', step: 'gone', hold: 900 },
 		],
-		why: 'The commits land, the worktrees close, and every block they allocated is freed. The note does not close with them: the drifted one was rewritten against the code that shipped, the old one moved to .lane/attic/, and the next lane opens with both in reach.',
+		why: 'The 114.9 MiB the lanes allocated is freed. The drifted note was rewritten; the old one is in .lane/attic/.',
 	},
 ];

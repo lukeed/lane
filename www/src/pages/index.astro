@@ -6,31 +6,31 @@ import Workflow from '../components/Workflow.astro';
 export const prerender = false;
 
 let seealso = [
-	['/usage', 'usage', 'every command, in the order you meet them'],
-	['/commands', 'commands', 'every flag, one entry each'],
-	['/memory', 'memory', 'capturing decisions from commit trailers'],
-	[repo, 'github.com/lukeed/lane', 'the source'],
+	['/usage', 'usage', 'the daily loop'],
+	['/commands', 'commands', 'every flag'],
+	['/memory', 'memory', 'Why: trailers'],
+	[repo, 'github.com/lukeed/lane', 'source'],
 ];
 
 let anchors = [
-	['fn verify', 'a declaration, by keyword and name'],
-	['verify', 'any declaration of that name'],
+	['fn verify', 'a declaration, by kind and name'],
+	['verify', 'a uniquely named declaration'],
 	['#script, #style', 'a top-level block in .svelte, .vue, html'],
 	['## Rate limiting', 'a markdown section'],
-	['@file', 'the whole file — the default'],
+	['@file', 'the whole file (default)'],
 ];
 
 let tiers = [
-	[' ', 'fresh', 'The span is unchanged.', 'Nothing happens, and it cost nothing to know.', 'ok'],
-	['~', 'content-changed', 'The implementation moved, the contract held.', 'Flagged until you resolve it.', 'drift'],
-	['!', 'contract-changed', 'The thing being described changed shape.', 'Flagged until you resolve it.', 'drift'],
-	['x', 'anchor-missing', 'The symbol is gone.', 'Moved to .lane/attic/, recoverable with git mv.', 'gone'],
+	[' ', 'fresh', 'The anchored span is unchanged.', 'Nothing.', 'ok'],
+	['~', 'content-changed', 'The implementation changed.', 'Flagged until you resolve it.', 'drift'],
+	['!', 'contract-changed', 'The declaration changed.', 'Flagged until you resolve it.', 'drift'],
+	['x', 'anchor-missing', 'The symbol no longer resolves.', 'Moved to .lane/attic/.', 'gone'],
 ];
 ---
 
 <Page
 	title="lane — copy-on-write worktrees with memory that survives them"
-	description="Copy-on-write worktrees with memory that survives them."
+	description="Copy-on-write Git worktrees with memory that survives them."
 >
 	<main class="shell">
 		<section class="sec sec-first" aria-label="Name">
@@ -39,15 +39,14 @@ let tiers = [
 				<h1 class="name">
 					<span class="wordmark">lane</span>{' '}
 					<span class="tagline">
-						<span class="name-dash" aria-hidden="true">&mdash; </span>Copy-on-write worktrees with
-						memory that survives them.
+						<span class="name-dash" aria-hidden="true">&mdash; </span>Copy-on-write Git worktrees with memory that survives them.
 					</span>
 				</h1>
 				<p class="lede">
-					<b>git worktree add</b> hands you a clean tree and nothing git ignores. So you reinstall,
-					you rebuild cold, and everything the last branch taught you about <b>src/auth.rs</b> stays
-					in the last branch. <b>lane new</b> hands you the same tree in seconds by sharing the bytes
-					on disk, and brings the notes with it.
+					<b>git worktree add</b> gives you a clean checkout and none of the ignored files that make it fast: <b>node_modules</b>, <b>target/</b>, <b>.env</b>. You reinstall and rebuild from scratch, even though those caches are already on disk. Whatever the last branch learned about a file stays in that branch.
+				</p>
+				<p class="lede">
+					<b>lane new</b> clones ignored paths by reference. The new tree starts warm, and the notes come with it. Lane never calls a model.
 				</p>
 				<div class="prompt">
 					<code class="prompt-cmd"><span class="p">$ </span>curl -fsSL https://lane.lukeed.com | sh</code>
@@ -60,17 +59,11 @@ let tiers = [
 			<h2 class="sec-head">Workflow</h2>
 			<div class="sec-body">
 				<p class="lede">
-					Five commands, start to finish. The panel is the disk &mdash; one set of blocks, and every
-					tree pointing at it. Beside it is what you type to get there.
+					Left is the disk: one set of blocks, every tree pointing at it. Right is what you type.
 				</p>
 				<Workflow />
 				<p class="note">
-					Where trunk is protected, <b>lane push</b> rebases, audits, commits memory, and pushes
-					the lane for the pull request. The lane waits on disk; <b>lane ls</b> marks it <b>pushed</b>
-					while the remote has its tip, then <b>landed</b> once trunk carries its landing record, and
-					{' '}
-					<b>lane prune</b> removes it. That record is tree content rather than a commit, so
-					neither a squash nor a rebase merge can hide it.
+					If trunk is protected, use <b>lane push</b> instead of <b>lane merge</b>. After the pull request lands, <b>lane prune</b> removes the worktree.
 				</p>
 			</div>
 		</section>
@@ -78,12 +71,8 @@ let tiers = [
 		<section class="sec">
 			<h2 class="sec-head">Description</h2>
 			<div class="sec-body reveal">
-				<p class="tagline tagline-solo">A second worktree that costs no disk and no cold build.</p>
 				<p class="lede">
-					Lane asks git for every path it ignores — including nested ones like{' '}
-					<b>packages/a/node_modules</b> and single files like <b>.env</b> — and clones each one by
-					reference. On a filesystem with reflink support the two copies point at the same extents,
-					so the second tree occupies no new space and the build cache is already warm.
+					Lane asks git for every ignored path — nested ones like <b>packages/a/node_modules</b>, single files like <b>.env</b> — and clones each by reference. On APFS, btrfs, and XFS with <b>reflink=1</b>, the two copies share the same extents. The second tree takes no new space, and the build cache is already warm.
 				</p>
 
 				<table class="tbl tbl-cmp">
@@ -134,18 +123,11 @@ let tiers = [
 				</table>
 
 				<p class="lede">
-					That is the copy half. The write half: editing a file in the lane un-shares only that
-					file's blocks. One source edit here, plus the incremental rebuild it triggered, rewrote 550
-					files &mdash; <b>106.5 MiB</b>. The other <b>1251.6 MiB</b> stayed shared, and the 106.5
-					went away with the lane. Your edit is free. The rebuild is what costs, and it does not
-					outlive the worktree.
+					Edit a file and only that file's blocks un-share. One source edit plus its incremental rebuild rewrote 550 files — <b>106.5 MiB</b>. The other <b>1251.6 MiB</b> stayed shared. The 106.5 MiB goes away when the lane does.
 				</p>
 
 				<p class="note">
-					Reflink works on APFS, btrfs, XFS with <b>reflink=1</b>, bcachefs and recent ZFS.
-					Everywhere else <b>lane init</b> says so up front and <b>lane new</b> leaves you a plain
-					worktree — byte-copying a build cache is the expensive thing lane exists to avoid.
-					Opt a path out with <b>git config --add lane.exclude target</b>.
+					Reflink works on APFS, btrfs, XFS with <b>reflink=1</b>, bcachefs, and recent ZFS. Everywhere else, <b>lane init</b> says so up front and <b>lane new</b> leaves a plain worktree — byte-copying a build cache is the expensive thing lane exists to avoid. Opt a path out with <b>git config --add lane.exclude target</b>.
 				</p>
 			</div>
 		</section>
@@ -153,10 +135,8 @@ let tiers = [
 		<section class="sec">
 			<h2 class="sec-head">Memory</h2>
 			<div class="sec-body reveal">
-				<p class="tagline tagline-solo">The reason you did it that way, kept next to the code it constrains.</p>
 				<p class="lede">
-					A note costs one command and takes no taxonomy decision. Write down what must stay true,
-					not what you changed.
+					A note records what must stay true, not what you changed.
 				</p>
 
 				<pre class="block"><span class="p">$ </span><b>lane note add src/auth.rs -a "fn verify" \</b>
@@ -170,8 +150,7 @@ noted -&gt; src/auth.rs#fn verify
     must stay constant-time; early return leaks token length</pre>
 
 				<p class="lede">
-					Or leave it in the commit you were already writing. <b>lane install hooks</b> reads one
-					trailer and nothing else — no diff, no commit body, no history import:
+					Or leave it in the commit you were already writing. <b>lane install hooks</b> reads the <b>Why:</b> trailer and nothing else — no diff, no commit body, no history import:
 				</p>
 
 				<pre class="block"><span class="p">$ </span><b>git commit -am "make verify constant-time"</b>
@@ -179,8 +158,7 @@ noted -&gt; src/auth.rs#fn verify
 <b>  Why: src/auth.rs#fn verify | early return leaks token length</b></pre>
 
 				<p class="note">
-					The subject says what you did. The trailer says what must stay true. Six months later the
-					first is history and the second is still load-bearing.
+					The subject says what you did. The trailer says what must stay true.
 				</p>
 
 				<h3 class="eyebrow">Anchors — what the note is about</h3>
@@ -195,9 +173,7 @@ noted -&gt; src/auth.rs#fn verify
 					</tbody>
 				</table>
 				<p class="note">
-					Tree-sitter resolves these, not a regular expression. A span ends where the declaration
-					ends, a <b>#</b> inside a code fence is not a heading, and a brace inside a string
-					truncates nothing.
+					Tree-sitter resolves these, not a regular expression. A span ends where the declaration ends. A <b>#</b> inside a code fence is not a heading.
 				</p>
 
 				<h3 class="eyebrow">Freshness — what happens as the code moves</h3>
@@ -222,10 +198,7 @@ noted -&gt; src/auth.rs#fn verify
 					</tbody>
 				</table>
 				<p class="note">
-					Each anchor is hashed on its own span, normalized, so running a formatter stales nothing
-					and editing <b>#script</b> leaves a note on <b>#style</b> alone. A moved or renamed file is
-					followed, not evicted — <b>lane audit</b> reads git's own rename detection. A drifted note
-					keeps getting reported until you confirm, replace, or retire it.
+					Each anchor is hashed on its own span, normalized, so a formatter stales nothing. Editing <b>#script</b> leaves a note on <b>#style</b> alone. A renamed file is followed — <b>lane audit</b> reads git's own rename detection. A drifted note stays flagged until you confirm, replace, or retire it.
 				</p>
 			</div>
 		</section>
@@ -233,11 +206,8 @@ noted -&gt; src/auth.rs#fn verify
 		<section class="sec">
 			<h2 class="sec-head">Agents</h2>
 			<div class="sec-body reveal">
-				<p class="tagline tagline-solo">The next agent reads the constraints before it edits.</p>
 				<p class="lede">
-					Two agents can annotate the same file, and the same anchor, in the same second. A note
-					text is written as a new file, so independent findings never lock the same bytes.
-					Land them in any order; both notes are there afterwards.
+					Two agents can note the same file, and the same anchor, at the same time. Each note is a new file, so nothing locks. Land them in any order; both notes are there afterwards.
 				</p>
 				<pre class="block"><span class="p">$ </span><b>lane why src/auth.rs</b>
 
@@ -247,9 +217,7 @@ noted -&gt; src/auth.rs#fn verify
   - 01M0B9MZQ4 · 2026-08-14
     the token bytes must never reach a log, even at debug</pre>
 				<p class="note">
-					<b>lane init</b> writes a four-line protocol into <b>AGENTS.md</b> so the notes are already
-					in context. Notes are plain markdown at predictable paths — an agent finds them with no
-					tool integration at all, which is the reason they are files and not a sidecar database.
+					<b>lane init</b> writes a four-line protocol into <b>AGENTS.md</b>. Notes are plain markdown at predictable paths, so an agent finds them with no plugin.
 				</p>
 			</div>
 		</section>
@@ -257,15 +225,13 @@ noted -&gt; src/auth.rs#fn verify
 		<section class="sec" id="installation">
 			<h2 class="sec-head">Installation</h2>
 			<div class="sec-body reveal">
-				<h3 class="eyebrow">Get the binary &mdash; pick one</h3>
+				<h3 class="eyebrow">Get the binary</h3>
 				<div class="steps">
 					<div class="step">
 						<code class="step-cmd"><span class="p">$ </span>curl -fsSL https://lane.lukeed.com | sh</code>
 						<button class="copy" type="button" data-copy="curl -fsSL https://lane.lukeed.com | sh">copy</button>
 						<span class="step-why">
-							macOS and Linux, arm64 and x86_64. Lands in <b>~/.local/bin</b>; set{' '}
-							<b>LANE_INSTALL</b> to put it elsewhere, <b>LANE_VERSION</b> to pin a release. Read it
-							first at <a href="/install.sh">lane.lukeed.com/install.sh</a>.
+							macOS and Linux, arm64 and x86_64. Lands in <b>~/.local/bin</b>. Set <b>LANE_INSTALL</b> to put it elsewhere, <b>LANE_VERSION</b> to pin a release. Read it first at <a href="/install.sh">lane.lukeed.com/install.sh</a>.
 						</span>
 					</div>
 					<div class="step">
@@ -286,8 +252,7 @@ noted -&gt; src/auth.rs#fn verify
 						<code class="step-cmd"><span class="p">$ </span>eval "$(lane shellenv)"</code>
 						<button class="copy" type="button" data-copy={'eval "$(lane shellenv)"'}>copy</button>
 						<span class="step-why">
-							Put it in .zshrc or .bashrc. It is what makes <b>lane new</b> leave you inside the
-							lane instead of printing its path.
+							Put it in .zshrc or .bashrc. Without it, <b>lane new</b> prints a path instead of moving you into the lane.
 						</span>
 					</div>
 				</div>
@@ -298,40 +263,29 @@ noted -&gt; src/auth.rs#fn verify
 						<code class="step-cmd"><span class="p">$ </span>cd yourproject &amp;&amp; lane init</code>
 						<button class="copy" type="button" data-copy="lane init">copy</button>
 						<span class="step-why">
-							Scaffolds <b>.lane/</b>, adds the union merge rule and the agent protocol, and tells
-							you whether this filesystem does reflink. Commit what it writes.
+							Scaffolds <b>.lane/</b>, adds the union merge rule and the agent protocol, and reports whether this filesystem does reflink. Commit what it writes.
 						</span>
 					</div>
 					<div class="step">
 						<code class="step-cmd"><span class="p">$ </span>lane install hooks</code>
 						<button class="copy" type="button" data-copy="lane install hooks">copy</button>
 						<span class="step-why">
-							Captures <b>Why:</b> trailers from commit messages into notes. Worktrees share a hooks
-							directory, so this covers every lane. Optional.
+							Captures <b>Why:</b> trailers from commit messages. Worktrees share a hooks directory, so this covers every lane. Optional.
 						</span>
 					</div>
 					<div class="step">
 						<code class="step-cmd"><span class="p">$ </span>lane install skill</code>
 						<button class="copy" type="button" data-copy="lane install skill">copy</button>
 						<span class="step-why">
-							Writes the fuller agent workflow to <b>.agents/skills/lane/SKILL.md</b>, loaded only
-							when an agent is doing lane work. Optional; <b>lane init</b> already leaves a short
-							protocol in AGENTS.md.
+							Writes the fuller agent workflow to <b>.agents/skills/lane/SKILL.md</b>. Optional; <b>lane init</b> already leaves a short protocol in AGENTS.md.
 						</span>
 					</div>
 				</div>
 
-				<p class="lede">
-					Lane never calls a model. <b>lane merge</b> is local and deterministic, so it works
-					the same way on a plane.
-				</p>
-
 				<pre class="block"><span class="p">$ </span><b>cargo run -p lane-tour -- start</b>
 <i>builds a throwaway repo next to this checkout and prints its path</i></pre>
 				<p class="note">
-					The tour drives the real workflows — a note drifting, three lanes landing out of order, two
-					landings colliding — and prints every command before it runs, so you finish having seen the
-					ones you would actually type.
+					The tour runs the real workflows — a note drifting, three lanes landing out of order, two landings colliding — and prints every command before it runs.
 				</p>
 			</div>
 		</section>

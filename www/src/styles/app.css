@@ -280,7 +280,7 @@ a:hover {
 	font-size: 15px;
 }
 
-.lede strong {
+.lede :is(b, strong) {
 	color: var(--bone);
 	font-weight: 500;
 }
@@ -289,6 +289,11 @@ a:hover {
 	color: var(--dim);
 	font-size: 13px;
 	max-width: 62ch;
+}
+
+.note :is(b, strong) {
+	color: var(--bone);
+	font-weight: 500;
 }
 
 .hl-ref {
@@ -723,13 +728,12 @@ a:hover {
 }
 
 .act-claim {
-	font-size: clamp(17px, 2.2vw, 21px);
-	line-height: 1.35;
-	font-weight: 300;
-	letter-spacing: -0.02em;
+	font-size: clamp(16px, 2vw, 19px);
+	line-height: 1.4;
+	font-weight: 400;
+	letter-spacing: -0.015em;
 	color: var(--bone);
-	text-wrap: balance;
-	margin-top: calc(var(--u) * 1.75);
+	margin-top: calc(var(--u) * 1.25);
 }
 
 .tty {
@@ -831,10 +835,10 @@ a:hover {
 
 .act-why {
 	color: var(--dim);
-	font-size: 12.5px;
-	line-height: 1.65;
-	margin-top: calc(var(--u) * 3);
-	max-width: 58ch;
+	font-size: 13px;
+	line-height: 1.55;
+	margin-top: calc(var(--u) * 2.5);
+	max-width: 52ch;
 }
 
 @media (max-height: 860px) {
@@ -1261,7 +1265,7 @@ body > footer {
 .seealso-row {
 	background: var(--void);
 	display: grid;
-	grid-template-columns: 28ch minmax(0, 1fr);
+	grid-template-columns: 22ch minmax(0, 1fr);
 	gap: 0 calc(var(--u) * 2);
 	padding: calc(var(--u) * 1.5) 0;
 }

@@ -1,7 +1,7 @@
 ---
 layout: ../layouts/Doc.astro
 title: Using lane
-description: Every lane command in the order you meet them — opening a lane, leaving notes, reading what earlier lanes learned, and closing it again.
+description: Open a lane, leave notes, read what earlier lanes learned, and close it again.
 section: lane(1)
 here: usage
 rail:
@@ -11,16 +11,13 @@ rail:
 
 # Using lane
 
-A lane is a throwaway worktree that costs almost nothing to open, and leaves
-something behind when it closes.
+A lane is a copy-on-write worktree. Open one, work, land it. Notes survive the worktree.
 
 ```bash
-$ lane new fix-login        # branch + worktree, the build cache by reference
+$ lane new fix-login        # branch + worktree, ignored files by reference
 # work, commit as usual
 $ lane merge                # rebase, audit memory, fast-forward, delete
 ```
-
----
 
 ## Setup
 
@@ -38,11 +35,7 @@ $ git commit -m "lane: context memory"
 reflink on this filesystem: yes (reflink available)
 ```
 
-`yes` on APFS, btrfs, XFS with `reflink=1`, bcachefs, recent ZFS. `no` means
-lanes still work as plain worktrees. Ignored files are not cloned because a full
-byte copy would do the expensive work lane exists to avoid.
-
----
+`yes` on APFS, btrfs, XFS with `reflink=1`, bcachefs, recent ZFS. `no` means lanes still work as plain worktrees. Ignored files are not cloned, because a full byte copy is the expensive work lane exists to avoid.
 
 ## Daily flow
 
@@ -55,10 +48,7 @@ $ lane new fix-login
   /Users/you/yourproject/.lane/trees/fix-login
 ```
 
-Tracked files come from git. Everything git ignores, at any depth, arrives by
-reference — nested `node_modules`, `target`, `.env`, and whatever your own ignore
-rules name. Uncommitted work is not carried. The shared bytes mean no copy, no
-reinstall, and no cold rebuild.
+Tracked files come from git. Everything git ignores, at any depth, arrives by reference — nested `node_modules`, `target`, `.env`, and whatever your own ignore rules name. Uncommitted work is not carried. The shared bytes mean no copy, no reinstall, and no cold rebuild.
 
 Carry uncommitted work across too:
 
@@ -67,9 +57,7 @@ $ lane new spike --dirty
   carried 3 uncommitted change(s) from the parent tree
 ```
 
-`--dirty` does the same as the default and also carries your uncommitted work.
-Use it when you want to hand your current mess to an agent and keep working
-yourself. Without reflink support, either mode leaves a plain worktree.
+`--dirty` does the same as the default and also carries your uncommitted work. Use it when you want to hand your current mess to an agent and keep working yourself. Without reflink support, either mode leaves a plain worktree.
 
 Opt a gitignored entry out with multi-valued configuration:
 
@@ -80,20 +68,18 @@ $ git config --add lane.exclude packages/legacy/node_modules
 
 ### Leave notes while you work
 
-There are two ways in. Both write a note directly to `.lane/memory/`, where it is readable and visible to Git immediately. The next audit records its first baseline after any rebase. Use whichever suits the moment, or both.
+Both paths write a note to `.lane/memory/`, where it is readable and visible to Git immediately. The next audit records its first baseline after any rebase.
 
-**Option one — a command, whenever you notice something.**
+**A command, whenever you notice something.**
 
 ```bash
 $ lane note add src/auth.rs -a "fn verify" \
 >   "must stay constant-time; early return leaks token length"
 ```
 
-Supplied text never prompts and an omitted `-a` defaults to `@file`. Omit the
-text only when you want an interactive anchor selector and one-line note prompt.
+Supplied text never prompts. An omitted `-a` defaults to `@file`. Omit the text only when you want an interactive anchor selector and a one-line prompt.
 
-**Option two — a trailer, in the commit you were already writing.** Install the
-hooks once per repository, then never think about it again.
+**A trailer, in the commit you were already writing.** Install the hooks once per repository:
 
 ```bash
 $ lane install hooks
@@ -103,12 +89,7 @@ $ git commit -m "make verify constant-time
 > Why: src/auth.rs#fn verify | early return leaks token length"
 ```
 
-Option one costs a separate decision at the moment you are thinking about the
-commit, which is the one you forget. Option two costs a line. Neither is more
-correct than the other.
-
-The target path is required; omit `#<anchor>` to use `@file`. Record why it must
-stay true, not what you did.
+The target path is required; omit `#<anchor>` to use `@file`. Record why it must stay true, not what you did.
 
 `-a` is the anchor — what the note is *about*:
 
@@ -120,8 +101,7 @@ stay true, not what you did.
 | `## Rate limiting` | a markdown section |
 | `@file` | the whole file (default) |
 
-Discover the exact canonical values and their inclusive line ranges before
-recording a note:
+Discover the exact canonical values and their inclusive line ranges before recording a note:
 
 ```bash
 $ lane anchors src/auth.rs
@@ -130,13 +110,9 @@ fn verify   1-4
 fn refresh  6-8
 ```
 
-Use `lane anchors <path> --json` for structured output. A unique bare name such
-as `verify` is stored as its canonical value; a name shared by multiple
-declaration kinds is refused and lists the available choices.
+Use `lane anchors <path> --json` for structured output. A unique bare name such as `verify` is stored as its canonical value; a name shared by multiple declaration kinds is refused and lists the available choices.
 
-One note, one thought. Don't classify it, don't decide whether it's an
-invariant or a rationale — the whole point is that a note costs a single
-command with no taxonomy decision.
+One note, one thought. Don't classify it.
 
 ### Read what earlier lanes learned
 
@@ -150,9 +126,7 @@ $ lane why src/auth.rs
     must stay constant-time; early return leaks token length
 ```
 
-The path is omitted from headers because the command already names it. A directory
-reads the whole subtree beneath it, and a bare `lane why` reads the whole store; both
-keep `path#anchor` in each header so groups remain unambiguous:
+The path is omitted from headers because the command already names it. A directory reads the whole subtree beneath it, and a bare `lane why` reads the whole store; both keep `path#anchor` in each header so groups remain unambiguous:
 
 ```bash
 $ lane why src/
@@ -166,9 +140,7 @@ $ lane why src/
     the pool is created once per process; a second one exhausts the server
 ```
 
-Matching is by whole path component, so `src` never claims `src-gen/lib.rs`.
-`lane why` changes nothing and carries no branch provenance. Run `lane check` to see
-whether a note's anchored code has drifted and get the id needed to resolve it.
+Matching is by whole path component, so `src` never claims `src-gen/lib.rs`. `lane why` changes nothing. Run `lane check` to see whether a note's anchored code has drifted and get the id needed to resolve it.
 
 ### Close the lane
 
@@ -181,11 +153,7 @@ $ lane merge
   removed lane fix-login
 ```
 
-`merge` never touches the network for git. Add `--keep` to preserve the
-worktree, `--squash` to land one commit, or `--base <name>` to use a different
-base. Use `lane push` for a pull request — see [Pull requests](#pull-requests).
-
----
+`merge` never touches the network for git. Add `--keep` to preserve the worktree, `--squash` to land one commit, or `--base <name>` to use a different base. Use `lane push` for a pull request — see [Pull requests](#pull-requests).
 
 ### Pull requests
 
@@ -195,54 +163,35 @@ Where trunk is protected, `lane push` rebases, audits, commits memory, and pushe
 $ lane push
 ```
 
-Turn on **Require branches to be up to date before merging**. The audit fingerprints
-spans against the post-rebase tree, so a pull request merged on a stale base describes a
-tree nobody has. That setting serializes two clones the way the landing lock serializes
-two lanes on one machine.
+Turn on **Require branches to be up to date before merging**. The audit fingerprints spans against the post-rebase tree, so a pull request merged on a stale base describes a tree nobody has.
 
-The lane stays on disk until the pull request merges. `lane ls` marks it `pushed` while the
-remote has its tip, then `landed` once trunk carries its landing record; `lane prune` removes it. The marker is tree content
-rather than a commit, so neither a squash nor a rebase merge can hide it — `git branch -d`
-refuses both even when the trees are identical. It names the lane rather than the branch,
-because `fix` twice in a week is normal and the second one has landed nothing. Prune still
-checks that nothing on the branch is missing from trunk, so work committed after the merge
-is never discarded, and it removes nothing you are standing in.
+The lane stays on disk until the pull request merges. `lane ls` marks it `pushed` while the remote has its tip, then `landed` once trunk carries its landing record. `lane prune` removes it.
+
+The marker is tree content rather than a commit, so neither a squash nor a rebase merge can hide it — `git branch -d` refuses both even when the trees are identical. It names the lane rather than the branch, because `fix` twice in a week is normal and the second one has landed nothing. Prune still checks that nothing on the branch is missing from trunk, so work committed after the merge is never discarded, and it removes nothing you are standing in.
 
 ## What happens to notes over time
 
-Every audit re-resolves each anchor and hashes only that anchor's span,
-normalized so comments and whitespace don't count:
+Every audit re-resolves each anchor and hashes only that anchor's span, normalized so comments and whitespace don't count:
 
 | tier | meaning | what happens |
 |---|---|---|
-| `fresh` | unchanged | nothing, costs nothing |
+| `fresh` | unchanged | nothing |
 | `content-changed` | implementation moved | flagged until you resolve it |
 | `contract-changed` | the described thing changed shape | flagged until you resolve it |
 | `anchor-missing` | symbol gone | evicted to `.lane/attic/` |
 | `unverifiable` | no grammar for this anchor | reported for manual review |
 
-A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename
-detection and moves the notes with it. Eviction means the file or the symbol is
-genuinely gone.
+A renamed or moved file is followed, not evicted: `lane audit` reads git's own rename detection and moves the notes with it. Eviction means the file or the symbol is genuinely gone.
 
-A drifted note stays flagged until you run `lane note confirm <id>`, replace it
-with `lane note replace <id>`, or run `lane note retire <id>`. Until then,
-`lane check` keeps reporting it.
+A drifted note stays flagged until you run `lane note confirm <id>`, replace it with `lane note replace <id>`, or run `lane note retire <id>`. Until then, `lane check` keeps reporting it.
 
-Editing `#script` never stales a note on `#style`. Running a formatter stales
-nothing at all.
+Editing `#script` never stales a note on `#style`. Running a formatter stales nothing at all.
 
-The two drift tiers split a span at its declaration line: `fn verify(t: &str)`,
-`<script>`, `## Rate limiting`. Only an anchor that has one can report
-`contract-changed`. An `@file` note has no declaration — its first line is an
-import or a shebang — so every change to it is `content-changed`. A heading's
-declaration *is* its anchor, so changing it reports `anchor-missing`, not
-`contract-changed`.
+The two drift tiers split a span at its declaration line: `fn verify(t: &str)`, `<script>`, `## Rate limiting`. Only an anchor that has one can report `contract-changed`. An `@file` note has no declaration — its first line is an import or a shebang — so every change to it is `content-changed`. A heading's declaration *is* its anchor, so changing it reports `anchor-missing`, not `contract-changed`.
 
 ### Resolving drift
 
-Before `lane merge`, run `lane check`. It lists every note that is not fresh with
-the id you need next:
+Before `lane merge`, run `lane check`. It lists every note that is not fresh, with the id you need next:
 
 ```bash
 $ lane check
@@ -256,26 +205,15 @@ unverifiable       0
 ~ 01M0B4KQTX  src/auth.rs#fn verify
 ```
 
-Read the note and the code it points at, then take one action: `lane note confirm
-<id>` when the sentence remains true; `lane note replace <id> "<rewrite>"` when
-the subject is right but the sentence must change; or `lane note retire <id>`
-when the constraint is gone. Replacement inherits the predecessor's path and
-anchor unless you override them. At a terminal, `lane note edit <id>` presents
-these actions plus pin/unpin as a guided menu. Lane never calls a model.
+Read the note and the code it points at, then take one action: `lane note confirm <id>` when the sentence remains true; `lane note replace <id> "<rewrite>"` when the subject is right but the sentence must change; or `lane note retire <id>` when the constraint is gone. Replacement inherits the predecessor's path and anchor unless you override them. At a terminal, `lane note edit <id>` presents these actions plus pin/unpin as a guided menu. Lane never calls a model.
 
-Any unambiguous prefix of an id works, so the ten characters above are enough;
-an ambiguous one is refused and names what it matched. Add `--json` for the same
-rows plus each note's body and current span, which is what an agent reads.
+Any unambiguous prefix of an id works, so the ten characters above are enough; an ambiguous one is refused and names what it matched. Add `--json` for the same rows plus each note's body and current span, which is what an agent reads.
 
-Replace writes a new file and moves the predecessor to the attic immediately. A `?` has no grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves
-the note to the attic instead of vouching for it.
+Replace writes a new file and moves the predecessor to the attic immediately. A `?` has no grammar and cannot be resolved. An `x` means the symbol is gone, so audit moves the note to the attic instead of vouching for it.
 
 ### Budget
 
-Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by
-`pinned > touched by this lane > freshness > age` and moves the rest to
-`.lane/attic/`; its location is the retirement record.
-Nothing is deleted.
+Each `(file, anchor)` holds at most 5 notes / 1200 characters. Audit ranks by `pinned > touched by this lane > freshness > age` and moves the rest to `.lane/attic/`; its location is the retirement record. Nothing is deleted.
 
 Keep something permanently:
 
@@ -291,12 +229,9 @@ $ lane note restore 01M0B4KQTX
 
 Retire and restore move the note bytes unchanged.
 
----
-
 ## Working with agents
 
-`lane init` writes the protocol into `AGENTS.md`. Symlink `CLAUDE.md` to it if
-you keep both:
+`lane init` writes the protocol into `AGENTS.md`. Symlink `CLAUDE.md` to it if you keep both:
 
 ```
 ## Context memory
@@ -307,13 +242,9 @@ you keep both:
 - Detailed workflow lives in `.agents/skills/lane/SKILL.md`; run `lane install skill` if it is absent.
 ```
 
-That stub is always in context and stays short. `lane install skill` writes the
-fuller version — the daily loop, the `Why:` trailer form, the anchor grammar —
-to `.agents/skills/lane/SKILL.md`, loaded only when an agent is doing lane work.
+That stub is always in context and stays short. `lane install skill` writes the fuller version — the daily loop, the `Why:` trailer form, the anchor grammar — to `.agents/skills/lane/SKILL.md`, loaded only when an agent is doing lane work.
 
-Notes are plain markdown at predictable paths, so an agent finds them without
-any tool integration — the reason to store them as files rather than in a
-sidecar object store.
+Notes are plain markdown at predictable paths, so an agent finds them without any tool integration.
 
 Run several agents at once:
 
@@ -324,25 +255,18 @@ $ lane ls
   agent-b    landed   dirty   1 pending note(s)
 ```
 
-For a stable machine-readable inventory, orchestrators can use:
+For a stable machine-readable inventory:
 
 ```bash
 $ lane ls --json
 [{"name":"agent-a","path":"/w/proj/.lane/trees/agent-a","branch":"agent-a","state":"open","dirty":false,"pending_notes":3}]
 ```
 
-Before editing a file, `lane why <path> --json` provides its full note ids,
-timestamps, anchors, and text without scraping the compact human view.
-If the anchor is not already known, `lane anchors <path> --json` supplies the
-canonical candidates without requiring the agent to guess.
+Before editing a file, `lane why <path> --json` provides its full note ids, timestamps, anchors, and text without scraping the compact human view. If the anchor is not already known, `lane anchors <path> --json` supplies the canonical candidates.
 
-Each has its own warm build cache at no disk cost. They can annotate the same
-file, the same anchor, at the same time: each new finding gets its own note file,
-so there is nothing to lock and nothing to conflict.
+Each lane has its own warm build cache at no disk cost. They can annotate the same file, the same anchor, at the same time: each new finding gets its own note file.
 
 Land them in any order.
-
----
 
 ## Reference
 
@@ -387,25 +311,18 @@ yourproject/
   AGENTS.md
 ```
 
-Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`,
-so nothing is committed.
+Lanes live in `.lane/trees/` inside the repository and are excluded through `.git/info/exclude`, so nothing is committed.
 
 ### When things go wrong
 
-**`trunk has diverged`** — someone else pushed. `git pull --rebase` on trunk,
-then `lane merge` again.
+**`trunk has diverged`** — someone else pushed. `git pull --rebase` on trunk, then `lane merge` again.
 
-**Rebase conflict** — resolve in the lane, `git rebase --continue`, then rerun
-`lane merge`. New notes receive their first baseline only after the rebase succeeds.
+**Rebase conflict** — resolve in the lane, `git rebase --continue`, then rerun `lane merge`. New notes receive their first baseline only after the rebase succeeds.
 
-**`lane has uncommitted changes`** — commit or stash first; the rebase refuses
-tracked changes either way. Untracked files are fine and need no stashing.
+**`lane has uncommitted changes`** — commit or stash first; the rebase refuses tracked changes either way. Untracked files are fine and need no stashing.
 
-**`main has uncommitted changes`** — clean the named tracked files in the main
-worktree; commit or stash there first. Nothing in the lane was touched.
+**`main has uncommitted changes`** — clean the named tracked files in the main worktree; commit or stash there first. Nothing in the lane was touched.
 
-**`another lane is landing; try again`** — another landing or trunk-side audit
-holds the memory lock. It exits immediately rather than waiting; rerun the
-command after that operation finishes.
+**`another lane is landing; try again`** — another landing or trunk-side audit holds the memory lock. It exits immediately rather than waiting; rerun the command after that operation finishes.
 
 **A note is simply wrong** — run `lane note retire <id>` and commit the move to the attic.

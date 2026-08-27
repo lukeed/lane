@@ -97,7 +97,7 @@ export let list: Act[] = [
 			{ kind: 'cmd', text: 'lane check' },
 			{ kind: 'out', text: 'fresh              7' },
 			{ kind: 'warn', text: 'content-changed    1', step: 'drift', hold: 1400 },
-			{ kind: 'out', text: 'contract-changed  0' },
+			{ kind: 'out', text: 'contract-changed   0' },
 			{ kind: 'out', text: 'anchor-missing     0' },
 		],
 		why: '550 files rewritten — 106.5 MiB now owned by the lane. fn verify kept its signature and changed its body, so the note is content-changed.',
@@ -116,7 +116,7 @@ export let list: Act[] = [
 			{ kind: 'out', text: 'agent-b    open    dirty  3 pending note(s)' },
 			{ kind: 'out', text: 'agent-c    open    clean  0 pending note(s)' },
 		],
-		why: 'Each lane writes only the blocks it touches. Each note is its own file, so two agents can annotate the same function at once.',
+		why: 'Each lane writes only the blocks it touches and carries its own memory notes. Every note is its own file, so two agents can annotate the same function at once.',
 	},
 	{
 		label: 'lane merge',

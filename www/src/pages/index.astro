@@ -46,7 +46,7 @@ let tiers = [
 					<b>git worktree add</b> gives you a clean checkout and none of the ignored files that make it fast: <b>node_modules</b>, <b>target/</b>, <b>.env</b>. You reinstall and rebuild from scratch, even though those caches are already on disk. Whatever the last branch learned about a file stays in that branch.
 				</p>
 				<p class="lede">
-					<b>lane new</b> clones ignored paths by reference. The new tree starts warm, and the notes come with it. Lane never calls a model.
+					<b>lane new</b> clones ignored paths by reference, sharing bytes on disk. The new tree starts quickly with its prewarmed cache(s).
 				</p>
 				<div class="prompt">
 					<code class="prompt-cmd"><span class="p">$ </span>curl -fsSL https://lane.lukeed.com | sh</code>
@@ -71,6 +71,7 @@ let tiers = [
 		<section class="sec">
 			<h2 class="sec-head">Description</h2>
 			<div class="sec-body reveal">
+				<p class="tagline tagline-solo">A second worktree that costs no disk and no cold build.</p>
 				<p class="lede">
 					Lane asks git for every ignored path — nested ones like <b>packages/a/node_modules</b>, single files like <b>.env</b> — and clones each by reference. On APFS, btrfs, and XFS with <b>reflink=1</b>, the two copies share the same extents. The second tree takes no new space, and the build cache is already warm.
 				</p>
@@ -135,6 +136,7 @@ let tiers = [
 		<section class="sec">
 			<h2 class="sec-head">Memory</h2>
 			<div class="sec-body reveal">
+				<p class="tagline tagline-solo">The reason you did it that way, kept next to the code it constrains.</p>
 				<p class="lede">
 					A note records what must stay true, not what you changed.
 				</p>
@@ -206,6 +208,7 @@ noted -&gt; src/auth.rs#fn verify
 		<section class="sec">
 			<h2 class="sec-head">Agents</h2>
 			<div class="sec-body reveal">
+				<p class="tagline tagline-solo">The next agent reads the constraints before it edits.</p>
 				<p class="lede">
 					Two agents can note the same file, and the same anchor, at the same time. Each note is a new file, so nothing locks. Land them in any order; both notes are there afterwards.
 				</p>

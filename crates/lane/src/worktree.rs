@@ -126,6 +126,9 @@ fn append_line(path: &Path, line: &str) -> Result<()> {
     if existing.contains(line) {
         return Ok(());
     }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -793,9 +796,11 @@ mod tests {
         let root = tempfile::tempdir()?;
         let r = root.path();
         git(&["init", "-qb", "main"], Some(r))?;
+        std::fs::remove_dir_all(r.join(".git/info"))?;
 
         // The test process stands in the crate directory, never in `r`: the same relation a
-        // lane has to the repository it was made from.
+        // lane has to the repository it was made from. A custom init template may also omit
+        // info entirely, so setup must recreate the exclude file's parent.
         prepare_lanes_dir(r)?;
 
         let exclude = std::fs::read_to_string(r.join(".git/info/exclude"))?;

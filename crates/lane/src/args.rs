@@ -65,6 +65,13 @@ pub enum Installable {
     Skill,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewArgs {
     pub name: String,
@@ -156,7 +163,7 @@ pub enum Parsed {
     Push(PushArgs),
     Prune { dry_run: bool },
     Rm(RmArgs),
-    Shellenv,
+    Shellenv { shell: Shell },
     Help(Help),
     Version,
 }
@@ -191,7 +198,7 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
         Some("push") => parse_push(rest(raw)),
         Some("prune") => parse_prune(rest(raw)),
         Some("rm") => parse_rm(rest(raw)),
-        Some("shellenv") => bare(rest(raw), Help::Shellenv, Parsed::Shellenv),
+        Some("shellenv") => parse_shellenv(rest(raw)),
         Some("-h" | "--help") => Ok(Parsed::Help(Help::Root)),
         Some("-V" | "--version") => Ok(Parsed::Version),
         None => Ok(Parsed::Help(Help::Root)),
@@ -325,6 +332,23 @@ fn parse_ls(raw: Vec<OsString>) -> Result<Parsed> {
     let json = pargs.contains("--json");
     none(positionals(pargs, after, Help::Ls)?, Help::Ls)?;
     Ok(Parsed::Ls { json })
+}
+
+fn parse_shellenv(raw: Vec<OsString>) -> Result<Parsed> {
+    let (flags, after) = terminated(raw);
+    let mut pargs = pico_args::Arguments::from_vec(flags);
+    if pargs.contains(["-h", "--help"]) {
+        return Ok(Parsed::Help(Help::Shellenv));
+    }
+    let shell = match at_most_one(positionals(pargs, after, Help::Shellenv)?, Help::Shellenv)?
+        .as_deref()
+    {
+        None | Some("bash") => Shell::Bash,
+        Some("zsh") => Shell::Zsh,
+        Some("fish") => Shell::Fish,
+        Some(other) => anyhow::bail!("unsupported shell '{other}'; expected bash, zsh, or fish"),
+    };
+    Ok(Parsed::Shellenv { shell })
 }
 
 fn parse_anchors(raw: Vec<OsString>) -> Result<Parsed> {

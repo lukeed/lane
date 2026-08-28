@@ -39,11 +39,17 @@ Lane requires Rust 1.85 or newer when building from source.
 
 ## Setup
 
-For each new shell, you will need to install the `lane shellenv` wrapper to automatically `cd` into & out of lanes.
-Or you may add the shell wrapper to `.zshrc` or `.bashrc` to auto-run: 
+For each new shell, install the `lane shellenv` wrapper to automatically `cd` into and out of lanes.
+Add this to `.zshrc` or `.bashrc`:
 
 ```sh
 eval "$(lane shellenv)"
+```
+
+Or add the Fish wrapper to `~/.config/fish/config.fish`:
+
+```fish
+lane shellenv fish | source
 ```
 
 > While not necessary, this more convenient than manually running `cd .lane/trees/<new lane>` repeatedly.

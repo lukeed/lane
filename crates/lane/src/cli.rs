@@ -1,6 +1,8 @@
 //! Command surface. Every command returns an exit code; failures bubble as errors.
 
-use crate::args::{self, Budget, Installable, NoteAddArgs, NoteCommand, NoteReplaceArgs, Parsed};
+use crate::args::{
+    self, Budget, Installable, NoteAddArgs, NoteCommand, NoteReplaceArgs, Parsed, Shell,
+};
 use crate::audit;
 use crate::capture;
 use crate::git::{self, git, try_git};
@@ -86,7 +88,7 @@ pub fn run() -> Result<i32> {
         Parsed::Push(args) => push(args.name.as_deref(), args.base.as_deref(), &args.budget),
         Parsed::Prune { dry_run } => prune(dry_run),
         Parsed::Rm(args) => rm(&args.name, args.force),
-        Parsed::Shellenv => shellenv(),
+        Parsed::Shellenv { shell } => shellenv(shell),
     }
 }
 
@@ -1544,9 +1546,7 @@ fn rm(name: &str, force: bool) -> Result<i32> {
     Ok(0)
 }
 
-fn shellenv() -> Result<i32> {
-    println!(
-        r#"lane() {{
+const POSIX_SHELLENV: &str = r#"lane() {
   local p
   case "$1" in
     new|enter|switch|exit) p=$(command lane "$@") || return; cd "$p" ;;
@@ -1556,7 +1556,32 @@ fn shellenv() -> Result<i32> {
            cd "$PWD" 2>/dev/null || cd "$p" ;;
     *)     command lane "$@" ;;
   esac
-}}"#
+}"#;
+
+const FISH_SHELLENV: &str = r#"function lane --description 'lane worktree wrapper with auto-cd'
+    set -l p
+    switch "$argv[1]"
+        case new enter switch exit
+            set p (command lane $argv); or return
+            cd $p
+        # Read the destination first: merge deletes the worktree, and nothing runs from a
+        # directory that no longer exists. Stay put unless it was ours that went away.
+        case merge
+            set p (command lane exit); or return
+            command lane $argv; or return
+            cd $PWD 2>/dev/null; or cd $p
+        case '*'
+            command lane $argv
+    end
+end"#;
+
+fn shellenv(shell: Shell) -> Result<i32> {
+    println!(
+        "{}",
+        match shell {
+            Shell::Bash | Shell::Zsh => POSIX_SHELLENV,
+            Shell::Fish => FISH_SHELLENV,
+        }
     );
     Ok(0)
 }
@@ -1564,6 +1589,15 @@ fn shellenv() -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shellenv_scripts_match_each_shell() {
+        assert!(POSIX_SHELLENV.starts_with("lane() {"));
+        assert!(POSIX_SHELLENV.contains("command lane \"$@\""));
+        assert!(FISH_SHELLENV.starts_with("function lane"));
+        assert!(FISH_SHELLENV.contains("command lane $argv"));
+        assert!(FISH_SHELLENV.ends_with("end"));
+    }
 
     #[test]
     fn long_lane_names_keep_following_columns_aligned() {

@@ -72,8 +72,26 @@ fn help_wins_over_the_arguments_beside_it() {
 fn commands_without_arguments_take_none() {
     assert_eq!(ok(&["init"]), Parsed::Init);
     assert_eq!(ok(&["ls"]), Parsed::Ls { json: false });
-    assert_eq!(ok(&["shellenv"]), Parsed::Shellenv);
+    assert_eq!(ok(&["shellenv"]), Parsed::Shellenv { shell: Shell::Bash });
     assert!(err(&["ls", "extra"]).contains("unexpected argument 'extra' found"));
+}
+
+#[test]
+fn shellenv_accepts_supported_shells() {
+    assert_eq!(
+        ok(&["shellenv", "bash"]),
+        Parsed::Shellenv { shell: Shell::Bash }
+    );
+    assert_eq!(
+        ok(&["shellenv", "zsh"]),
+        Parsed::Shellenv { shell: Shell::Zsh }
+    );
+    assert_eq!(
+        ok(&["shellenv", "fish"]),
+        Parsed::Shellenv { shell: Shell::Fish }
+    );
+    assert!(err(&["shellenv", "nu"]).contains("unsupported shell 'nu'"));
+    assert!(err(&["shellenv", "fish", "extra"]).contains("unexpected argument 'extra'"));
 }
 
 #[test]

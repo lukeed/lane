@@ -1,0 +1,16 @@
+[tools]
+mr-boxington = "1"
+
+[tasks.check]
+depends = ["fmt", "clippy", "test"]
+
+[tasks.fmt]
+run = "cargo fmt --all --check"
+
+[tasks.clippy]
+run = "mbx clippy --workspace --all-targets -- -D warnings"
+env.CARGO_TARGET_DIR = "target/clippy"
+
+[tasks.test]
+run = "mbx test --workspace"
+env.CARGO_TARGET_DIR = "target/test"

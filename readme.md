@@ -140,9 +140,7 @@ Replacement inherits the live note's path and anchor. Retire and restore move by
 
 ```sh
 $ ./scripts/build.sh          # release-build and install the local lane binary
-$ cargo fmt --all --check
-$ cargo clippy --workspace --all-targets -- -D warnings
-$ cargo test --workspace
+$ mise run check              # format, Clippy and Rust tests; compile gates run concurrently through mbx
 $ ./scripts/test.sh           # end to end against temporary Git repositories
 $ ./scripts/check-linux.sh    # run the same gates without reflink support
 $ ./scripts/release.ts patch  # bump the version, then tag and push the release

@@ -26,20 +26,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # One cache entry per OS, written ONLY on main. Branches restore from it and never
-      # save, so the 10 GB repo budget cannot be filled by branch churn.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # One cache entry per OS, written only on main. Pull requests restore from it.
+      - uses: jdx/mr-boxington-action@203ebddb3bdb1b3832473207d0a837b23b660563 # v1.0.1
         with:
-          shared-key: ${{ matrix.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          version: 1.0.0
 
       - run: rustc --version && cargo --version
 
       - run: cargo fmt --all --check
 
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: mbx clippy --workspace --all-targets -- -D warnings
 
-      - run: cargo test --workspace
+      - run: mbx test --workspace
 
       # Builds the binary itself and drives real git repos in a tmpdir.
       - run: ./scripts/test.sh

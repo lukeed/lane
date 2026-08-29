@@ -52,7 +52,9 @@ Or add the Fish wrapper to `~/.config/fish/config.fish`:
 lane shellenv fish | source
 ```
 
-> While not necessary, this more convenient than manually running `cd .lane/trees/<new lane>` repeatedly.
+The wrapper completes lane names for `lane rm`, `lane push`, `lane enter`, and `lane merge`.
+
+> While not necessary, this is more convenient than manually running `cd .lane/trees/<new lane>` repeatedly.
 
 Then initialize each repository:
 

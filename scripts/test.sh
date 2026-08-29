@@ -437,6 +437,12 @@ command lane rm probe --force > /dev/null 2>&1
 
 cd "$TMP/repo"
 lane new hop > /dev/null 2>&1
+for verb in rm push enter merge; do
+  COMP_WORDS=(lane "$verb" "")
+  COMP_CWORD=2
+  __lane_complete
+  is "$verb completes lane names" "${COMPREPLY[*]}" "hop"
+done
 cd "$TMP/repo"
 lane enter hop
 is "enter moves the shell into the lane" \

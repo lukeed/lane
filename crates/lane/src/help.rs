@@ -536,7 +536,10 @@ const SHELLENV: &str = "
     and `lane merge` leave the shell in the right directory.
 
   Usage
-    $ eval \"$(lane shellenv)\"
+    $ eval \"$(lane shellenv [bash|zsh|fish])\"
+
+  Arguments
+    SHELL         Shell syntax to print (default: bash)
 
   Options
     -h, --help    Display this message

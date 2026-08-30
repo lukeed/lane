@@ -1558,6 +1558,55 @@ const POSIX_SHELLENV: &str = r#"lane() {
   esac
 }"#;
 
+const POSIX_COMPLETION: &str = r#"__lane_complete() {
+  local subcommand previous name state rest
+  if [ -n "${BASH_VERSION:-}" ]; then
+    subcommand="${COMP_WORDS[1]}"
+  else
+    subcommand="${words[2]}"
+  fi
+  case "$subcommand" in
+    rm|push|enter|merge) ;;
+    *) return ;;
+  esac
+  if [ -n "${BASH_VERSION:-}" ]; then
+    previous="${COMP_WORDS[COMP_CWORD-1]}"
+  else
+    previous="${words[CURRENT-1]}"
+  fi
+  case "$previous" in
+    --base|--max-notes|--max-chars) return ;;
+  esac
+  local -a lanes
+  while read -r name state rest; do
+    case "$state" in
+      open|pushed|landed) lanes+=("$name") ;;
+    esac
+  done < <(command lane ls 2>/dev/null)
+  (( ${#lanes[@]} )) || return
+  if [ -n "${BASH_VERSION:-}" ]; then
+    local current="${COMP_WORDS[COMP_CWORD]}"
+    COMPREPLY=()
+    for name in "${lanes[@]}"; do
+      case "$name" in
+        "$current"*) COMPREPLY+=("$name") ;;
+      esac
+    done
+  else
+    compadd -- "${lanes[@]}"
+  fi
+}
+
+if [ -n "${BASH_VERSION:-}" ]; then
+  complete -F __lane_complete lane
+else
+  if ! command -v compdef >/dev/null 2>&1; then
+    autoload -Uz compinit
+    compinit
+  fi
+  compdef __lane_complete lane
+fi"#;
+
 const FISH_SHELLENV: &str = r#"function lane --description 'lane worktree wrapper with auto-cd'
     set -l p
     switch "$argv[1]"
@@ -1575,14 +1624,32 @@ const FISH_SHELLENV: &str = r#"function lane --description 'lane worktree wrappe
     end
 end"#;
 
+const FISH_COMPLETION: &str = r#"function __lane_names
+    command lane ls 2>/dev/null | while read -l name state rest
+        switch $state
+            case open pushed landed
+                printf '%s\n' "$name"
+        end
+    end
+end
+
+function __lane_complete_name
+    set -l words (commandline -opc)
+    set -q words[2]; or return 1
+    switch $words[-1]
+        case --base --max-notes --max-chars
+            return 1
+    end
+    contains -- "$words[2]" rm push enter merge
+end
+
+complete -c lane -f -n __lane_complete_name -a '(__lane_names)'"#;
+
 fn shellenv(shell: Shell) -> Result<i32> {
-    println!(
-        "{}",
-        match shell {
-            Shell::Bash | Shell::Zsh => POSIX_SHELLENV,
-            Shell::Fish => FISH_SHELLENV,
-        }
-    );
+    match shell {
+        Shell::Bash | Shell::Zsh => println!("{POSIX_SHELLENV}\n\n{POSIX_COMPLETION}"),
+        Shell::Fish => println!("{FISH_SHELLENV}\n\n{FISH_COMPLETION}"),
+    }
     Ok(0)
 }
 
@@ -1594,9 +1661,18 @@ mod tests {
     fn shellenv_scripts_match_each_shell() {
         assert!(POSIX_SHELLENV.starts_with("lane() {"));
         assert!(POSIX_SHELLENV.contains("command lane \"$@\""));
+        assert!(POSIX_COMPLETION.contains("complete -F __lane_complete lane"));
+        assert!(POSIX_COMPLETION.contains("compdef __lane_complete lane"));
         assert!(FISH_SHELLENV.starts_with("function lane"));
         assert!(FISH_SHELLENV.contains("command lane $argv"));
         assert!(FISH_SHELLENV.ends_with("end"));
+        assert!(FISH_COMPLETION.contains("complete -c lane"));
+        for completion in [POSIX_COMPLETION, FISH_COMPLETION] {
+            assert!(completion.contains("command lane ls"));
+            for command in ["rm", "push", "enter", "merge"] {
+                assert!(completion.contains(command));
+            }
+        }
     }
 
     #[test]

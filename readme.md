@@ -52,7 +52,9 @@ Or add the Fish wrapper to `~/.config/fish/config.fish`:
 lane shellenv fish | source
 ```
 
-> While not necessary, this more convenient than manually running `cd .lane/trees/<new lane>` repeatedly.
+The wrapper completes lane names for `lane rm`, `lane push`, `lane enter`, and `lane merge`.
+
+> While not necessary, this is more convenient than manually running `cd .lane/trees/<new lane>` repeatedly.
 
 Then initialize each repository:
 
@@ -146,7 +148,9 @@ Replacement inherits the live note's path and anchor. Retire and restore move by
 
 ```sh
 $ ./scripts/build.sh          # release-build and install the local lane binary
-$ mise run check              # format, Clippy and Rust tests; compile gates run concurrently through mbx
+$ cargo fmt --all --check
+$ cargo clippy --workspace --all-targets -- -D warnings
+$ cargo test --workspace
 $ ./scripts/test.sh           # end to end against temporary Git repositories
 $ ./scripts/check-linux.sh    # run the same gates without reflink support
 $ ./scripts/release.ts patch  # bump the version, then tag and push the release

@@ -168,6 +168,7 @@ pub struct Lane {
 pub fn list_lanes(root: &Path) -> Vec<Lane> {
     let out = try_git(&["worktree", "list", "--porcelain"], Some(root));
     let trees = lanes_dir(root);
+    let trees = trees.canonicalize().unwrap_or(trees);
     let mut lanes = Vec::new();
     let (mut path, mut branch) = (String::new(), String::new());
 

@@ -99,6 +99,41 @@ pub fn is_dirty(path: &Path) -> bool {
     .is_empty()
 }
 
+pub struct Status {
+    pub dirty: bool,
+    pub pushed: bool,
+}
+
+pub fn status(path: &Path) -> Status {
+    let out = try_git(
+        &[
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--branch",
+            "--no-ahead-behind",
+            "--untracked-files=no",
+        ],
+        Some(path),
+    );
+    let mut status = Status {
+        dirty: false,
+        pushed: false,
+    };
+    let mut records = out.split('\0');
+    while let Some(record) = records.next() {
+        if record == "# branch.ab +0 -0" {
+            status.pushed = true;
+        } else if record.starts_with("2 ") {
+            status.dirty = true;
+            records.next();
+        } else if record.starts_with("1 ") || record.starts_with("u ") {
+            status.dirty = true;
+        }
+    }
+    status
+}
+
 /// Entries git will not materialize: exactly what a fresh worktree is missing.
 /// Already collapsed to directory roots, at any depth, from the user's own ignore rules.
 fn ignored_entries(root: &Path) -> Vec<String> {
@@ -664,6 +699,23 @@ pub fn upstream_gone(root: &Path, branch: &str) -> bool {
     )
     .trim()
         == "[gone]"
+}
+
+pub fn gone_upstreams(root: &Path) -> HashSet<String> {
+    let out = try_git(
+        &["for-each-ref", "--format=%(refname)%00%(upstream)"],
+        Some(root),
+    );
+    let refs: HashMap<_, _> = out
+        .lines()
+        .filter_map(|line| line.split_once('\0'))
+        .collect();
+    refs.iter()
+        .filter_map(|(name, upstream)| {
+            let branch = name.strip_prefix("refs/heads/")?;
+            (!upstream.is_empty() && !refs.contains_key(upstream)).then(|| branch.to_string())
+        })
+        .collect()
 }
 
 pub fn contained_in(root: &Path, trunk: &str, branch: &str) -> bool {

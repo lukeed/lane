@@ -153,6 +153,14 @@ fn local_bare(common_dir: &Path) -> Option<bool> {
     {
         return None;
     }
+    if let Some(value) = config.string("core.bare") {
+        if !["", "true", "false", "yes", "no", "on", "off", "0", "1"]
+            .iter()
+            .any(|word| value.eq_ignore_ascii_case(word.as_bytes()))
+        {
+            return None;
+        }
+    }
     config.boolean("core.bare").ok().flatten()
 }
 

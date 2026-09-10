@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
-fn run(program: &str, root: &Path, args: &[&str], env: &[(&str, &str)]) -> String {
-    let output = Command::new(program)
+fn invoke(program: &str, root: &Path, args: &[&str], env: &[(&str, &str)]) -> std::process::Output {
+    Command::new(program)
         .args(args)
         .current_dir(root)
         .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -17,7 +17,11 @@ fn run(program: &str, root: &Path, args: &[&str], env: &[(&str, &str)]) -> Strin
         .env_remove("GIT_CONFIG_PARAMETERS")
         .envs(env.iter().copied())
         .output()
-        .unwrap();
+        .unwrap()
+}
+
+fn run(program: &str, root: &Path, args: &[&str], env: &[(&str, &str)]) -> String {
+    let output = invoke(program, root, args, env);
     assert!(
         output.status.success(),
         "{program} {args:?} in {} failed:\n{}\n{}",
@@ -190,6 +194,9 @@ fn local_bare_values_need_no_git_process() {
         ("false", &root),
         ("yes", &host),
         ("no", &root),
+        ("ON", &host),
+        ("OFF", &root),
+        ("", &root),
         ("1", &host),
         ("0", &root),
     ] {
@@ -205,6 +212,21 @@ fn local_bare_values_need_no_git_process() {
         );
         assert_eq!(PathBuf::from(destination), *expected);
         assert!(!trace.exists(), "layout spawned Git for core.bare={value}");
+    }
+}
+
+#[test]
+fn invalid_numeric_booleans_keep_gits_diagnosis() {
+    let (_temp, root, host) = bare_dotgit();
+    let path = root.join(".git/config");
+    let original = fs::read_to_string(&path).unwrap();
+    for value in ["08", "2147483648"] {
+        fs::write(&path, format!("{original}\n[core]\n\tbare = {value}\n")).unwrap();
+        let output = invoke(env!("CARGO_BIN_EXE_lane"), &host, &["exit"], &[]);
+        assert!(!output.status.success(), "accepted invalid boolean {value}");
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(error.contains("bad boolean config value"), "{error}");
+        assert!(error.contains(value), "{error}");
     }
 }
 

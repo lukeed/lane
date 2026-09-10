@@ -83,6 +83,7 @@ pub fn run() -> Result<i32> {
             args.base.as_deref(),
             args.keep,
             args.squash,
+            args.message.as_deref(),
             &args.budget,
         ),
         Parsed::Push(args) => push(args.name.as_deref(), args.base.as_deref(), &args.budget),
@@ -1395,6 +1396,7 @@ fn merge(
     base: Option<&str>,
     keep: bool,
     squash: bool,
+    message: Option<&str>,
     budget: &Budget,
 ) -> Result<i32> {
     let info: &mut dyn Write = &mut std::io::stdout();
@@ -1413,10 +1415,8 @@ fn merge(
 
     if squash {
         git(&["merge", "--squash", &branch], Some(&root))?;
-        git(
-            &["commit", "-q", "-m", &format!("lane: merged {branch}")],
-            Some(&root),
-        )?;
+        let message = message.map_or_else(|| format!("lane: merged {branch}"), str::to_owned);
+        git(&["commit", "-q", "-m", &message], Some(&root))?;
         writeln!(info, "squash-merged {branch} into {base}")?;
     } else {
         wt::fast_forward(&root, &base, &branch)?;

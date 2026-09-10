@@ -474,16 +474,18 @@ const MERGE: &str = "
     $ lane merge [name] [options]
 
   Options
-    --base <ref>        Rebase onto <ref> instead of the recorded base
-    --squash            Squash the lane's commits into one landing commit
-    --keep              Leave the worktree in place after landing
-    --max-notes <n>     Notes kept per anchor (default: 5)
-    --max-chars <n>     Characters kept per anchor (default: 1200)
-    -h, --help          Display this message
+    --base <ref>          Rebase onto <ref> instead of the recorded base
+    --squash              Squash the lane's commits into one landing commit
+    -m, --message <text>  Set the commit message (requires --squash; cannot be blank)
+    --keep                Leave the worktree in place after landing
+    --max-notes <n>       Notes kept per anchor (default: 5)
+    --max-chars <n>       Characters kept per anchor (default: 1200)
+    -h, --help            Display this message
 
   Examples
     $ lane merge
     $ lane merge --squash
+    $ lane merge --squash -m \"feat: add login\"
 ";
 
 const PUSH: &str = "

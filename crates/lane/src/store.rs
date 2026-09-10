@@ -506,6 +506,7 @@ pub struct Check {
 pub struct Checker {
     root: PathBuf,
     cache: HashMap<String, Option<Source>>,
+    hashes: HashMap<(String, String), (String, String, String)>,
 }
 
 impl Checker {
@@ -513,6 +514,7 @@ impl Checker {
         Checker {
             root: root.to_path_buf(),
             cache: HashMap::new(),
+            hashes: HashMap::new(),
         }
     }
 
@@ -526,12 +528,11 @@ impl Checker {
         self.cache.get(rel).and_then(|slot| slot.as_ref())
     }
 
-    pub fn span_text(&mut self, note: &Note) -> String {
-        let (path, anchor) = (note.path(), note.meta.anchor.clone());
-        let Some(src) = self.source(&path) else {
+    pub fn span_text(&mut self, path: &str, span: Option<Span>) -> String {
+        let Some(span) = span else {
             return String::new();
         };
-        let Some(span) = src.resolve(&anchor) else {
+        let Some(src) = self.source(path) else {
             return String::new();
         };
         let text = src.span_text(span);
@@ -561,6 +562,7 @@ impl Checker {
         let base = note.meta.clone();
 
         let (path, anchor) = (note.path(), note.meta.anchor.clone());
+        let cached = self.hashes.get(&(path.clone(), anchor.clone())).cloned();
         let Some(src) = self.source(&path) else {
             return blank(MISSING);
         };
@@ -569,7 +571,14 @@ impl Checker {
             Resolution::NotFound => return blank(MISSING),
             Resolution::Unparsed => return blank(UNVERIFIABLE),
         };
-        let (sig, body_hash, raw_hash) = src.hashes(span, &anchor);
+        let (sig, body_hash, raw_hash) = match cached {
+            Some(hashes) => hashes,
+            None => {
+                let hashes = src.hashes(span, &anchor);
+                self.hashes.insert((path, anchor), hashes.clone());
+                hashes
+            }
+        };
 
         // Nothing to compare against yet, so this is a first fingerprint, not a change.
         // Adopted, because a note written before its baseline exists keeps none otherwise.
@@ -1050,6 +1059,111 @@ mod tests {
         let res = Checker::new(root.path()).check(&note);
         assert_eq!(res.tier, FRESH);
         assert!(!res.sig.is_empty(), "the fingerprint must be adopted");
+    }
+
+    #[test]
+    fn shared_current_hashes_keep_each_notes_baseline_and_normalization() {
+        let root = tempfile::tempdir().unwrap();
+        let source = "pub fn v() {\n    current();\n}\n";
+        let mut note = fixture(root.path(), source);
+        note.meta.anchor = "fn v".into();
+        let parsed = Source::new(source, "src/a.rs");
+        let span = parsed.resolve("fn v").unwrap();
+        let hashes = parsed.hashes(span, "fn v");
+        let current = crate::syntax::NORM_VERSION;
+        let cases = [
+            (
+                hashes.0.as_str(),
+                hashes.1.as_str(),
+                hashes.2.as_str(),
+                current,
+                FRESH,
+                false,
+                false,
+            ),
+            (
+                hashes.0.as_str(),
+                "old body",
+                "old raw",
+                current,
+                BODY,
+                false,
+                false,
+            ),
+            (
+                "old signature",
+                "old body",
+                "old raw",
+                current,
+                SIG,
+                false,
+                false,
+            ),
+            (
+                "old signature",
+                "old body",
+                hashes.2.as_str(),
+                "0",
+                FRESH,
+                true,
+                false,
+            ),
+            (
+                "old signature",
+                "old body",
+                "old raw",
+                "0",
+                FRESH,
+                true,
+                true,
+            ),
+            ("", "", "", current, FRESH, true, false),
+        ];
+        let mut checker = Checker::new(root.path());
+        for _ in 0..2 {
+            for (sig, body, raw, norm, tier, adopted, rebaselined) in cases {
+                note.meta.sig = sig.into();
+                note.meta.body_hash = body.into();
+                note.meta.raw_hash = raw.into();
+                note.meta.norm = norm.into();
+                let result = checker.check(&note);
+                assert_eq!(result.tier, tier);
+                assert_eq!(result.adopted, adopted);
+                assert_eq!(result.rebaselined, rebaselined);
+                assert_eq!(result.span, Some(span));
+                assert_eq!(result.base, (sig.into(), body.into(), raw.into()));
+                assert_eq!((result.sig, result.body_hash, result.raw_hash), hashes);
+            }
+        }
+    }
+
+    #[test]
+    fn shared_spans_keep_the_anchors_comment_language() {
+        let root = tempfile::tempdir().unwrap();
+        let path = "src/View.svelte";
+        let source = "<style>\n.item { color: red; /* keep this */ }\n</style>\n";
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join(path), source).unwrap();
+        let parsed = Source::new(source, path);
+        let span = parsed.resolve("@file").unwrap();
+        assert_eq!(parsed.resolve("#style"), Some(span));
+        let whole = parsed.hashes(span, "@file");
+        let style = parsed.hashes(span, "#style");
+        assert_ne!(whole.1, style.1);
+        seed_note(root.path(), path, "01M0A", "keep the style");
+        let mut note = load_notes(root.path(), None).pop().unwrap();
+        let mut checker = Checker::new(root.path());
+        for (anchor, expected) in [
+            ("@file", &whole),
+            ("#style", &style),
+            ("@file", &whole),
+            ("#style", &style),
+        ] {
+            note.meta.anchor = anchor.into();
+            let result = checker.check(&note);
+            assert_eq!(result.span, Some(span));
+            assert_eq!(&(result.sig, result.body_hash, result.raw_hash), expected);
+        }
     }
 
     #[test]

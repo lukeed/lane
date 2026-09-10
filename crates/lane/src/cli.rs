@@ -1168,7 +1168,7 @@ fn check_json_rows(
                 "note": note.body.trim(),
             });
             if res.tier != FRESH {
-                row["span"] = serde_json::json!(checker.span_text(note));
+                row["span"] = serde_json::json!(checker.span_text(&note.path(), res.span));
             }
             row
         })

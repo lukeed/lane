@@ -49,7 +49,9 @@ pub fn git_ok(args: &[&str], cwd: Option<&Path>) -> bool {
 ///
 /// `git_dir` is per-worktree; `common_dir` is shared by every linked worktree.
 /// Keep those separate: lane's pending queue and identity intentionally live in
-/// the former, while the primary worktree is the parent of the latter.
+/// the former, while the primary worktree is the parent of the latter. A bare
+/// repository has no primary worktree, so the worktree lane was invoked from
+/// (or the one hosting the current lane) stands in for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoLayout {
     pub git_dir: PathBuf,
@@ -86,10 +88,10 @@ fn resolve_layout(
             Err(error) => return Err(error).context("read git commondir"),
         },
     };
-    let main_root = common_dir
-        .parent()
-        .context("git common directory has no parent")?
-        .to_path_buf();
+    let main_root = match primary_worktree(&common_dir) {
+        Some(root) => root,
+        None => lane_host(&repo_root),
+    };
 
     Ok(RepoLayout {
         git_dir,
@@ -97,6 +99,23 @@ fn resolve_layout(
         repo_root,
         main_root,
     })
+}
+
+fn primary_worktree(common_dir: &Path) -> Option<PathBuf> {
+    let parent = common_dir.parent()?;
+    let owns_common_dir = std::fs::canonicalize(parent.join(".git")).ok()? == common_dir;
+    owns_common_dir.then(|| parent.to_path_buf())
+}
+
+fn lane_host(repo_root: &Path) -> PathBuf {
+    let mut parts = repo_root.components().rev();
+    let _name = parts.next();
+    let trees = parts.next().map(|c| c.as_os_str() == "trees");
+    let lane = parts.next().map(|c| c.as_os_str() == ".lane");
+    match (trees, lane) {
+        (Some(true), Some(true)) => parts.rev().collect(),
+        _ => repo_root.to_path_buf(),
+    }
 }
 
 fn find_repo_root(start: &Path) -> Result<PathBuf> {
@@ -263,6 +282,51 @@ mod tests {
         assert_eq!(layout.main_root, std::fs::canonicalize(root).unwrap());
     }
 
+    fn bare() -> (TempDir, PathBuf, PathBuf) {
+        let temp = TempDir::new().unwrap();
+        let bare = temp.path().join("repo.git");
+        let checkout = temp.path().join("branches/main");
+        std::fs::create_dir_all(bare.join("worktrees/main")).unwrap();
+        std::fs::create_dir_all(&checkout).unwrap();
+        std::fs::write(bare.join("worktrees/main/commondir"), "../..\n").unwrap();
+        std::fs::write(
+            checkout.join(".git"),
+            format!("gitdir: {}\n", bare.join("worktrees/main").display()),
+        )
+        .unwrap();
+        (temp, bare, checkout)
+    }
+
+    #[test]
+    fn bare_repository_anchors_on_the_invoking_worktree() {
+        let (_temp, bare, checkout) = bare();
+        let nested = checkout.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let layout = resolve_layout(&nested, None, None).unwrap();
+        assert_eq!(layout.common_dir, std::fs::canonicalize(&bare).unwrap());
+        assert_eq!(layout.repo_root, std::fs::canonicalize(&checkout).unwrap());
+        assert_eq!(layout.main_root, layout.repo_root);
+    }
+
+    #[test]
+    fn bare_repository_lane_resolves_its_hosting_worktree() {
+        let (_temp, bare, checkout) = bare();
+        let lane = checkout.join(".lane/trees/alpha");
+        std::fs::create_dir_all(&lane).unwrap();
+        std::fs::create_dir_all(bare.join("worktrees/alpha")).unwrap();
+        std::fs::write(bare.join("worktrees/alpha/commondir"), "../..\n").unwrap();
+        std::fs::write(
+            lane.join(".git"),
+            format!("gitdir: {}\n", bare.join("worktrees/alpha").display()),
+        )
+        .unwrap();
+
+        let layout = resolve_layout(&lane, None, None).unwrap();
+        assert_eq!(layout.repo_root, std::fs::canonicalize(&lane).unwrap());
+        assert_eq!(layout.main_root, std::fs::canonicalize(&checkout).unwrap());
+    }
+
     #[test]
     fn absolute_gitdir_and_environment_overrides_win() {
         let (_temp, root) = primary();
@@ -292,10 +356,7 @@ mod tests {
             layout.common_dir,
             std::fs::canonicalize(&alternate_common).unwrap()
         );
-        assert_eq!(
-            layout.main_root,
-            std::fs::canonicalize(alternate_common.parent().unwrap()).unwrap()
-        );
+        assert_eq!(layout.main_root, std::fs::canonicalize(&lane).unwrap());
     }
 
     fn repository() -> TempDir {

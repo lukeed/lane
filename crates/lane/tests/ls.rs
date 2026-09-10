@@ -191,7 +191,7 @@ fn marked_lanes_share_refs_and_keep_the_containment_fallback() {
             "+refs/heads/*:refs/remotes/origin/*",
         ],
     );
-    for name in ["gone", "contained", "open"] {
+    for name in ["gone", "contained", "open", "pushed"] {
         let path = worktree(root, name);
         let marker = git(&path, &["rev-parse", "--git-path", "lane/landed"]);
         let marker = path.join(marker);
@@ -200,6 +200,15 @@ fn marked_lanes_share_refs_and_keep_the_containment_fallback() {
         if name != "contained" {
             std::fs::write(path.join("file"), name).unwrap();
             git(&path, &["commit", "-qam", name]);
+        }
+        if name == "pushed" {
+            let tip = git(&path, &["rev-parse", "HEAD"]);
+            git(root, &["update-ref", "refs/remotes/origin/pushed", &tip]);
+            git(root, &["config", "branch.pushed.remote", "origin"]);
+            git(
+                root,
+                &["config", "branch.pushed.merge", "refs/heads/pushed"],
+            );
         }
     }
     git(root, &["config", "branch.gone.remote", "origin"]);
@@ -210,6 +219,7 @@ fn marked_lanes_share_refs_and_keep_the_containment_fallback() {
     assert_eq!(row(&listing, "gone")["state"], "landed");
     assert_eq!(row(&listing, "contained")["state"], "landed");
     assert_eq!(row(&listing, "open")["state"], "open");
+    assert_eq!(row(&listing, "pushed")["state"], "pushed");
     let starts: Vec<Value> = std::fs::read_to_string(trace)
         .unwrap()
         .lines()

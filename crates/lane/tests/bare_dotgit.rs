@@ -270,3 +270,124 @@ fn global_worktree_extension_does_not_override_local_bare() {
     );
     assert_eq!(PathBuf::from(destination), root);
 }
+
+fn metadata_reads(root: &Path, env: &[(&str, &str)], expected: &str) {
+    let temp = TempDir::new().unwrap();
+    let trace = temp.path().join("trace.json");
+    let mut env = env.to_vec();
+    env.push(("GIT_TRACE2_EVENT", trace.to_str().unwrap()));
+    let anchors: serde_json::Value = serde_json::from_str(&run(
+        env!("CARGO_BIN_EXE_lane"),
+        root,
+        &["anchors", "README.md", "--json"],
+        &env,
+    ))
+    .unwrap();
+    assert_eq!(anchors[0]["anchor"], "@file");
+    let notes: serde_json::Value = serde_json::from_str(&run(
+        env!("CARGO_BIN_EXE_lane"),
+        root,
+        &["why", "README.md", "--json"],
+        &env,
+    ))
+    .unwrap();
+    assert_eq!(notes.as_array().unwrap().len(), 1);
+    assert_eq!(notes[0]["note"], expected);
+    assert!(!trace.exists(), "metadata reads spawned Git");
+}
+
+#[test]
+fn bare_metadata_reads_need_no_config_process() {
+    let (_temp, root, host) = bare_dotgit();
+    lane(&host, &["note", "add", "README.md", "host note"]);
+
+    fs::write(root.join(".git/bare.config"), "[core]\n\tbare = true\n").unwrap();
+    git(&root, &["config", "include.path", "bare.config"]);
+    metadata_reads(&host, &[], "host note");
+
+    git(&root, &["config", "--unset", "include.path"]);
+    git(&root, &["config", "extensions.worktreeConfig", "true"]);
+    fs::write(root.join(".git/config.worktree"), "[core]\n\tbare = true\n").unwrap();
+    let git_dir = git(&host, &["rev-parse", "--absolute-git-dir"]);
+    metadata_reads(
+        &host,
+        &[
+            ("GIT_DIR", &git_dir),
+            ("GIT_COMMON_DIR", "../.git"),
+            ("GIT_WORK_TREE", host.to_str().unwrap()),
+        ],
+        "host note",
+    );
+
+    fs::remove_file(root.join(".git/config.worktree")).unwrap();
+    for overrides in [
+        vec![
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "core.bare"),
+            ("GIT_CONFIG_VALUE_0", "false"),
+        ],
+        vec![("GIT_CONFIG_PARAMETERS", "'core.bare=false'")],
+        vec![(
+            "GIT_CONFIG",
+            root.join(".git/bare.config").to_str().unwrap(),
+        )],
+    ] {
+        metadata_reads(&host, &overrides, "host note");
+    }
+}
+
+#[test]
+fn linked_metadata_reads_keep_notes_separate_without_git() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().canonicalize().unwrap().join("repo");
+    seed(&root);
+    let linked = temp.path().canonicalize().unwrap().join("linked");
+    git(
+        &root,
+        &["worktree", "add", "-b", "linked", linked.to_str().unwrap()],
+    );
+    lane(&root, &["note", "add", "README.md", "parent note"]);
+    lane(&linked, &["note", "add", "README.md", "linked note"]);
+    fs::write(root.join(".git/extra.config"), "[core]\n\tbare = false\n").unwrap();
+    git(&root, &["config", "include.path", "extra.config"]);
+
+    metadata_reads(&root, &[], "parent note");
+    metadata_reads(&linked, &[], "linked note");
+}
+
+#[test]
+fn listing_resolves_primary_config_once_and_keeps_pending_notes_separate() {
+    let (_temp, root, host) = bare_dotgit();
+    initialize(&host);
+    let alpha = PathBuf::from(lane(&host, &["new", "alpha"]));
+    lane(&host, &["new", "beta"]);
+    lane(&host, &["note", "add", "README.md", "host note"]);
+    lane(&alpha, &["note", "add", "README.md", "alpha note"]);
+    fs::write(root.join(".git/bare.config"), "[core]\n\tbare = true\n").unwrap();
+    git(&root, &["config", "include.path", "bare.config"]);
+    let trace = root.join("trace.json");
+    let rows: serde_json::Value = serde_json::from_str(&run(
+        env!("CARGO_BIN_EXE_lane"),
+        &host,
+        &["ls", "--json"],
+        &[("GIT_TRACE2_EVENT", trace.to_str().unwrap())],
+    ))
+    .unwrap();
+    let rows = rows.as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        assert_eq!(row["pending_notes"], usize::from(row["name"] == "alpha"));
+    }
+    let queries = fs::read_to_string(trace)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|event| {
+            event["event"] == "start"
+                && event["argv"]
+                    .as_array()
+                    .is_some_and(|args| args.iter().any(|arg| arg == "core.bare"))
+        })
+        .count();
+    assert_eq!(queries, 1);
+}

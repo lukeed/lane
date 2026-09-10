@@ -57,10 +57,15 @@ pub struct RepoLayout {
     pub git_dir: PathBuf,
     pub common_dir: PathBuf,
     pub repo_root: PathBuf,
-    pub main_root: PathBuf,
 }
 
-/// Discover a repository layout from its metadata and Git's bare-repository status.
+impl RepoLayout {
+    pub fn main_root(&self) -> Result<PathBuf> {
+        Ok(primary_worktree(&self.common_dir)?.unwrap_or_else(|| lane_host(&self.repo_root)))
+    }
+}
+
+/// Discover a repository layout from its filesystem metadata.
 pub fn layout(start: &Path) -> Result<RepoLayout> {
     resolve_layout(
         start,
@@ -88,16 +93,10 @@ fn resolve_layout(
             Err(error) => return Err(error).context("read git commondir"),
         },
     };
-    let main_root = match primary_worktree(&common_dir)? {
-        Some(root) => root,
-        None => lane_host(&repo_root),
-    };
-
     Ok(RepoLayout {
         git_dir,
         common_dir,
         repo_root,
-        main_root,
     })
 }
 
@@ -312,7 +311,7 @@ mod tests {
         assert_eq!(layout.git_dir, git_dir);
         assert_eq!(layout.common_dir, layout.git_dir);
         assert_eq!(layout.repo_root, root);
-        assert_eq!(layout.main_root, layout.repo_root);
+        assert_eq!(layout.main_root().unwrap(), layout.repo_root);
     }
 
     #[test]
@@ -335,8 +334,11 @@ mod tests {
         );
         assert_eq!(layout.repo_root, std::fs::canonicalize(&lane).unwrap());
         // A lane's own root and the primary root must never be conflated.
-        assert_ne!(layout.repo_root, layout.main_root);
-        assert_eq!(layout.main_root, std::fs::canonicalize(root).unwrap());
+        assert_ne!(layout.repo_root, layout.main_root().unwrap());
+        assert_eq!(
+            layout.main_root().unwrap(),
+            std::fs::canonicalize(root).unwrap()
+        );
     }
 
     fn bare() -> (TempDir, PathBuf, PathBuf) {
@@ -363,7 +365,7 @@ mod tests {
         let layout = resolve_layout(&nested, None, None).unwrap();
         assert_eq!(layout.common_dir, std::fs::canonicalize(&bare).unwrap());
         assert_eq!(layout.repo_root, std::fs::canonicalize(&checkout).unwrap());
-        assert_eq!(layout.main_root, layout.repo_root);
+        assert_eq!(layout.main_root().unwrap(), layout.repo_root);
     }
 
     #[test]
@@ -381,7 +383,10 @@ mod tests {
 
         let layout = resolve_layout(&lane, None, None).unwrap();
         assert_eq!(layout.repo_root, std::fs::canonicalize(&lane).unwrap());
-        assert_eq!(layout.main_root, std::fs::canonicalize(&checkout).unwrap());
+        assert_eq!(
+            layout.main_root().unwrap(),
+            std::fs::canonicalize(&checkout).unwrap()
+        );
     }
 
     #[test]
@@ -413,7 +418,10 @@ mod tests {
             layout.common_dir,
             std::fs::canonicalize(&alternate_common).unwrap()
         );
-        assert_eq!(layout.main_root, std::fs::canonicalize(&lane).unwrap());
+        assert_eq!(
+            layout.main_root().unwrap(),
+            std::fs::canonicalize(&lane).unwrap()
+        );
     }
 
     fn repository() -> TempDir {

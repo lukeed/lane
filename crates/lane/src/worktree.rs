@@ -13,7 +13,7 @@ const TREES_PATH: &str = ".lane/trees";
 
 /// Root of the primary worktree, even when called from inside a lane.
 pub fn main_root() -> Result<PathBuf> {
-    Ok(layout(&std::env::current_dir()?)?.main_root)
+    layout(&std::env::current_dir()?)?.main_root()
 }
 
 pub fn trunk_name(root: &Path) -> String {

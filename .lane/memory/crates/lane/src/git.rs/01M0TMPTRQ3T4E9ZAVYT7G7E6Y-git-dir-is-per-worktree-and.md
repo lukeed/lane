@@ -4,8 +4,9 @@ anchor: struct RepoLayout
 created: 2026-08-24T19:14:32Z
 norm: '1'
 sig: 096b5de33f51b8a7
-body_hash: 4f4e2f70126b3686
-raw_hash: 1a8efaf217f3750a
+body_hash: 39cb5579b9306ec0
+raw_hash: 9c55aacba30f6155
+vouched: 2026-09-10T19:55:39Z
 lines: 48-53
 ---
 

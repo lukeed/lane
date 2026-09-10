@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
-fn run(program: &str, root: &Path, args: &[&str]) -> String {
+fn run(program: &str, root: &Path, args: &[&str], env: &[(&str, &str)]) -> String {
     let output = Command::new(program)
         .args(args)
         .current_dir(root)
@@ -14,6 +14,7 @@ fn run(program: &str, root: &Path, args: &[&str]) -> String {
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_CONFIG_COUNT")
         .env_remove("GIT_CONFIG_PARAMETERS")
+        .envs(env.iter().copied())
         .output()
         .unwrap();
     assert!(
@@ -27,11 +28,11 @@ fn run(program: &str, root: &Path, args: &[&str]) -> String {
 }
 
 fn git(root: &Path, args: &[&str]) -> String {
-    run("git", root, args)
+    run("git", root, args, &[])
 }
 
 fn lane(root: &Path, args: &[&str]) -> String {
-    run(env!("CARGO_BIN_EXE_lane"), root, args)
+    run(env!("CARGO_BIN_EXE_lane"), root, args, &[])
 }
 
 fn seed(root: &Path) {
@@ -116,6 +117,48 @@ fn bare_dotgit_uses_worktree_configuration() {
     initialize(&host);
     assert!(!root.join("AGENTS.md").exists());
     land_change(&host, &host);
+}
+
+#[test]
+fn bare_dotgit_checks_the_common_config_with_inherited_git_paths() {
+    let (_temp, root, host) = bare_dotgit();
+    let git_dir = git(&host, &["rev-parse", "--absolute-git-dir"]);
+    git(&root, &["config", "extensions.worktreeConfig", "true"]);
+    git(&root, &["config", "--unset", "core.bare"]);
+    fs::write(root.join(".git/config.worktree"), "[core]\n\tbare = true\n").unwrap();
+    fs::write(
+        Path::new(&git_dir).join("config.worktree"),
+        "[core]\n\tbare = false\n",
+    )
+    .unwrap();
+
+    let destination = run(
+        env!("CARGO_BIN_EXE_lane"),
+        &host,
+        &["exit"],
+        &[
+            ("GIT_DIR", &git_dir),
+            ("GIT_COMMON_DIR", "../.git"),
+            ("GIT_WORK_TREE", host.to_str().unwrap()),
+        ],
+    );
+    assert_eq!(PathBuf::from(destination), host);
+}
+
+#[test]
+fn primary_root_uses_inherited_config_overrides() {
+    let (_temp, root, host) = bare_dotgit();
+    let destination = run(
+        env!("CARGO_BIN_EXE_lane"),
+        &host,
+        &["exit"],
+        &[
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "core.bare"),
+            ("GIT_CONFIG_VALUE_0", "false"),
+        ],
+    );
+    assert_eq!(PathBuf::from(destination), root);
 }
 
 #[test]

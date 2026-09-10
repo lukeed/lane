@@ -167,11 +167,12 @@ pub struct Lane {
 
 pub fn list_lanes(root: &Path) -> Vec<Lane> {
     let out = try_git(&["worktree", "list", "--porcelain"], Some(root));
+    let trees = lanes_dir(root);
     let mut lanes = Vec::new();
     let (mut path, mut branch) = (String::new(), String::new());
 
     let flush = |path: &mut String, branch: &mut String, lanes: &mut Vec<Lane>| {
-        if !path.is_empty() && Path::new(path.as_str()) != root {
+        if Path::new(path.as_str()).starts_with(&trees) {
             lanes.push(Lane {
                 path: PathBuf::from(path.as_str()),
                 branch: if branch.is_empty() {

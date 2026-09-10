@@ -13,12 +13,10 @@ use crate::util::now_iso;
 use crate::worktree as wt;
 use anyhow::{Result, bail};
 use rustix::fs::{FlockOperation, flock};
-use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{IsTerminal, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 /// Takes the stream it will be written to; for `new` that is stderr, not stdout.
 fn bold(text: &str, tty: bool) -> String {
@@ -644,7 +642,6 @@ fn format_lane_rows(rows: &[LaneRow]) -> Vec<String> {
 fn ls(json: bool) -> Result<i32> {
     let root = wt::main_root()?;
     let lanes = wt::list_lanes(&root);
-    let gone = OnceLock::new();
     let concurrency = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(8);
@@ -656,7 +653,7 @@ fn ls(json: bool) -> Result<i32> {
                 scope.spawn(|| {
                     lanes
                         .iter()
-                        .map(|lane| lane_row(&root, lane, &gone))
+                        .map(|lane| lane_row(&root, lane))
                         .collect::<Result<Vec<_>>>()
                 })
             })
@@ -682,19 +679,17 @@ fn ls(json: bool) -> Result<i32> {
     Ok(0)
 }
 
-fn lane_row(root: &Path, lane: &wt::Lane, gone: &OnceLock<HashSet<String>>) -> Result<LaneRow> {
+fn lane_row(root: &Path, lane: &wt::Lane) -> Result<LaneRow> {
     let name = wt::lane_name(root, &lane.path)?;
-    let status = wt::status(&lane.path);
+    let dirty = wt::is_dirty(&lane.path);
     // Only marked lanes pay for a probe, and a retired upstream settles it before
     // the expensive one runs.
     let state = if store::is_landed(&lane.path)
-        && (gone
-            .get_or_init(|| wt::gone_upstreams(root))
-            .contains(&lane.branch)
+        && (wt::upstream_gone(root, &lane.branch)
             || wt::contained_in(root, &wt::trunk_name(root), &lane.branch))
     {
         "landed"
-    } else if status.pushed {
+    } else if wt::is_pushed(&lane.path) {
         "pushed"
     } else {
         "open"
@@ -704,7 +699,7 @@ fn lane_row(root: &Path, lane: &wt::Lane, gone: &OnceLock<HashSet<String>>) -> R
         path: lane.path.to_string_lossy().to_string(),
         branch: lane.branch.clone(),
         state,
-        dirty: status.dirty,
+        dirty,
         pending_notes: store::pending_count(&lane.path),
     })
 }

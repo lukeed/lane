@@ -178,10 +178,9 @@ fn listing_keeps_upstream_config_from_conditional_includes() {
 }
 
 #[test]
-fn marked_lanes_share_refs_and_keep_the_containment_fallback() {
+fn marked_lanes_keep_landing_checks() {
     let temp = repository();
     let root = temp.path();
-    let trace = root.join(".git/trace.json");
     git(root, &["config", "remote.origin.url", "/not-used"]);
     git(
         root,
@@ -213,33 +212,11 @@ fn marked_lanes_share_refs_and_keep_the_containment_fallback() {
     }
     git(root, &["config", "branch.gone.remote", "origin"]);
     git(root, &["config", "branch.gone.merge", "refs/heads/gone"]);
-    let output = run(command(root, env!("CARGO_BIN_EXE_lane"), &["ls", "--json"])
-        .env("GIT_TRACE2_EVENT", &trace));
-    let listing: Vec<Value> = serde_json::from_str(&output).unwrap();
+    let listing = rows(root);
     assert_eq!(row(&listing, "gone")["state"], "landed");
     assert_eq!(row(&listing, "contained")["state"], "landed");
     assert_eq!(row(&listing, "open")["state"], "open");
     assert_eq!(row(&listing, "pushed")["state"], "pushed");
-    let starts: Vec<Value> = std::fs::read_to_string(trace)
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap())
-        .filter(|event| event["event"] == "start")
-        .collect();
-    assert_eq!(
-        starts
-            .iter()
-            .filter(|event| event["argv"][1] == "for-each-ref")
-            .count(),
-        1
-    );
-    assert!(!starts.iter().any(|event| {
-        event["argv"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|arg| arg == "@{upstream}")
-    }));
 }
 
 #[test]
@@ -262,4 +239,72 @@ fn root_upstreams_do_not_falsely_mark_a_lane_landed() {
     assert_eq!(row(&rows(root), "feature")["state"], "open");
     git(root, &["config", "branch.feature.merge", "FETCH_HEAD"]);
     assert_eq!(row(&rows(root), "feature")["state"], "landed");
+}
+
+#[test]
+fn matching_tag_commits_still_need_matching_raw_ids() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    git(
+        root,
+        &["tag", "-a", "upstream-tag", "main", "-m", "upstream"],
+    );
+    git(root, &["config", "branch.feature.remote", "."]);
+    git(
+        root,
+        &["config", "branch.feature.merge", "refs/tags/upstream-tag"],
+    );
+    assert_ne!(
+        git(&path, &["rev-parse", "HEAD"]),
+        git(&path, &["rev-parse", "@{upstream}"])
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "open");
+    git(root, &["tag", "lightweight", "main"]);
+    git(
+        root,
+        &["config", "branch.feature.merge", "refs/tags/lightweight"],
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+}
+
+#[test]
+fn readable_refs_keep_their_state_when_status_fails() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    git(&path, &["branch", "--set-upstream-to=main"]);
+    let index = path.join(git(&path, &["rev-parse", "--git-path", "index"]));
+    std::fs::write(index, "invalid index\n").unwrap();
+    assert!(
+        !command(&path, "git", &["status", "--porcelain"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+}
+
+#[test]
+fn upstream_lookup_follows_the_filesystems_case_rules() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    std::fs::write(path.join("file"), "diverged\n").unwrap();
+    git(&path, &["commit", "-qam", "change"]);
+    let marker = path.join(git(&path, &["rev-parse", "--git-path", "lane/landed"]));
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(marker, "marker\n").unwrap();
+    git(root, &["config", "branch.feature.remote", "."]);
+    git(root, &["config", "branch.feature.merge", "refs/heads/MAIN"]);
+    let resolves = command(root, "git", &["rev-parse", "--verify", "refs/heads/MAIN"])
+        .output()
+        .unwrap()
+        .status
+        .success();
+    assert_eq!(
+        row(&rows(root), "feature")["state"],
+        if resolves { "open" } else { "landed" }
+    );
 }

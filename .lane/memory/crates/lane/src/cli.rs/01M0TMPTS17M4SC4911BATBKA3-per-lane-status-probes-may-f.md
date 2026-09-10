@@ -4,9 +4,9 @@ anchor: fn ls
 created: 2026-08-24T19:21:38Z
 norm: '1'
 sig: ebd050c32550ccc2
-body_hash: 5fcfbe78bed939d5
-raw_hash: f63e312801b2f407
-vouched: 2026-09-10T20:02:09Z
+body_hash: a649dcdc374c9cfa
+raw_hash: 7c636ea09e442d2c
+vouched: 2026-09-10T20:45:09Z
 lines: 533-572
 ---
 

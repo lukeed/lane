@@ -99,39 +99,12 @@ pub fn is_dirty(path: &Path) -> bool {
     .is_empty()
 }
 
-pub struct Status {
-    pub dirty: bool,
-    pub pushed: bool,
-}
-
-pub fn status(path: &Path) -> Status {
-    let out = try_git(
-        &[
-            "status",
-            "--porcelain=v2",
-            "-z",
-            "--branch",
-            "--no-ahead-behind",
-            "--untracked-files=no",
-        ],
-        Some(path),
-    );
-    let mut status = Status {
-        dirty: false,
-        pushed: false,
-    };
-    let mut records = out.split('\0');
-    while let Some(record) = records.next() {
-        if record == "# branch.ab +0 -0" {
-            status.pushed = true;
-        } else if record.starts_with("2 ") {
-            status.dirty = true;
-            records.next();
-        } else if record.starts_with("1 ") || record.starts_with("u ") {
-            status.dirty = true;
-        }
-    }
-    status
+pub fn is_pushed(path: &Path) -> bool {
+    let out = try_git(&["rev-parse", "HEAD", "@{upstream}"], Some(path));
+    let mut refs = out.lines();
+    refs.next()
+        .zip(refs.next())
+        .is_some_and(|(head, upstream)| head == upstream)
 }
 
 /// Entries git will not materialize: exactly what a fresh worktree is missing.
@@ -699,29 +672,6 @@ pub fn upstream_gone(root: &Path, branch: &str) -> bool {
     )
     .trim()
         == "[gone]"
-}
-
-pub fn gone_upstreams(root: &Path) -> HashSet<String> {
-    let out = try_git(
-        &["for-each-ref", "--format=%(refname)%00%(upstream)"],
-        Some(root),
-    );
-    let refs: HashMap<_, _> = out
-        .lines()
-        .filter_map(|line| line.split_once('\0'))
-        .collect();
-    refs.iter()
-        .filter_map(|(name, upstream)| {
-            let branch = name.strip_prefix("refs/heads/")?;
-            let gone = !upstream.is_empty()
-                && if upstream.starts_with("refs/") {
-                    !refs.contains_key(upstream)
-                } else {
-                    upstream_gone(root, branch)
-                };
-            gone.then(|| branch.to_string())
-        })
-        .collect()
 }
 
 pub fn contained_in(root: &Path, trunk: &str, branch: &str) -> bool {

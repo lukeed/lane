@@ -656,11 +656,7 @@ fn ls(json: bool) -> Result<i32> {
         .into_iter()
         .zip(dirty)
         .map(|(lane, dirty)| {
-            let name = lane
-                .path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let name = wt::lane_name(&root, &lane.path)?;
             let upstream = try_git(&["rev-parse", "@{upstream}"], Some(&lane.path));
             // Only marked lanes pay for a probe, and a retired upstream settles it before
             // the expensive one runs.
@@ -676,16 +672,16 @@ fn ls(json: bool) -> Result<i32> {
             } else {
                 "open"
             };
-            LaneRow {
+            Ok(LaneRow {
                 name,
                 path: lane.path.to_string_lossy().to_string(),
                 branch: lane.branch,
                 state,
                 dirty,
                 pending_notes: store::pending_count(&lane.path),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<_>>()?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
@@ -717,11 +713,7 @@ fn prune(dry_run: bool) -> Result<i32> {
     let mut skipped = 0;
     let mut unrecorded = 0;
     for lane in lanes {
-        let name = lane
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let name = wt::lane_name(&root, &lane.path)?;
         // Identity, not name. A lane with no id was not made by `lane new`, and prune is
         // destructive, so an unrecognised lane is left alone rather than guessed at.
         if !store::is_landed(&lane.path) {
@@ -1439,10 +1431,7 @@ fn merge(
 
     if !keep {
         std::env::set_current_dir(&root)?;
-        let name = lane_path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let name = wt::lane_name(&root, &lane_path)?;
         wt::remove(&name)?;
         writeln!(info, "removed lane {branch}")?;
     }

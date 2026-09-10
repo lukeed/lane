@@ -78,6 +78,17 @@ pub fn lanes_dir(root: &Path) -> PathBuf {
     root.join(crate::store::LANE_DIR).join(TREES_DIRNAME)
 }
 
+pub fn lane_name(root: &Path, path: &Path) -> Result<String> {
+    let trees = lanes_dir(root);
+    let trees = trees.canonicalize().unwrap_or(trees);
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    Ok(path
+        .strip_prefix(trees)
+        .context("lane is outside the lanes directory")?
+        .to_string_lossy()
+        .into_owned())
+}
+
 /// Tracked changes only: untracked files do not block a rebase.
 pub fn is_dirty(path: &Path) -> bool {
     !try_git(

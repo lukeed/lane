@@ -108,14 +108,13 @@ fn primary_worktree(common_dir: &Path) -> Option<PathBuf> {
 }
 
 fn lane_host(repo_root: &Path) -> PathBuf {
-    let mut parts = repo_root.components().rev();
-    let _name = parts.next();
-    let trees = parts.next().map(|c| c.as_os_str() == "trees");
-    let lane = parts.next().map(|c| c.as_os_str() == ".lane");
-    match (trees, lane) {
-        (Some(true), Some(true)) => parts.rev().collect(),
-        _ => repo_root.to_path_buf(),
-    }
+    repo_root
+        .ancestors()
+        .skip(1)
+        .find(|path| path.ends_with(".lane/trees"))
+        .and_then(|trees| trees.parent()?.parent())
+        .unwrap_or(repo_root)
+        .to_path_buf()
 }
 
 fn find_repo_root(start: &Path) -> Result<PathBuf> {

@@ -4,8 +4,9 @@ anchor: struct Source
 created: 2026-08-24T19:09:49Z
 norm: '1'
 sig: 7877fe79130c24bf
-body_hash: ea97b192f427557c
-raw_hash: 046908bc9d1ec197
+body_hash: 58093f5720689b3c
+raw_hash: fb61fe97069c3559
+vouched: 2026-09-10T20:21:23Z
 lines: 225-231
 ---
 

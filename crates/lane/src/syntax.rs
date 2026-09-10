@@ -336,6 +336,7 @@ pub struct Source {
     ext: String,
     grammar: Option<&'static Grammar>,
     tree: Option<Tree>,
+    declarations: OnceLock<Vec<Anchor>>,
 }
 
 impl Source {
@@ -354,6 +355,7 @@ impl Source {
             ext,
             grammar,
             tree,
+            declarations: OnceLock::new(),
         }
     }
 
@@ -414,7 +416,7 @@ impl Source {
     pub(crate) fn anchors(&self) -> Vec<Anchor> {
         let mut rest = self.block_candidates();
         rest.extend(self.heading_candidates());
-        rest.extend(self.declaration_candidates());
+        rest.extend(self.declaration_candidates().iter().cloned());
         rest.sort_by(|a, b| {
             a.span
                 .start
@@ -593,12 +595,17 @@ impl Source {
             return None;
         }
         candidates
-            .into_iter()
+            .iter()
             .find(|candidate| candidate.value.split_whitespace().last() == Some(anchor))
             .map(|candidate| candidate.span)
     }
 
-    fn declaration_candidates(&self) -> Vec<Anchor> {
+    fn declaration_candidates(&self) -> &[Anchor] {
+        self.declarations
+            .get_or_init(|| self.collect_declarations())
+    }
+
+    fn collect_declarations(&self) -> Vec<Anchor> {
         let Some(tree) = self.tree.as_ref() else {
             return Vec::new();
         };
@@ -995,6 +1002,31 @@ impl Item {}\n";
                 .collect::<Vec<_>>(),
             ["fn run", "const run"]
         );
+    }
+
+    #[test]
+    fn repeated_queries_keep_duplicate_and_bare_resolution_order() {
+        let source = Source::new(
+            "fn run() {\n    first();\n}\nconst run: u8 = 1;\nfn run() {\n    second();\n}\n",
+            "a.rs",
+        );
+        for _ in 0..2 {
+            let anchors = source.anchors();
+            assert_eq!(anchors.len(), 3);
+            assert_eq!(anchors[1].value, "fn run");
+            assert_eq!(anchors[1].span, Span { start: 1, end: 3 });
+            let Qualification::Ambiguous(choices) = source.qualify("run") else {
+                panic!("expected ambiguity");
+            };
+            assert_eq!(choices, anchors[1..]);
+            assert_eq!(source.resolve("run"), Some(Span { start: 1, end: 3 }));
+            assert_eq!(source.resolve("fn run"), Some(Span { start: 1, end: 3 }));
+            assert_eq!(source.resolve("const run"), Some(Span { start: 4, end: 4 }));
+            assert!(matches!(
+                source.resolve_detail("fn missing"),
+                Resolution::NotFound
+            ));
+        }
     }
 
     #[test]

@@ -99,6 +99,14 @@ pub fn is_dirty(path: &Path) -> bool {
     .is_empty()
 }
 
+pub fn is_pushed(path: &Path) -> bool {
+    let out = try_git(&["rev-parse", "HEAD", "@{upstream}"], Some(path));
+    let mut refs = out.lines();
+    refs.next()
+        .zip(refs.next())
+        .is_some_and(|(head, upstream)| head == upstream)
+}
+
 /// Entries git will not materialize: exactly what a fresh worktree is missing.
 /// Already collapsed to directory roots, at any depth, from the user's own ignore rules.
 fn ignored_entries(root: &Path) -> Vec<String> {

@@ -1,0 +1,310 @@
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use serde_json::Value;
+use tempfile::TempDir;
+
+fn command(root: &Path, program: &str, args: &[&str]) -> Command {
+    let mut command = Command::new(program);
+    command.args(args).current_dir(root);
+    for (key, _) in std::env::vars_os() {
+        if key.as_encoded_bytes().starts_with(b"GIT_") {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1");
+    command
+}
+
+fn run(command: &mut Command) -> String {
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{command:?}: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+fn git(root: &Path, args: &[&str]) -> String {
+    run(&mut command(root, "git", args))
+}
+
+fn lane(root: &Path, args: &[&str]) -> String {
+    run(&mut command(root, env!("CARGO_BIN_EXE_lane"), args))
+}
+
+fn repository() -> TempDir {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    git(root, &["init", "-qb", "main"]);
+    git(root, &["config", "user.name", "t"]);
+    git(root, &["config", "user.email", "t@example.invalid"]);
+    git(root, &["config", "commit.gpgsign", "false"]);
+    lane(root, &["init"]);
+    std::fs::write(root.join("file"), "base\n").unwrap();
+    std::fs::write(root.join("# branch.ab +0 -0"), "header\n").unwrap();
+    std::fs::create_dir_all(root.join(".lane/memory")).unwrap();
+    std::fs::write(root.join(".lane/memory/existing.md"), "old\n").unwrap();
+    git(root, &["add", "-A"]);
+    git(root, &["commit", "-qm", "base"]);
+    temp
+}
+
+fn worktree(root: &Path, name: &str) -> PathBuf {
+    let path = root.join(".lane/trees").join(name);
+    git(
+        root,
+        &["worktree", "add", "-qb", name, path.to_str().unwrap()],
+    );
+    path
+}
+
+fn rows(root: &Path) -> Vec<Value> {
+    serde_json::from_str(&lane(root, &["ls", "--json"])).unwrap()
+}
+
+fn row<'a>(rows: &'a [Value], name: &str) -> &'a Value {
+    rows.iter().find(|row| row["name"] == name).unwrap()
+}
+
+#[test]
+fn listing_preserves_status_notes_and_worktree_order() {
+    let temp = repository();
+    let root = temp.path();
+    let open = worktree(root, "open");
+    let pushed = worktree(root, "pushed");
+    let ahead = worktree(root, "ahead");
+    let detached = worktree(root, "detached");
+    let missing = worktree(root, "missing");
+    let renamed = worktree(root, "feat/renamed");
+    for path in [&pushed, &ahead] {
+        git(path, &["branch", "--set-upstream-to=main"]);
+    }
+    std::fs::write(ahead.join("file"), "ahead\n").unwrap();
+    git(&ahead, &["commit", "-qam", "ahead"]);
+    git(&detached, &["checkout", "--detach"]);
+    std::fs::remove_dir_all(missing).unwrap();
+    git(&renamed, &["checkout", "-qb", "different-branch"]);
+    git(&open, &["mv", "# branch.ab +0 -0", "moved\nname"]);
+    std::fs::write(open.join(".lane/memory/existing.md"), "revised\n").unwrap();
+    std::fs::write(open.join(".lane/memory/new.md"), "new\n").unwrap();
+    std::fs::write(pushed.join("untracked"), "ignored by dirty status\n").unwrap();
+    let listing = rows(root);
+    assert_eq!(listing.len(), 6);
+    assert_eq!(row(&listing, "open")["state"], "open");
+    assert_eq!(row(&listing, "open")["dirty"], true);
+    assert_eq!(row(&listing, "open")["pending_notes"], 2);
+    assert_eq!(row(&listing, "pushed")["state"], "pushed");
+    assert_eq!(row(&listing, "pushed")["dirty"], false);
+    assert_eq!(row(&listing, "ahead")["state"], "open");
+    assert_eq!(row(&listing, "detached")["branch"], "detached");
+    assert_eq!(row(&listing, "detached")["state"], "open");
+    assert_eq!(row(&listing, "missing")["state"], "open");
+    assert_eq!(row(&listing, "missing")["dirty"], false);
+    assert_eq!(row(&listing, "feat/renamed")["branch"], "different-branch");
+    assert_eq!(listing, rows(&pushed));
+    let inventory = git(root, &["worktree", "list", "--porcelain"]);
+    let expected: Vec<_> = inventory
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .filter(|path| path.contains("/.lane/trees/"))
+        .collect();
+    let actual: Vec<_> = listing
+        .iter()
+        .map(|row| row["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn listing_uses_each_worktrees_upstream_config() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    git(root, &["config", "extensions.worktreeConfig", "true"]);
+    git(root, &["config", "remote.origin.url", "/not-used"]);
+    git(
+        root,
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+    );
+    git(root, &["config", "branch.feature.remote", "origin"]);
+    git(root, &["config", "branch.feature.merge", "refs/heads/main"]);
+    git(
+        &path,
+        &["config", "--worktree", "branch.feature.remote", "."],
+    );
+    for value in ["true", "false"] {
+        git(
+            &path,
+            &["config", "--worktree", "status.aheadBehind", value],
+        );
+        git(&path, &["config", "--worktree", "status.branch", value]);
+        assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+    }
+    std::fs::write(root.join("file"), "main advanced\n").unwrap();
+    git(root, &["commit", "-qam", "advance"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "open");
+}
+
+#[test]
+fn listing_keeps_upstream_config_from_conditional_includes() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    let git_dir = git(&path, &["rev-parse", "--absolute-git-dir"]);
+    let included = root.join(".git/feature.config");
+    std::fs::write(
+        &included,
+        "[branch \"feature\"]\nremote = .\nmerge = refs/heads/main\n",
+    )
+    .unwrap();
+    git(
+        root,
+        &[
+            "config",
+            &format!("includeIf.gitdir:{git_dir}.path"),
+            included.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+}
+
+#[test]
+fn marked_lanes_keep_landing_checks() {
+    let temp = repository();
+    let root = temp.path();
+    git(root, &["config", "remote.origin.url", "/not-used"]);
+    git(
+        root,
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+    );
+    for name in ["gone", "contained", "open", "pushed"] {
+        let path = worktree(root, name);
+        let marker = git(&path, &["rev-parse", "--git-path", "lane/landed"]);
+        let marker = path.join(marker);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(marker, "marker\n").unwrap();
+        if name != "contained" {
+            std::fs::write(path.join("file"), name).unwrap();
+            git(&path, &["commit", "-qam", name]);
+        }
+        if name == "pushed" {
+            let tip = git(&path, &["rev-parse", "HEAD"]);
+            git(root, &["update-ref", "refs/remotes/origin/pushed", &tip]);
+            git(root, &["config", "branch.pushed.remote", "origin"]);
+            git(
+                root,
+                &["config", "branch.pushed.merge", "refs/heads/pushed"],
+            );
+        }
+    }
+    git(root, &["config", "branch.gone.remote", "origin"]);
+    git(root, &["config", "branch.gone.merge", "refs/heads/gone"]);
+    let listing = rows(root);
+    assert_eq!(row(&listing, "gone")["state"], "landed");
+    assert_eq!(row(&listing, "contained")["state"], "landed");
+    assert_eq!(row(&listing, "open")["state"], "open");
+    assert_eq!(row(&listing, "pushed")["state"], "pushed");
+}
+
+#[test]
+fn root_upstreams_do_not_falsely_mark_a_lane_landed() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    std::fs::write(path.join("file"), "diverged\n").unwrap();
+    git(&path, &["commit", "-qam", "change"]);
+    let marker = path.join(git(&path, &["rev-parse", "--git-path", "lane/landed"]));
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(marker, "marker\n").unwrap();
+    git(root, &["config", "branch.feature.remote", "."]);
+    git(root, &["config", "branch.feature.merge", "HEAD"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+    git(root, &["checkout", "--detach", "main"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+    git(root, &["update-ref", "ORIG_HEAD", "main"]);
+    git(root, &["config", "branch.feature.merge", "ORIG_HEAD"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "open");
+    git(root, &["config", "branch.feature.merge", "FETCH_HEAD"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "landed");
+}
+
+#[test]
+fn matching_tag_commits_still_need_matching_raw_ids() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    git(
+        root,
+        &["tag", "-a", "upstream-tag", "main", "-m", "upstream"],
+    );
+    git(root, &["config", "branch.feature.remote", "."]);
+    git(
+        root,
+        &["config", "branch.feature.merge", "refs/tags/upstream-tag"],
+    );
+    assert_ne!(
+        git(&path, &["rev-parse", "HEAD"]),
+        git(&path, &["rev-parse", "@{upstream}"])
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "open");
+    git(root, &["tag", "lightweight", "main"]);
+    git(
+        root,
+        &["config", "branch.feature.merge", "refs/tags/lightweight"],
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+}
+
+#[test]
+fn readable_refs_keep_their_state_when_status_fails() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    git(&path, &["branch", "--set-upstream-to=main"]);
+    let index = path.join(git(&path, &["rev-parse", "--git-path", "index"]));
+    std::fs::write(index, "invalid index\n").unwrap();
+    assert!(
+        !command(&path, "git", &["status", "--porcelain"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+}
+
+#[test]
+fn upstream_lookup_follows_the_filesystems_case_rules() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    std::fs::write(path.join("file"), "diverged\n").unwrap();
+    git(&path, &["commit", "-qam", "change"]);
+    let marker = path.join(git(&path, &["rev-parse", "--git-path", "lane/landed"]));
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(marker, "marker\n").unwrap();
+    git(root, &["config", "branch.feature.remote", "."]);
+    git(root, &["config", "branch.feature.merge", "refs/heads/MAIN"]);
+    let resolves = command(root, "git", &["rev-parse", "--verify", "refs/heads/MAIN"])
+        .output()
+        .unwrap()
+        .status
+        .success();
+    assert_eq!(
+        row(&rows(root), "feature")["state"],
+        if resolves { "open" } else { "landed" }
+    );
+}

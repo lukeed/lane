@@ -713,7 +713,13 @@ pub fn gone_upstreams(root: &Path) -> HashSet<String> {
     refs.iter()
         .filter_map(|(name, upstream)| {
             let branch = name.strip_prefix("refs/heads/")?;
-            (!upstream.is_empty() && !refs.contains_key(upstream)).then(|| branch.to_string())
+            let gone = !upstream.is_empty()
+                && if upstream.starts_with("refs/") {
+                    !refs.contains_key(upstream)
+                } else {
+                    upstream_gone(root, branch)
+                };
+            gone.then(|| branch.to_string())
         })
         .collect()
 }

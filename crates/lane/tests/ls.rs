@@ -241,3 +241,25 @@ fn marked_lanes_share_refs_and_keep_the_containment_fallback() {
             .any(|arg| arg == "@{upstream}")
     }));
 }
+
+#[test]
+fn root_upstreams_do_not_falsely_mark_a_lane_landed() {
+    let temp = repository();
+    let root = temp.path();
+    let path = worktree(root, "feature");
+    std::fs::write(path.join("file"), "diverged\n").unwrap();
+    git(&path, &["commit", "-qam", "change"]);
+    let marker = path.join(git(&path, &["rev-parse", "--git-path", "lane/landed"]));
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(marker, "marker\n").unwrap();
+    git(root, &["config", "branch.feature.remote", "."]);
+    git(root, &["config", "branch.feature.merge", "HEAD"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+    git(root, &["checkout", "--detach", "main"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "pushed");
+    git(root, &["update-ref", "ORIG_HEAD", "main"]);
+    git(root, &["config", "branch.feature.merge", "ORIG_HEAD"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "open");
+    git(root, &["config", "branch.feature.merge", "FETCH_HEAD"]);
+    assert_eq!(row(&rows(root), "feature")["state"], "landed");
+}

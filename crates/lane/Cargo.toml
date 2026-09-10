@@ -31,6 +31,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+gix-config = { version = "0.60.0", default-features = false, features = ["sha1"] }
 jiff = "0.2.35"
 # Both separators are off by default; clap accepted `--base=main` and `-psrc/x.rs`,
 # and a reader who types either should not be told the flag has no value.

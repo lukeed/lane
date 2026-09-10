@@ -155,6 +155,18 @@ $ lane merge
 
 `merge` never touches the network for git. Add `--keep` to preserve the worktree, `--squash` to land one commit, or `--base <name>` to use a different base. Use `lane push` for a pull request — see [Pull requests](#pull-requests).
 
+Set the squash commit message with `lane merge --squash -m "feat: add login"`. The long form is `--message <text>`. The message cannot be blank and requires `--squash`. If omitted, the message is `lane: merged <branch>`.
+
+One message value can include newlines for a body and trailers:
+
+```bash
+lane merge --squash -m 'feat: add login
+
+Keep sessions across restarts.
+
+Refs: #123'
+```
+
 ### Pull requests
 
 Where trunk is protected, `lane push` rebases, audits, commits memory, and pushes the lane:
@@ -293,7 +305,7 @@ The short version. See [commands](/commands) for full information.
 | `lane why <path> [-a <anchor>]` | read the notes on a file or a directory; changes nothing |
 | `lane check [--json]` | staleness report; exits 1 on missing anchors |
 | `lane audit [--base <ref>]` | run the memory pass alone |
-| `lane merge [<name>] [--keep] [--base <ref>] [--squash]` | rebase, audit, fast-forward, remove |
+| `lane merge [<name>] [--keep] [--base <ref>] [--squash [-m <text>]]` | rebase, audit, fast-forward, remove |
 | `lane push [<name>] [--base <ref>]` | rebase, audit, commit memory, and push for a pull request |
 | `lane prune [--dry-run]` | remove lanes whose branch has landed in trunk |
 | `lane rm <name> [--force]` | discard a lane; it stops and names uncommitted work, pending notes, or commits trunk does not have, `--force` drops them |

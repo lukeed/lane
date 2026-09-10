@@ -782,6 +782,58 @@ is "and names it merged" \
   "$(git log -1 --format=%s | grep -c '^lane: merged sq$')" "1"
 is "and removed the branch" "$(git branch --list sq | wc -l | tr -d ' ')" "0"
 
+for FLAG in -m --message; do
+  setup
+  "$LANE" new custom > /dev/null 2>&1
+  LP="$TMP/repo/.lane/trees/custom"
+  ( cd "$LP" && echo "fn one() {}" > src/one.rs && git add -A && git commit -qm "one" \
+    && echo "fn two() {}" > src/two.rs && git add -A && git commit -qm "two" \
+    && "$LANE" note add src/one.rs -a "fn one" "one must stay available to callers" > /dev/null )
+  TRUNK_TIP=$(git rev-parse HEAD)
+  LANE_TIP=$(git rev-parse custom)
+  LANE_STATUS=$(git -C "$LP" status --porcelain)
+  BEFORE=$(git rev-list --count HEAD)
+  CUSTOM_MESSAGE='feat: custom squash
+
+Keep "quotes", $values, and `commands` as text.
+
+Refs: #123
+Change-Type: feature'
+
+  "$LANE" merge custom "$FLAG" "$CUSTOM_MESSAGE" > "$TMP/message.out" 2>&1
+  is "$FLAG requires --squash" "$?" "2"
+  is "$FLAG names the required squash flag" \
+    "$(grep -c '^  --squash$' "$TMP/message.out")" "1"
+  for MESSAGE in "" $' \n\t'; do
+    "$LANE" merge custom --squash "$FLAG" "$MESSAGE" > "$TMP/message.out" 2>&1
+    is "$FLAG refuses a blank message" "$?" "2"
+    is "$FLAG explains the blank message" \
+      "$(grep -c -- '--message cannot be empty' "$TMP/message.out")" "1"
+  done
+  is "$FLAG invalid messages leave trunk at its tip" "$(git rev-parse HEAD)" "$TRUNK_TIP"
+  is "$FLAG invalid messages leave trunk clean" "$(git status --porcelain)" ""
+  is "$FLAG invalid messages leave the lane at its tip" "$(git rev-parse custom)" "$LANE_TIP"
+  is "$FLAG invalid messages leave pending memory untouched" \
+    "$(git -C "$LP" status --porcelain)" "$LANE_STATUS"
+
+  if [ "$FLAG" = "-m" ]; then
+    ( cd "$LP" && "$LANE" merge --squash "$FLAG" "$CUSTOM_MESSAGE" > "$TMP/message.out" 2>&1 )
+  else
+    "$LANE" merge custom --squash "$FLAG" "$CUSTOM_MESSAGE" > "$TMP/message.out" 2>&1
+  fi
+  is "$FLAG squash merge succeeds" "$?" "0"
+  is "$FLAG squash lands exactly one commit" "$(( $(git rev-list --count HEAD) - BEFORE ))" "1"
+  is "$FLAG preserves the full custom message" "$(git log -1 --format=%B)" "$CUSTOM_MESSAGE"
+  is "$FLAG preserves Git trailers" "$(git log -1 --format=%B | git interpret-trailers --parse)" \
+    $'Refs: #123\nChange-Type: feature'
+  is "$FLAG lands both source commits" "$(git show HEAD:src/one.rs && git show HEAD:src/two.rs)" \
+    $'fn one() {}\nfn two() {}'
+  is "$FLAG lands the lane memory" \
+    "$("$LANE" why src/one.rs | grep -c 'one must stay available to callers')" "1"
+  is "$FLAG removes the lane worktree" "$([ -d "$LP" ] && echo yes || echo no)" "no"
+  is "$FLAG removes the lane branch" "$(git branch --list custom | wc -l | tr -d ' ')" "0"
+done
+
 echo "== 29. reading context does not modify the tree =="
 setup
 is "why json is an empty array before a note exists" \

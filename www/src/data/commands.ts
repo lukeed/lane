@@ -170,12 +170,13 @@ export let commands: Command[] = [
 	},
 	{
 		name: "merge",
-		usage: "lane merge [<name>] [--base <ref>] [--keep] [--squash]",
+		usage: "lane merge [<name>] [--base <ref>] [--keep] [--squash [-m <text>]]",
 		summary: "rebases the lane onto its base, audits memory, commits it, fast-forwards the base, and removes the lane.",
 		options: [
 			{ flag: "--base", arg: "<ref>", about: "ref to rebase onto and advance; defaults to the lane's recorded base." },
 			{ flag: "--keep", arg: null, about: "keep the lane worktree and branch after landing." },
 			{ flag: "--squash", arg: null, about: "squash the lane's commits into one landing commit." },
+			{ flag: "-m, --message", arg: "<text>", about: "set a non-blank commit message; requires --squash. Defaults to lane: merged <branch>." },
 			{ flag: "--max-notes", arg: "<n>", about: "keep at most this many notes per path and anchor; default 5." },
 			{ flag: "--max-chars", arg: "<n>", about: "keep at most this many characters per path and anchor; default 1200." },
 		],

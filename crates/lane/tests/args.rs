@@ -179,6 +179,7 @@ fn the_shell_function_s_own_invocation_still_parses() {
             base: None,
             keep: false,
             squash: false,
+            message: None,
             budget: Budget::default(),
         })
     );
@@ -601,6 +602,7 @@ fn merge_and_rm_read_the_rest_of_their_flags() {
             base: Some("release".into()),
             keep: true,
             squash: true,
+            message: None,
             budget: Budget::default(),
         })
     );
@@ -619,6 +621,61 @@ fn merge_and_rm_read_the_rest_of_their_flags() {
         }
     );
     assert_eq!(ok(&["exit"]), Parsed::Exit);
+}
+
+#[test]
+fn merge_reads_a_custom_squash_message() {
+    let message = "feat: add login\n\nKeep sessions across restarts.\n\nRefs: #123";
+    let expected = Parsed::Merge(MergeArgs {
+        name: Some("fix-login".into()),
+        base: None,
+        keep: false,
+        squash: true,
+        message: Some(message.into()),
+        budget: Budget::default(),
+    });
+    for flag in ["-m", "--message"] {
+        assert_eq!(
+            ok(&["merge", "fix-login", "--squash", flag, message]),
+            expected
+        );
+        assert_eq!(
+            ok(&["merge", flag, message, "--squash", "fix-login"]),
+            expected
+        );
+    }
+    assert_eq!(
+        ok(&["merge", "--squash", &format!("-m{message}"), "fix-login"]),
+        expected
+    );
+    assert_eq!(
+        ok(&[
+            "merge",
+            "--squash",
+            &format!("--message={message}"),
+            "fix-login",
+        ]),
+        expected
+    );
+}
+
+#[test]
+fn merge_requires_squash_for_a_custom_message() {
+    for flag in ["-m", "--message"] {
+        assert_eq!(absent(&["merge", flag, "feat: add login"]), ["--squash"]);
+    }
+}
+
+#[test]
+fn merge_refuses_missing_and_blank_messages() {
+    for flag in ["-m", "--message"] {
+        assert!(parse_words(&["merge", "--squash", flag]).is_err());
+        for message in ["", " ", "\n\t "] {
+            assert!(
+                err(&["merge", "--squash", flag, message]).contains("--message cannot be empty")
+            );
+        }
+    }
 }
 
 #[test]

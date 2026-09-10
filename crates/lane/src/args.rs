@@ -126,6 +126,7 @@ pub struct MergeArgs {
     pub base: Option<String>,
     pub keep: bool,
     pub squash: bool,
+    pub message: Option<String>,
     pub budget: Budget,
 }
 
@@ -517,16 +518,24 @@ fn parse_merge(raw: Vec<OsString>) -> Result<Parsed> {
     if pargs.contains(["-h", "--help"]) {
         return Ok(Parsed::Help(Help::Merge));
     }
+    let message: Option<String> = pargs.opt_value_from_str(["-m", "--message"])?;
     let base = pargs.opt_value_from_str("--base")?;
     let keep = pargs.contains("--keep");
     let squash = pargs.contains("--squash");
     let budget = budget(&mut pargs)?;
     let name = at_most_one(positionals(pargs, after, Help::Merge)?, Help::Merge)?;
+    if let Some(message) = &message {
+        if !squash {
+            return Err(missing(&["--squash"], Help::Merge));
+        }
+        anyhow::ensure!(!message.trim().is_empty(), "--message cannot be empty");
+    }
     Ok(Parsed::Merge(MergeArgs {
         name,
         base,
         keep,
         squash,
+        message,
         budget,
     }))
 }

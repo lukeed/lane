@@ -108,6 +108,9 @@ fn primary_worktree(common_dir: &Path) -> Result<Option<PathBuf>> {
     if std::fs::canonicalize(parent.join(".git")).ok().as_deref() != Some(common_dir) {
         return Ok(None);
     }
+    if let Some(bare) = local_bare(common_dir) {
+        return Ok((!bare).then(|| parent.to_path_buf()));
+    }
     let out = Command::new("git")
         .arg("--git-dir")
         .arg(common_dir)
@@ -127,6 +130,30 @@ fn primary_worktree(common_dir: &Path) -> Result<Option<PathBuf>> {
         bail!("check primary worktree failed: {}", diagnosis(&out));
     }
     Ok((String::from_utf8_lossy(&out.stdout).trim() == "false").then(|| parent.to_path_buf()))
+}
+
+fn local_bare(common_dir: &Path) -> Option<bool> {
+    if ["GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS"]
+        .iter()
+        .any(|key| std::env::var_os(key).is_some())
+        || common_dir
+            .join("config.worktree")
+            .try_exists()
+            .unwrap_or(true)
+    {
+        return None;
+    }
+    let config = gix_config::File::from_path_no_includes(
+        common_dir.join("config"),
+        gix_config::Source::Local,
+    )
+    .ok()?;
+    if config.sections_by_name("include").is_some()
+        || config.sections_by_name("includeIf").is_some()
+    {
+        return None;
+    }
+    config.boolean("core.bare").ok().flatten()
 }
 
 fn lane_host(repo_root: &Path) -> PathBuf {

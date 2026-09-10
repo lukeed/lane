@@ -12,6 +12,7 @@ fn run(program: &str, root: &Path, args: &[&str], env: &[(&str, &str)]) -> Strin
         .env_remove("GIT_DIR")
         .env_remove("GIT_COMMON_DIR")
         .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_CONFIG")
         .env_remove("GIT_CONFIG_COUNT")
         .env_remove("GIT_CONFIG_PARAMETERS")
         .envs(env.iter().copied())
@@ -148,17 +149,20 @@ fn bare_dotgit_checks_the_common_config_with_inherited_git_paths() {
 #[test]
 fn primary_root_uses_inherited_config_overrides() {
     let (_temp, root, host) = bare_dotgit();
-    let destination = run(
-        env!("CARGO_BIN_EXE_lane"),
-        &host,
-        &["exit"],
-        &[
+    let config = root.join("override.config");
+    fs::write(&config, "[core]\n\tbare = false\n").unwrap();
+    for overrides in [
+        vec![
             ("GIT_CONFIG_COUNT", "1"),
             ("GIT_CONFIG_KEY_0", "core.bare"),
             ("GIT_CONFIG_VALUE_0", "false"),
         ],
-    );
-    assert_eq!(PathBuf::from(destination), root);
+        vec![("GIT_CONFIG_PARAMETERS", "'core.bare=false'")],
+        vec![("GIT_CONFIG", config.to_str().unwrap())],
+    ] {
+        let destination = run(env!("CARGO_BIN_EXE_lane"), &host, &["exit"], &overrides);
+        assert_eq!(PathBuf::from(destination), root);
+    }
 }
 
 #[test]
@@ -173,4 +177,74 @@ fn normal_linked_worktrees_keep_the_primary_root() {
         &["worktree", "add", "-b", "linked", linked.to_str().unwrap()],
     );
     land_change(&linked, &root);
+}
+
+#[test]
+fn local_bare_values_need_no_git_process() {
+    let (_temp, root, host) = bare_dotgit();
+    let trace = root.join("trace.json");
+    let global = root.join("global.config");
+    fs::write(&global, "[core]\n\tbare = false\n").unwrap();
+    for (value, expected) in [
+        ("true", &host),
+        ("false", &root),
+        ("yes", &host),
+        ("no", &root),
+        ("1", &host),
+        ("0", &root),
+    ] {
+        git(&root, &["config", "core.bare", value]);
+        let destination = run(
+            env!("CARGO_BIN_EXE_lane"),
+            &host,
+            &["exit"],
+            &[
+                ("GIT_TRACE2_EVENT", trace.to_str().unwrap()),
+                ("GIT_CONFIG_GLOBAL", global.to_str().unwrap()),
+            ],
+        );
+        assert_eq!(PathBuf::from(destination), *expected);
+        assert!(!trace.exists(), "layout spawned Git for core.bare={value}");
+    }
+}
+
+#[test]
+fn bare_dotgit_uses_conditional_includes_for_the_common_directory() {
+    let (_temp, root, host) = bare_dotgit();
+    git(&root, &["config", "core.bare", "false"]);
+    fs::write(root.join(".git/bare.config"), "[core]\n\tbare = true\n").unwrap();
+    let key = format!("includeIf.gitdir:{}.path", root.join(".git").display());
+    git(&root, &["config", &key, "bare.config"]);
+    assert_eq!(PathBuf::from(lane(&host, &["exit"])), host);
+}
+
+#[test]
+fn missing_local_bare_uses_global_configuration() {
+    let (_temp, root, host) = bare_dotgit();
+    git(&root, &["config", "--unset", "core.bare"]);
+    let global = root.join("global.config");
+    fs::write(&global, "[core]\n\tbare = true\n").unwrap();
+    let destination = run(
+        env!("CARGO_BIN_EXE_lane"),
+        &host,
+        &["exit"],
+        &[("GIT_CONFIG_GLOBAL", global.to_str().unwrap())],
+    );
+    assert_eq!(PathBuf::from(destination), host);
+}
+
+#[test]
+fn global_worktree_extension_does_not_override_local_bare() {
+    let (_temp, root, host) = bare_dotgit();
+    git(&root, &["config", "core.bare", "false"]);
+    let global = root.join("global.config");
+    fs::write(&global, "[extensions]\n\tworktreeConfig = true\n").unwrap();
+    fs::write(root.join(".git/config.worktree"), "[core]\n\tbare = true\n").unwrap();
+    let destination = run(
+        env!("CARGO_BIN_EXE_lane"),
+        &host,
+        &["exit"],
+        &[("GIT_CONFIG_GLOBAL", global.to_str().unwrap())],
+    );
+    assert_eq!(PathBuf::from(destination), root);
 }

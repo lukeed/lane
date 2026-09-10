@@ -60,7 +60,7 @@ pub struct RepoLayout {
     pub main_root: PathBuf,
 }
 
-/// Discover a repository layout without spawning git.
+/// Discover a repository layout from its metadata and Git's bare-repository status.
 pub fn layout(start: &Path) -> Result<RepoLayout> {
     resolve_layout(
         start,
@@ -88,7 +88,7 @@ fn resolve_layout(
             Err(error) => return Err(error).context("read git commondir"),
         },
     };
-    let main_root = match primary_worktree(&common_dir) {
+    let main_root = match primary_worktree(&common_dir)? {
         Some(root) => root,
         None => lane_host(&repo_root),
     };
@@ -101,10 +101,32 @@ fn resolve_layout(
     })
 }
 
-fn primary_worktree(common_dir: &Path) -> Option<PathBuf> {
-    let parent = common_dir.parent()?;
-    let owns_common_dir = std::fs::canonicalize(parent.join(".git")).ok()? == common_dir;
-    owns_common_dir.then(|| parent.to_path_buf())
+fn primary_worktree(common_dir: &Path) -> Result<Option<PathBuf>> {
+    let Some(parent) = common_dir.parent() else {
+        return Ok(None);
+    };
+    if std::fs::canonicalize(parent.join(".git")).ok().as_deref() != Some(common_dir) {
+        return Ok(None);
+    }
+    let out = Command::new("git")
+        .arg("--git-dir")
+        .arg(common_dir)
+        .args([
+            "config",
+            "--type=bool",
+            "--default=false",
+            "--get",
+            "core.bare",
+        ])
+        .current_dir(parent)
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .output()
+        .context("check primary worktree")?;
+    if !out.status.success() {
+        bail!("check primary worktree failed: {}", diagnosis(&out));
+    }
+    Ok((String::from_utf8_lossy(&out.stdout).trim() == "false").then(|| parent.to_path_buf()))
 }
 
 fn lane_host(repo_root: &Path) -> PathBuf {
@@ -229,6 +251,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let root = temp.path().join("repo");
         std::fs::create_dir_all(root.join(".git")).unwrap();
+        git(&["init", "-qb", "main"], Some(&root)).unwrap();
         (temp, root)
     }
 

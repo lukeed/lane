@@ -156,14 +156,11 @@ fn load_note_tree(root: &Path, tree: &str, filter: Option<&str>) -> Vec<Note> {
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
         .filter(|p| p.extension().is_some_and(|x| x == "md"))
+        .filter(|p| filter.is_none_or(|f| within(&note::path_from_location(p), f)))
         .collect();
     files.sort();
 
-    files
-        .iter()
-        .filter_map(|p| note::parse(p).ok())
-        .filter(|n| filter.is_none_or(|f| within(&n.path(), f)))
-        .collect()
+    files.iter().filter_map(|p| note::parse(p).ok()).collect()
 }
 
 /// Whether a note path is the filter itself or sits under it. The boundary is a
@@ -320,7 +317,8 @@ pub fn write_note(root: &Path, rec: &PendingNote) -> Result<Option<Note>> {
         rec.text.trim().to_string(),
         rec.supersedes.clone(),
     );
-    let live = load_notes(root, None);
+    let filter = rec.supersedes.is_empty().then_some(rec.path.as_str());
+    let live = load_notes(root, filter);
     let known = live.iter().any(|note| {
         (
             note.path(),

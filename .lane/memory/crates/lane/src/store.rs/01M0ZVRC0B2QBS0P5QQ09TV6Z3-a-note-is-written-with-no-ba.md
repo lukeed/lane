@@ -4,8 +4,9 @@ anchor: fn write_note
 created: 2026-08-26T20:21:24Z
 norm: '1'
 sig: 361c872f1efe14f1
-body_hash: 081a37b045a427c4
-raw_hash: 04967398ab34c542
+body_hash: 433a5bd5e17c89fa
+raw_hash: 9aea17b7c4aa0f5c
+vouched: 2026-09-10T20:07:11Z
 lines: 316-367
 ---
 

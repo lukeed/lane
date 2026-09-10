@@ -78,7 +78,7 @@ impl Note {
 
 /// A note we cannot parse still has to be visible, so fall back to the whole file as body.
 /// `.lane/memory/<path>/<ulid>-<slug>.md`, so the directory names the file the note is about.
-fn path_from_location(file: &Path) -> String {
+pub(crate) fn path_from_location(file: &Path) -> String {
     let parts: Vec<String> = file
         .parent()
         .unwrap_or(Path::new(""))

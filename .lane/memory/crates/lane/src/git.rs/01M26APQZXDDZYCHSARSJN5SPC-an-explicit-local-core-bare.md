@@ -4,8 +4,9 @@ anchor: fn local_bare
 created: 2026-09-10T18:53:56Z
 norm: '1'
 sig: 1bbe2a8490bba61b
-body_hash: 8dd8859806d67fcb
-raw_hash: 56eaacae267cd44f
+body_hash: c87874b56449c05a
+raw_hash: f0168ddf8f1b4e7e
+vouched: 2026-09-10T18:57:42Z
 lines: 135-157
 ---
 

@@ -4,8 +4,9 @@ anchor: fn park
 created: 2026-08-25T19:05:55Z
 norm: '1'
 sig: a94f535f0bf7d567
-body_hash: caee546abf8a8573
-raw_hash: 168834cc6fcc975f
+body_hash: a396bd25093934a6
+raw_hash: b31b2c4220d043c1
+vouched: 2026-09-13T17:04:58Z
 lines: 418-435
 ---
 

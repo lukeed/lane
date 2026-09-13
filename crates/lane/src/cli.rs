@@ -751,6 +751,10 @@ fn prune(dry_run: bool) -> Result<i32> {
         removed += 1;
     }
 
+    if !dry_run {
+        wt::cleanup_trash(&root)?;
+    }
+
     if unrecorded > 0 {
         eprintln!(
             "  `lane push <name>` records a landing and carries its notes; `lane rm <name> --force` discards both"

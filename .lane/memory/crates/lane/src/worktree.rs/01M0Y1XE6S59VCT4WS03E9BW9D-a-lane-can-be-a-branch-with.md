@@ -4,8 +4,9 @@ anchor: fn remove
 created: 2026-08-26T03:30:39Z
 norm: '1'
 sig: b349364829890348
-body_hash: 4d781b234624c5d8
-raw_hash: 44e1bf33a204d8b4
+body_hash: 6bf6f5f0b2230e6f
+raw_hash: 38892b3eed4b21e9
+vouched: 2026-09-13T17:04:58Z
 lines: 527-572
 supersedes: 01M0TPDF4R5AMSTHCAZHY6VVTC
 ---

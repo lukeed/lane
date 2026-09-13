@@ -74,6 +74,29 @@ fn root_spellings(root: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(roots)
 }
 
+/// A linked git worktree stores a `.git` *file* (gitdir pointer), not a directory.
+pub(crate) fn is_nested_worktree(path: &Path) -> bool {
+    path.join(".git")
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.is_file())
+}
+
+fn under_lane_trees(rel: &Path) -> bool {
+    rel.components().as_path() == Path::new(".lane/trees")
+        || rel.starts_with(Path::new(".lane/trees"))
+}
+
+/// Paths that must never be cloned into a new lane: other lanes and nested worktrees.
+pub(crate) fn should_skip_clone_path(src_root: &Path, path: &Path, is_dir: bool) -> bool {
+    let Ok(rel) = path.strip_prefix(src_root) else {
+        return false;
+    };
+    if under_lane_trees(rel) {
+        return true;
+    }
+    is_dir && is_nested_worktree(path)
+}
+
 /// Clone one regular file by reference.
 #[cfg(target_os = "macos")]
 pub fn clone_file(src: &Path, dst: &Path) -> Result<u64, CloneError> {
@@ -196,6 +219,8 @@ impl fmt::Display for CloneStats {
 /// Clone a directory whole where the kernel can, walking it only to fix what it copied
 /// verbatim: an absolute symlink into the source still points at the source.
 ///
+/// When the tree contains excluded paths (other lanes, nested worktrees), walk and skip
+/// them before any clonefile call — a whole-dir clone would copy those subtrees too.
 /// Falls back to the per-file walk when the tree cannot be cloned in one call.
 pub fn clone_dir_tree(
     src: &Path,
@@ -203,22 +228,73 @@ pub fn clone_dir_tree(
     src_root: &Path,
     dst_root: &Path,
 ) -> std::io::Result<CloneStats> {
-    let walk = || clone_tree_rooted(src, dst, &|_, _| false, src_root, dst_root);
-    // clonefile refuses an existing destination, and a destination inside the source needs
-    // the walk's pruning to avoid cloning the clone.
-    if fs::symlink_metadata(dst).is_ok() || dst.starts_with(src) {
-        return walk();
+    clone_dir_tree_with_skip(src, dst, src_root, dst_root, &|_, _| false)
+}
+
+pub(crate) fn clone_dir_tree_with_skip(
+    src: &Path,
+    dst: &Path,
+    src_root: &Path,
+    dst_root: &Path,
+    skip: &dyn Fn(&str, bool) -> bool,
+) -> std::io::Result<CloneStats> {
+    let must_walk = dst.starts_with(src)
+        || fs::symlink_metadata(dst).is_ok()
+        || dir_contains_excluded(src, src_root, skip)?;
+    if must_walk {
+        return clone_tree_rooted(
+            src,
+            dst,
+            &|rel, is_dir| {
+                skip(rel, is_dir) || should_skip_clone_path(src_root, &src_root.join(rel), is_dir)
+            },
+            src_root,
+            dst_root,
+        );
     }
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
     }
     match clone_dir(src, dst) {
         Ok(()) => {}
-        Err(CloneError::Unsupported(_) | CloneError::Exists) => return walk(),
+        Err(CloneError::Unsupported(_) | CloneError::Exists) => {
+            return clone_tree_rooted(
+                src,
+                dst,
+                &|rel, is_dir| {
+                    skip(rel, is_dir)
+                        || should_skip_clone_path(src_root, &src_root.join(rel), is_dir)
+                },
+                src_root,
+                dst_root,
+            );
+        }
         Err(CloneError::Io(e)) => return Err(e),
     }
-
     fixup(dst, src_root, dst_root)
+}
+
+fn dir_contains_excluded(
+    dir: &Path,
+    src_root: &Path,
+    skip: &dyn Fn(&str, bool) -> bool,
+) -> std::io::Result<bool> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let is_dir = entry.file_type()?.is_dir();
+        let rel = path
+            .strip_prefix(src_root)
+            .map(|r| r.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if skip(&rel, is_dir) || should_skip_clone_path(src_root, &path, is_dir) {
+            return Ok(true);
+        }
+        if is_dir && dir_contains_excluded(&path, src_root, skip)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Count what was cloned and repoint links the kernel copied verbatim.
@@ -340,6 +416,7 @@ pub fn clone_tree_rooted(
             || (!contained
                 .as_ref()
                 .is_some_and(|path| rel == path || rel.starts_with(path))
+                && !should_skip_clone_path(src_root, e.path(), e.file_type().is_dir())
                 && !skip(&rel.to_string_lossy(), e.file_type().is_dir()))
     });
 
@@ -411,5 +488,103 @@ mod tests {
             classify(std::io::Error::from_raw_os_error(28)),
             CloneError::Io(_)
         ));
+    }
+
+    fn write_nested_worktree(root: &Path, rel: &str, marker: &[u8]) {
+        let wt = root.join(rel);
+        fs::create_dir_all(wt.join("node_modules/.bun")).unwrap();
+        fs::write(wt.join(".git"), "gitdir: /tmp/fake-worktree\n").unwrap();
+        fs::write(wt.join("node_modules/.bun/sentinel"), marker).unwrap();
+    }
+
+    #[test]
+    fn should_skip_lane_trees_and_nested_worktrees_only() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        write_nested_worktree(root, ".claude/worktrees/agenda-unify", b"nested");
+        fs::create_dir_all(root.join(".lane/trees/sibling/node_modules")).unwrap();
+        fs::write(root.join(".lane/trees/sibling/node_modules/cache"), b"x").unwrap();
+        fs::create_dir_all(root.join("node_modules/own")).unwrap();
+        fs::write(root.join("node_modules/own/pkg"), b"keep").unwrap();
+
+        assert!(should_skip_clone_path(
+            root,
+            &root.join(".lane/trees"),
+            true
+        ));
+        assert!(should_skip_clone_path(
+            root,
+            &root.join(".lane/trees/sibling"),
+            true
+        ));
+        assert!(should_skip_clone_path(
+            root,
+            &root.join(".claude/worktrees/agenda-unify"),
+            true
+        ));
+        assert!(!should_skip_clone_path(
+            root,
+            &root.join("node_modules"),
+            true
+        ));
+        assert!(!should_skip_clone_path(root, &root.join(".claude"), true));
+    }
+
+    #[test]
+    fn clone_dir_tree_excludes_nested_worktrees_and_lane_trees_before_clone() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let out = dst.path().join("out");
+        let src = src.path().canonicalize().unwrap();
+
+        fs::create_dir_all(src.join("node_modules/own/.bun")).unwrap();
+        fs::write(src.join("node_modules/own/.bun/sentinel"), b"keep").unwrap();
+        fs::write(src.join(".env"), b"SECRET=1").unwrap();
+        write_nested_worktree(&src, ".claude/worktrees/agenda-unify", b"exclude-me");
+        fs::create_dir_all(src.join(".lane/trees/sibling/node_modules")).unwrap();
+        fs::write(
+            src.join(".lane/trees/sibling/node_modules/cache"),
+            b"exclude-lane",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(src.join(".env"), src.join("env.link")).unwrap();
+
+        let stats = clone_dir_tree(&src, &out, &src, &out).unwrap();
+
+        assert_eq!(
+            fs::read(out.join("node_modules/own/.bun/sentinel")).unwrap(),
+            b"keep"
+        );
+        assert_eq!(fs::read(out.join(".env")).unwrap(), b"SECRET=1");
+        assert_eq!(
+            fs::read_link(out.join("env.link")).unwrap(),
+            out.join(".env")
+        );
+        assert!(
+            !out.join(".claude/worktrees/agenda-unify").exists(),
+            "nested worktree must be excluded before clone dispatch"
+        );
+        assert!(
+            !out.join(".lane/trees/sibling").exists(),
+            "sibling lane trees must be excluded before clone dispatch"
+        );
+        assert!(stats.cloned + stats.copied >= 2);
+        assert_eq!(stats.links, 1);
+    }
+
+    #[test]
+    fn clone_tree_also_excludes_nested_worktrees() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let out = dst.path().join("out");
+        let src = src.path().canonicalize().unwrap();
+
+        fs::write(src.join("keep.txt"), b"yes").unwrap();
+        write_nested_worktree(&src, ".claude/worktrees/other", b"no");
+
+        clone_tree(&src, &out, &|_, _| false).unwrap();
+
+        assert!(out.join("keep.txt").exists());
+        assert!(!out.join(".claude/worktrees/other").exists());
     }
 }

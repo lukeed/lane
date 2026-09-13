@@ -114,7 +114,13 @@ fn ignored_entries(root: &Path) -> Vec<String> {
         .split('\0')
         .filter_map(|e| e.strip_prefix("!! "))
         .map(|p| p.trim_end_matches('/').to_string())
-        .filter(|p| !p.is_empty() && p != ".git" && p != TREES_PATH)
+        .filter(|p| {
+            let path = Path::new(p);
+            !p.is_empty()
+                && !path.starts_with(".git")
+                && !path.starts_with(TREES_PATH)
+                && !Path::new(TREES_PATH).starts_with(path)
+        })
         .collect()
 }
 

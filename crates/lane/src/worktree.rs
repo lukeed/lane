@@ -120,6 +120,7 @@ fn ignored_entries(root: &Path) -> Vec<String> {
                 && !path.starts_with(".git")
                 && !path.starts_with(TREES_PATH)
                 && !Path::new(TREES_PATH).starts_with(path)
+                && !cow::should_skip_clone_path(root, &root.join(p), true)
         })
         .collect()
 }
@@ -361,12 +362,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             let mut args = vec!["--no-checkout"];
             args.extend(branch_args(adopt, name, &dest_str, &base));
             add_worktree(&root, &args)?;
-            let skip = |rel: &str, _is_dir: bool| {
-                rel == ".git"
-                    || rel.starts_with(".git/")
-                    || rel == TREES_PATH
-                    || rel.starts_with(".lane/trees/")
-            };
+            let skip = |rel: &str, _is_dir: bool| rel == ".git" || rel.starts_with(".git/");
             let stats = cow::clone_tree(&root, &dest, &skip)?;
             // Repopulate the index from the checked-out tree without rewriting a single
             // file. HEAD, not base: an adopted branch is already at its own tip.
@@ -811,6 +807,107 @@ mod tests {
 
         assert!(entries.contains(&"cache".to_string()));
         assert!(!entries.contains(&TREES_PATH.to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn ignored_entries_excludes_nested_git_worktrees() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path();
+        let run = |args: &[&str]| {
+            git(args, Some(r)).ok();
+        };
+        run(&["init", "-qb", "main"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        run(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(
+            r.join(".gitignore"),
+            ".claude/worktrees/\nnode_modules/\n.env\n",
+        )?;
+        run(&["add", ".gitignore"]);
+        run(&["commit", "-qm", "base"]);
+        std::fs::create_dir_all(r.join("node_modules/own"))?;
+        std::fs::write(r.join("node_modules/own/pkg"), "keep")?;
+        std::fs::write(r.join(".env"), "SECRET=1")?;
+        std::fs::create_dir_all(r.join(".claude/worktrees/agenda-unify/node_modules"))?;
+        std::fs::write(
+            r.join(".claude/worktrees/agenda-unify/.git"),
+            "gitdir: /tmp/fake\n",
+        )?;
+        std::fs::write(
+            r.join(".claude/worktrees/agenda-unify/node_modules/cache"),
+            "heavy",
+        )?;
+
+        let entries = ignored_entries(r);
+
+        assert!(entries.contains(&"node_modules".to_string()));
+        assert!(entries.contains(&".env".to_string()));
+        assert!(
+            !entries.iter().any(|e| e.contains(".claude/worktrees")),
+            "nested worktrees must not be cloned as ignored entries: {entries:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ignored_entries_drops_collapsed_lane_ancestors() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path();
+        let run = |args: &[&str]| {
+            git(args, Some(r)).ok();
+        };
+        run(&["init", "-qb", "main"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        run(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(r.join(".gitignore"), ".lane/\ncache/\n")?;
+        run(&["add", ".gitignore"]);
+        run(&["commit", "-qm", "base"]);
+        std::fs::create_dir_all(r.join(".lane/trees/sibling"))?;
+        std::fs::write(r.join(".lane/trees/sibling/.git"), "gitdir: /tmp/fake\n")?;
+        std::fs::create_dir_all(r.join("cache"))?;
+        std::fs::write(r.join("cache/blob"), "warm")?;
+
+        let entries = ignored_entries(r);
+
+        assert!(entries.contains(&"cache".to_string()));
+        assert!(
+            !entries
+                .iter()
+                .any(|e| e == ".lane" || e.starts_with(".lane/")),
+            "collapsed .lane ancestors must stay out of the clone list: {entries:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn clone_entry_skips_nested_worktrees_inside_collapsed_parent() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let r = root.path().canonicalize()?;
+        let dest_dir = tempfile::tempdir()?;
+        let dest = dest_dir.path().join("out");
+        std::fs::create_dir_all(&dest)?;
+        std::fs::create_dir_all(r.join(".claude/settings"))?;
+        std::fs::write(r.join(".claude/settings/keep.json"), b"{}")?;
+        std::fs::create_dir_all(r.join(".claude/worktrees/nested/node_modules"))?;
+        std::fs::write(
+            r.join(".claude/worktrees/nested/.git"),
+            "gitdir: /tmp/fake\n",
+        )?;
+        std::fs::write(
+            r.join(".claude/worktrees/nested/node_modules/cache"),
+            "heavy",
+        )?;
+
+        clone_entry(&r, &dest, ".claude")?;
+
+        assert!(dest.join(".claude/settings/keep.json").exists());
+        assert!(
+            !dest.join(".claude/worktrees/nested").exists(),
+            "directory clone of an ignored parent must still exclude nested worktrees"
+        );
         Ok(())
     }
 

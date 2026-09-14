@@ -340,3 +340,71 @@ fn concurrent_removals_preserve_a_locked_lane() {
     );
     assert!(trash_is_empty(&root));
 }
+
+#[test]
+fn new_lanes_skip_nested_worktrees_and_keep_ignored_caches() {
+    for dirty in [false, true] {
+        let (_temp, root) = repository(".claude/\ncache/\n.env\n");
+        let reflink = lane::cow::probe(&root).0;
+        git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "-qb",
+                "nested",
+                ".claude/worktrees/nested",
+            ],
+        );
+        write(&root, ".claude/worktrees/nested/cache/blob", "nested\n");
+        write(&root, ".claude/settings/local.json", "{}\n");
+        write(&root, "cache/blob", "warm\n");
+        write(&root, ".env", "SETTING=local\n");
+        let args = if dirty {
+            vec!["new", "topic", "--dirty"]
+        } else {
+            vec!["new", "topic"]
+        };
+
+        let dest = PathBuf::from(lane(&root, &args));
+
+        assert!(!dest.join(".claude/worktrees/nested").exists());
+        assert!(root.join(".claude/worktrees/nested/cache/blob").exists());
+        assert_eq!(git(&dest, &["branch", "--show-current"]), "topic");
+        for path in ["cache/blob", ".env", ".claude/settings/local.json"] {
+            if reflink {
+                assert_eq!(
+                    std::fs::read(dest.join(path)).unwrap(),
+                    std::fs::read(root.join(path)).unwrap()
+                );
+            } else {
+                assert!(!dest.join(path).exists());
+            }
+        }
+    }
+}
+
+#[test]
+fn ignored_cache_names_do_not_resolve_against_the_repo_root() {
+    let (_temp, root) = repository("cache/\nlinked/\n");
+    let reflink = lane::cow::probe(&root).0;
+    git(&root, &["worktree", "add", "-qb", "sibling", "linked"]);
+    git(&root, &["worktree", "add", "-qb", "nested", "cache/nested"]);
+    write(&root, "cache/linked/keep", "ordinary cache\n");
+    write(&root, "cache/.lane/trees/keep", "ordinary cache\n");
+
+    let dest = PathBuf::from(lane(&root, &["new", "topic"]));
+
+    assert!(!dest.join("linked").exists());
+    assert!(!dest.join("cache/nested").exists());
+    for path in ["cache/linked/keep", "cache/.lane/trees/keep"] {
+        if reflink {
+            assert_eq!(
+                std::fs::read_to_string(dest.join(path)).unwrap(),
+                "ordinary cache\n"
+            );
+        } else {
+            assert!(!dest.join(path).exists());
+        }
+    }
+}

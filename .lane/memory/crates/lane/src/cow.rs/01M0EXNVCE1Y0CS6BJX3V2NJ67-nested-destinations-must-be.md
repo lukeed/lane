@@ -4,9 +4,9 @@ anchor: fn clone_tree_rooted
 created: 2026-08-20T06:23:22Z
 norm: '1'
 sig: 62aedd2f3e646c47
-body_hash: b68a548ddc0ce458
-raw_hash: 7be75308d3f15cd9
-vouched: 2026-08-26T03:30:35Z
+body_hash: abb65c74b7d944e5
+raw_hash: 8e387783ae66914a
+vouched: 2026-09-14T19:19:16Z
 lines: 187-259
 ---
 

@@ -448,10 +448,27 @@ fn trash_dir(root: &Path) -> PathBuf {
     lanes_dir(root).join(".trash")
 }
 
+fn lock_trash(root: &Path) -> Result<std::fs::File> {
+    let dir = layout(root)?.common_dir.join("lane/trash");
+    std::fs::create_dir_all(&dir)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join("lock"))?;
+    rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive)
+        .context("locking lane trash")?;
+    Ok(file)
+}
+
+pub fn cleanup_trash(root: &Path) -> Result<()> {
+    let _lock = lock_trash(root)?;
+    sweep(root)
+}
+
 /// Move the bulk aside so git's removal only unlinks what it tracks.
 ///
-/// Renaming is constant time where deleting is one syscall per file, and nothing here is
-/// worth waiting for: these are the entries git itself declined to materialize.
+/// Renaming keeps Git's removal short; the sweep then waits for deletion to finish.
 fn park(root: &Path, dest: &Path) -> Vec<(PathBuf, PathBuf)> {
     let trash = trash_dir(root);
     if std::fs::create_dir_all(&trash).is_err() {
@@ -463,7 +480,7 @@ fn park(root: &Path, dest: &Path) -> Vec<(PathBuf, PathBuf)> {
         if std::fs::symlink_metadata(&from).is_err() {
             continue;
         }
-        let to = trash.join(format!("{}-{}", std::process::id(), parked.len()));
+        let to = trash.join(crate::util::ulid());
         if std::fs::rename(&from, &to).is_ok() {
             parked.push((from, to));
         }
@@ -471,24 +488,38 @@ fn park(root: &Path, dest: &Path) -> Vec<(PathBuf, PathBuf)> {
     parked
 }
 
-/// Unlink what was parked, in a process that outlives this one. Picks up anything an
-/// earlier sweep left behind, so a killed child costs disk and not correctness.
-fn sweep(root: &Path) {
+/// Delete parked entries and old trash before returning; report any cleanup failure.
+fn sweep(root: &Path) -> Result<()> {
     let trash = trash_dir(root);
-    let Ok(entries) = std::fs::read_dir(&trash) else {
-        return;
+    let entries = match std::fs::read_dir(&trash) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("reading trash {}", trash.display()));
+        }
     };
-    let paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
-    if paths.is_empty() {
-        return;
+    for entry in entries {
+        let entry = entry.with_context(|| format!("reading trash {}", trash.display()))?;
+        let path = entry.path();
+        let result = entry.file_type().and_then(|kind| {
+            if kind.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            }
+        });
+        if let Err(error) = result
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(error).with_context(|| {
+                format!(
+                    "removing trash {}; fix the error and run lane prune to retry",
+                    path.display()
+                )
+            });
+        }
     }
-    let _ = std::process::Command::new("rm")
-        .arg("-rf")
-        .args(paths)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    Ok(())
 }
 
 /// True while git still has a worktree registered at this path, prunable ones included.
@@ -578,6 +609,7 @@ pub fn remove(name: &str) -> Result<()> {
         bail!("cannot remove lane {name} from inside it; cd out first");
     }
 
+    let _lock = lock_trash(&root)?;
     let refname = format!("refs/heads/{name}");
     let branch = git_ok(&["rev-parse", "--verify", "--quiet", &refname], Some(&root));
     let worktree = registered(&root, &dest);
@@ -590,21 +622,29 @@ pub fn remove(name: &str) -> Result<()> {
     if worktree {
         let parked = park(&root, &dest);
         let dest_str = dest.to_string_lossy().to_string();
-        match git(&["worktree", "remove", "--force", &dest_str], Some(&root)) {
-            Ok(_) => sweep(&root),
-            Err(error) => {
-                for (from, to) in parked {
-                    let _ = std::fs::rename(to, from);
+        if let Err(error) = git(&["worktree", "remove", "--force", &dest_str], Some(&root)) {
+            let mut failures = Vec::new();
+            for (from, to) in parked {
+                if let Err(restore) = std::fs::rename(&to, &from) {
+                    failures.push(format!("{} to {}: {restore}", to.display(), from.display()));
                 }
-                return Err(error);
             }
+            if !failures.is_empty() {
+                bail!(
+                    "{error}; could not restore parked files:\n{}",
+                    failures.join("\n")
+                );
+            }
+            return Err(error);
         }
+    }
+    sweep(&root)?;
+    if dest.exists() {
+        std::fs::remove_dir_all(&dest)
+            .with_context(|| format!("removing lane directory {}", dest.display()))?;
     }
     if branch {
         git(&["branch", "-D", name], Some(&root))?;
-    }
-    if dest.exists() {
-        let _ = std::fs::remove_dir_all(&dest);
     }
     Ok(())
 }
@@ -908,21 +948,11 @@ mod tests {
         assert_eq!(from, &r.join("build"));
         assert!(to.join("deep/artifact").exists(), "content moved intact");
 
-        sweep(r);
+        sweep(r)?;
 
-        // The unlinking outlives this process, so wait on it rather than assume it.
-        for _ in 0..100 {
-            if std::fs::read_dir(trash_dir(r))
-                .into_iter()
-                .flatten()
-                .count()
-                == 0
-            {
-                return Ok(());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        panic!("sweep left the trash behind");
+        // The sweep returns only after all parked entries are gone.
+        assert_eq!(std::fs::read_dir(trash_dir(r))?.count(), 0);
+        Ok(())
     }
 
     #[test]

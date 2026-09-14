@@ -4,9 +4,9 @@ anchor: fn clone_dir_tree
 created: 2026-08-25T18:52:37Z
 norm: '1'
 sig: 49f77fc8c56e183b
-body_hash: 969eebce91b71fdf
-raw_hash: a8f37289edb6b202
-vouched: 2026-08-26T03:30:35Z
+body_hash: c6719fd7528fb92c
+raw_hash: b54a55bc17356e6d
+vouched: 2026-09-14T19:19:16Z
 lines: 197-241
 ---
 

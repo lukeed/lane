@@ -4,9 +4,9 @@ anchor: fn create
 created: 2026-08-20T06:23:22Z
 norm: '1'
 sig: 2a21aaf08379e25a
-body_hash: 32e7fbd5d02bd28d
-raw_hash: 82db18eda0c37edb
-vouched: 2026-08-24T20:42:38Z
+body_hash: 6a6f86b52a18be7e
+raw_hash: c92d9f2e282286dc
+vouched: 2026-09-14T19:19:16Z
 lines: 227-343
 ---
 

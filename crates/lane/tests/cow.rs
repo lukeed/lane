@@ -288,6 +288,32 @@ fn directory_clone_falls_back_to_the_walk_when_the_destination_exists() {
     assert_eq!(stats.cloned + stats.copied, 1);
 }
 
+#[test]
+fn directory_clones_keep_cache_paths_that_match_unrelated_worktrees() {
+    let root = tempfile::tempdir().unwrap();
+    let src = root.path().join("cache");
+    fs::create_dir_all(root.path().join("linked")).unwrap();
+    fs::write(root.path().join("linked/.git"), "gitdir: /unused\n").unwrap();
+    fs::create_dir_all(src.join("linked")).unwrap();
+    fs::write(src.join("linked/keep"), b"cache").unwrap();
+    fs::create_dir_all(src.join(".lane/trees")).unwrap();
+    fs::write(src.join(".lane/trees/keep"), b"cache").unwrap();
+
+    for exists in [false, true] {
+        let dest = tempfile::tempdir().unwrap();
+        let out = dest.path().join("cache");
+        if exists {
+            fs::create_dir(&out).unwrap();
+        }
+
+        let stats = cow::clone_dir_tree(&src, &out, root.path(), dest.path()).unwrap();
+
+        assert_eq!(fs::read(out.join("linked/keep")).unwrap(), b"cache");
+        assert_eq!(fs::read(out.join(".lane/trees/keep")).unwrap(), b"cache");
+        assert_eq!(stats.cloned + stats.copied, 2);
+    }
+}
+
 /// Enough subtrees to cross the threshold where the fixup spreads across threads.
 #[test]
 fn a_wide_tree_is_fixed_up_on_every_core() {

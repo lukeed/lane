@@ -75,15 +75,10 @@ fn root_spellings(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 }
 
 /// A linked git worktree stores a `.git` *file* (gitdir pointer), not a directory.
-pub(crate) fn is_nested_worktree(path: &Path) -> bool {
+fn is_nested_worktree(path: &Path) -> bool {
     path.join(".git")
         .symlink_metadata()
         .is_ok_and(|metadata| metadata.is_file())
-}
-
-fn under_lane_trees(rel: &Path) -> bool {
-    rel.components().as_path() == Path::new(".lane/trees")
-        || rel.starts_with(Path::new(".lane/trees"))
 }
 
 /// Paths that must never be cloned into a new lane: other lanes and nested worktrees.
@@ -91,7 +86,7 @@ pub(crate) fn should_skip_clone_path(src_root: &Path, path: &Path, is_dir: bool)
     let Ok(rel) = path.strip_prefix(src_root) else {
         return false;
     };
-    if under_lane_trees(rel) {
+    if rel.starts_with(".lane/trees") {
         return true;
     }
     is_dir && is_nested_worktree(path)
@@ -228,69 +223,31 @@ pub fn clone_dir_tree(
     src_root: &Path,
     dst_root: &Path,
 ) -> std::io::Result<CloneStats> {
-    clone_dir_tree_with_skip(src, dst, src_root, dst_root, &|_, _| false)
-}
-
-pub(crate) fn clone_dir_tree_with_skip(
-    src: &Path,
-    dst: &Path,
-    src_root: &Path,
-    dst_root: &Path,
-    skip: &dyn Fn(&str, bool) -> bool,
-) -> std::io::Result<CloneStats> {
-    let must_walk = dst.starts_with(src)
+    let walk = || clone_tree_rooted(src, dst, &|_, _| false, src_root, dst_root);
+    // clonefile refuses an existing destination, and a destination inside the source needs
+    // the walk's pruning to avoid cloning the clone.
+    if dst.starts_with(src)
         || fs::symlink_metadata(dst).is_ok()
-        || dir_contains_excluded(src, src_root, skip)?;
-    if must_walk {
-        return clone_tree_rooted(
-            src,
-            dst,
-            &|rel, is_dir| {
-                skip(rel, is_dir) || should_skip_clone_path(src_root, &src_root.join(rel), is_dir)
-            },
-            src_root,
-            dst_root,
-        );
+        || dir_contains_excluded(src, src_root)?
+    {
+        return walk();
     }
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
     }
     match clone_dir(src, dst) {
         Ok(()) => {}
-        Err(CloneError::Unsupported(_) | CloneError::Exists) => {
-            return clone_tree_rooted(
-                src,
-                dst,
-                &|rel, is_dir| {
-                    skip(rel, is_dir)
-                        || should_skip_clone_path(src_root, &src_root.join(rel), is_dir)
-                },
-                src_root,
-                dst_root,
-            );
-        }
+        Err(CloneError::Unsupported(_) | CloneError::Exists) => return walk(),
         Err(CloneError::Io(e)) => return Err(e),
     }
+
     fixup(dst, src_root, dst_root)
 }
 
-fn dir_contains_excluded(
-    dir: &Path,
-    src_root: &Path,
-    skip: &dyn Fn(&str, bool) -> bool,
-) -> std::io::Result<bool> {
-    for entry in fs::read_dir(dir)? {
+fn dir_contains_excluded(dir: &Path, src_root: &Path) -> std::io::Result<bool> {
+    for entry in walkdir::WalkDir::new(dir).min_depth(1) {
         let entry = entry?;
-        let path = entry.path();
-        let is_dir = entry.file_type()?.is_dir();
-        let rel = path
-            .strip_prefix(src_root)
-            .map(|r| r.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        if skip(&rel, is_dir) || should_skip_clone_path(src_root, &path, is_dir) {
-            return Ok(true);
-        }
-        if is_dir && dir_contains_excluded(&path, src_root, skip)? {
+        if should_skip_clone_path(src_root, entry.path(), entry.file_type().is_dir()) {
             return Ok(true);
         }
     }

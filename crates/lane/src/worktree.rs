@@ -281,13 +281,7 @@ fn clone_entry(root: &Path, dest: &Path, entry: &str) -> Result<cow::CloneStats>
     let source = root.join(entry);
     let target = dest.join(entry);
     if std::fs::symlink_metadata(&source)?.is_dir() {
-        return Ok(cow::clone_dir_tree_with_skip(
-            &source,
-            &target,
-            root,
-            dest,
-            &|_, _| false,
-        )?);
+        return Ok(cow::clone_dir_tree(&source, &target, root, dest)?);
     }
     let Some(name) = source.file_name().map(|name| name.to_string_lossy()) else {
         bail!("ignored entry has no file name: {entry}");
@@ -368,11 +362,7 @@ pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
             let mut args = vec!["--no-checkout"];
             args.extend(branch_args(adopt, name, &dest_str, &base));
             add_worktree(&root, &args)?;
-            let skip = |rel: &str, is_dir: bool| {
-                rel == ".git"
-                    || rel.starts_with(".git/")
-                    || cow::should_skip_clone_path(&root, &root.join(rel), is_dir)
-            };
+            let skip = |rel: &str, _is_dir: bool| rel == ".git" || rel.starts_with(".git/");
             let stats = cow::clone_tree(&root, &dest, &skip)?;
             // Repopulate the index from the checked-out tree without rewriting a single
             // file. HEAD, not base: an adopted branch is already at its own tip.

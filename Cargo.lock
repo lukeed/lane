@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "lane"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "gix-config",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "lane-tour"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "libc"

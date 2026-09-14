@@ -91,6 +91,8 @@ $ lane push
 
 `lane new` creates a branch and worktree under `.lane/trees/`. On APFS, btrfs, and reflink-enabled XFS, ignored files are cloned by reference. Otherwise, Lane creates a normal Git worktree and skips ignored files.
 
+Existing worktrees and trash are excluded from cloning, even when Git ignores all of `.lane/`. Lane waits for trash deletion before removal succeeds and reports cleanup errors. Run `lane prune` to retry cleanup or clear trash left by an older version, even when no lanes remain. `lane prune --dry-run` leaves trash in place.
+
 Notes record what must stay true, not what a commit changed. They are stored as Markdown under `.lane/memory/` and anchored to a declaration, Markdown section, component block, or whole file.
 
 For repositories with protected branches, use `lane push` instead of `lane merge`. After the pull request lands, run `lane prune`.

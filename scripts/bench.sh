@@ -28,7 +28,7 @@ TIMEFORMAT='%R'
 # argument the extent-sharing test makes.
 lower() { awk -v a="$1" -v b="$2" 'BEGIN{print (b < a) ? b : a}'; }
 
-# `lane rm` returns before the unlinking does; waiting keeps it out of the next reading.
+# Older binaries return before unlinking ends; wait to keep it out of the next reading.
 settle() {
   local i
   for i in $(seq 1 120); do

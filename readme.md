@@ -76,6 +76,20 @@ $ lane install skill  # install the fuller workflow for coding agents
 
 ## Usage
 
+Open an existing local branch in a new lane with `lane checkout fix-login`.
+For a GitHub PR, fetch its head into a local branch first:
+
+```sh
+$ git fetch origin pull/123/head:pr-123
+$ lane checkout pr-123
+```
+
+Checkout preserves the branch tip, upstream, and recorded lane base. It refuses
+missing branches and branches already checked out in another worktree. Like
+`lane new`, it clones ignored caches when reflinks are available and enters the
+lane when shell integration is installed. `lane new <name>` also accepts existing
+local branches; `lane checkout` makes that intent explicit and catches typos.
+
 ```sh
 $ lane new fix-login
 $ lane why src/auth.rs

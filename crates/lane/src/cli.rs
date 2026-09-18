@@ -49,6 +49,7 @@ pub fn run() -> Result<i32> {
         }
         Parsed::Init => init(),
         Parsed::New(args) => new(&args.name, args.base.as_deref(), args.dirty),
+        Parsed::Checkout { branch } => print_created(wt::checkout(&branch)?),
         Parsed::Ls { json } => ls(json),
         Parsed::Enter { name } => enter(&name),
         Parsed::Exit => exit(),
@@ -596,7 +597,10 @@ fn init() -> Result<i32> {
 }
 
 fn new(name: &str, base: Option<&str>, dirty: bool) -> Result<i32> {
-    let created = wt::create(name, base, dirty)?;
+    print_created(wt::create(name, base, dirty)?)
+}
+
+fn print_created(created: wt::Created) -> Result<i32> {
     // Progress goes to stderr so stdout carries the path alone, as `enter` does. Bold only
     // for a terminal: a captured path must not carry escapes.
     let info = &mut std::io::stderr();
@@ -1549,7 +1553,7 @@ fn rm(name: &str, force: bool) -> Result<i32> {
 const POSIX_SHELLENV: &str = r#"lane() {
   local p
   case "$1" in
-    new|enter|switch|exit) p=$(command lane "$@") || return; cd "$p" ;;
+    new|checkout|enter|switch|exit) p=$(command lane "$@") || return; cd "$p" ;;
     # Read the destination first: merge deletes the worktree, and nothing runs from a
     # directory that no longer exists. Stay put unless it was ours that went away.
     merge) p=$(command lane exit) || return; command lane "$@" || return
@@ -1610,7 +1614,7 @@ fi"#;
 const FISH_SHELLENV: &str = r#"function lane --description 'lane worktree wrapper with auto-cd'
     set -l p
     switch "$argv[1]"
-        case new enter switch exit
+        case new checkout enter switch exit
             set p (command lane $argv); or return
             cd $p
         # Read the destination first: merge deletes the worktree, and nothing runs from a

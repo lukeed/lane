@@ -309,6 +309,28 @@ fn branch_args<'a>(adopt: bool, name: &'a str, dest: &'a str, base: &'a str) -> 
     }
 }
 
+/// Checkout deliberately requires a local branch: typos must not create branches.
+pub fn checkout(name: &str) -> Result<Created> {
+    let root = main_root()?;
+    git(
+        &["check-ref-format", &format!("refs/heads/{name}")],
+        Some(&root),
+    )?;
+    anyhow::ensure!(
+        git_ok(
+            &[
+                "show-ref",
+                "--verify",
+                "--quiet",
+                &format!("refs/heads/{name}")
+            ],
+            Some(&root)
+        ),
+        "no local branch named {name}; fetch it first, or use `lane new {name}` to create it"
+    );
+    create(name, None, false)
+}
+
 /// By default git checks out tracked files and ignored entries are cloned by reference.
 pub fn create(name: &str, base: Option<&str>, dirty: bool) -> Result<Created> {
     let root = main_root()?;

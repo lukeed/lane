@@ -20,6 +20,7 @@ const MAX_CHARS: usize = 1200;
 const COMMANDS: &[&str] = &[
     "init",
     "new",
+    "checkout",
     "enter",
     "switch",
     "exit",
@@ -149,6 +150,7 @@ pub struct RmArgs {
 pub enum Parsed {
     Init,
     New(NewArgs),
+    Checkout { branch: String },
     Ls { json: bool },
     Enter { name: String },
     Exit,
@@ -182,6 +184,9 @@ pub fn parse(raw: Vec<OsString>) -> Result<Parsed> {
     match head.as_deref() {
         Some("init") => bare(rest(raw), Help::Init, Parsed::Init),
         Some("new") => parse_new(rest(raw)),
+        Some("checkout") => parse_one(rest(raw), Help::Checkout, "<BRANCH>", |branch| {
+            Parsed::Checkout { branch }
+        }),
         Some("ls") => parse_ls(rest(raw)),
         Some("enter" | "switch") => parse_one(rest(raw), Help::Enter, "<NAME>", |name| {
             Parsed::Enter { name }

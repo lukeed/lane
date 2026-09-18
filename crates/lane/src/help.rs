@@ -13,6 +13,7 @@ pub enum Help {
     Root,
     Init,
     New,
+    Checkout,
     Ls,
     Enter,
     Exit,
@@ -45,6 +46,7 @@ impl Help {
             Help::Root => ROOT,
             Help::Init => INIT,
             Help::New => NEW,
+            Help::Checkout => CHECKOUT,
             Help::Ls => LS,
             Help::Enter => ENTER,
             Help::Exit => EXIT,
@@ -77,6 +79,7 @@ impl Help {
             Help::Root => "lane <COMMAND>",
             Help::Init => "lane init",
             Help::New => "lane new [OPTIONS] <NAME>",
+            Help::Checkout => "lane checkout <BRANCH>",
             Help::Ls => "lane ls [--json]",
             Help::Enter => "lane enter <NAME>",
             Help::Exit => "lane exit",
@@ -121,6 +124,7 @@ impl Help {
             Help::Root => "lane",
             Help::Init => "lane init",
             Help::New => "lane new",
+            Help::Checkout => "lane checkout",
             Help::Ls => "lane ls",
             Help::Enter => "lane enter",
             Help::Exit => "lane exit",
@@ -159,6 +163,7 @@ const ROOT: &str = "
   Commands
     init         Initialize lane in a repository
     new          Create a copy-on-write worktree
+    checkout     Open an existing branch in a new lane
     enter        Enter a lane
     exit         Return to the main worktree
     ls           List lanes
@@ -201,7 +206,8 @@ const INIT: &str = "
 const NEW: &str = "
   Description
     Create a branch and worktree under .lane/trees/. Ignored files are cloned
-    by reference when the filesystem supports reflinks.
+    by reference when the filesystem supports reflinks. An existing local
+    branch is adopted; --base only applies to new branches.
 
   Usage
     $ lane new <name> [options]
@@ -215,6 +221,25 @@ const NEW: &str = "
     $ lane new fix-login
     $ lane new spike --dirty
     $ lane new hotfix --base v1.2.0
+";
+
+const CHECKOUT: &str = "
+  Description
+    Open an existing local branch in a new lane under .lane/trees/.
+    Ignored caches are cloned when reflinks are available. Tracked edits
+    stay in the parent worktree. A branch already checked out is refused.
+    Fetch remote or pull-request branches into a local branch first.
+
+  Usage
+    $ lane checkout <branch>
+
+  Options
+    -h, --help    Display this message
+
+  Examples
+    $ lane checkout fix-login
+    $ git fetch origin pull/123/head:pr-123
+    $ lane checkout pr-123
 ";
 
 const LS: &str = "
@@ -534,8 +559,8 @@ const RM: &str = "
 
 const SHELLENV: &str = "
   Description
-    Print the shell function that makes `lane enter`, `lane exit`, `lane new`
-    and `lane merge` leave the shell in the right directory.
+    Print the shell function that makes `lane enter`, `lane exit`, `lane new`,
+    `lane checkout` and `lane merge` leave the shell in the right directory.
 
   Usage
     $ eval \"$(lane shellenv [bash|zsh|fish])\"

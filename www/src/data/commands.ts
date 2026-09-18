@@ -45,6 +45,13 @@ export let commands: Command[] = [
 		example: "$ lane new fix-login\n  reflink: yes (reflink available)\n  1284 files cloned (612.4 MiB shared, 0 copied)\n/w/proj/.lane/trees/fix-login",
 	},
 	{
+		name: "checkout",
+		usage: "lane checkout <branch>",
+		summary: "opens an existing local branch in a new lane with ignored caches cloned by reference when available. Fetch remote or PR branches locally first; branches already checked out are refused.",
+		options: [],
+		example: "$ git fetch origin pull/123/head:pr-123\n$ lane checkout pr-123\n/w/proj/.lane/trees/pr-123",
+	},
+	{
 		name: "ls",
 		usage: "lane ls [--json]",
 		summary: "lists every lane's landing state, dirty state, and pending note count.",

@@ -41,6 +41,7 @@ fn every_command_answers_its_own_help_flag() {
     for (word, screen) in [
         ("init", Help::Init),
         ("new", Help::New),
+        ("checkout", Help::Checkout),
         ("ls", Help::Ls),
         ("enter", Help::Enter),
         ("switch", Help::Enter),
@@ -729,7 +730,7 @@ fn every_command_the_root_screen_lists_parses() {
         .take_while(|line| !line.trim().is_empty())
         .filter_map(|line| line.split_whitespace().next())
         .collect();
-    assert_eq!(listed.len(), 17, "{listed:?}");
+    assert_eq!(listed.len(), 18, "{listed:?}");
     for name in listed {
         assert!(matches!(ok(&[name, "--help"]), Parsed::Help(_)), "{name}");
     }
@@ -741,6 +742,7 @@ fn every_screen_quotes_a_usage_line_it_agrees_with() {
         Help::Root,
         Help::Init,
         Help::New,
+        Help::Checkout,
         Help::Ls,
         Help::Enter,
         Help::Exit,
@@ -815,4 +817,23 @@ fn merge_and_push_name_a_lane_or_take_the_current_one() {
 
     assert!(err(&["merge", "one", "two"]).contains("unexpected argument 'two' found"));
     assert!(err(&["push", "one", "two"]).contains("unexpected argument 'two' found"));
+}
+
+#[test]
+fn checkout_requires_exactly_one_branch_and_no_creation_flags() {
+    assert_eq!(
+        ok(&["checkout", "feat/login"]),
+        Parsed::Checkout {
+            branch: "feat/login".into()
+        }
+    );
+    for words in [
+        &["checkout"][..],
+        &["checkout", "one", "two"],
+        &["checkout", "one", "--dirty"],
+        &["checkout", "one", "--base", "main"],
+    ] {
+        assert!(parse_words(words).is_err());
+    }
+    assert_eq!(ok(&["check"]), Parsed::Check { json: false });
 }

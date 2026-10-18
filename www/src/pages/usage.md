@@ -337,4 +337,16 @@ Lanes live in `.lane/trees/` inside the repository and are excluded through `.gi
 
 **`another lane is landing; try again`** — another landing or trunk-side audit holds the memory lock. It exits immediately rather than waiting; rerun the command after that operation finishes.
 
+**Commits in two lanes wait on each other** — a pre-commit hook stashes unstaged work, and all worktrees share one stash. [hk](https://hk.jdx.dev) locks `.git/hk-stash.lock` while it stashes, so one lane waits for the other. Set `stash = "none"` on the hook in `hk.pkl`, and leave `stage` unset on its steps. An explicit `stage` glob then also stages unstaged edits in files you did not stage.
+
+```pkl
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "none"
+    steps { ["cargo_fmt"] = Builtins.cargo_fmt }
+  }
+}
+```
+
 **A note is simply wrong** — run `lane note retire <id>` and commit the move to the attic.

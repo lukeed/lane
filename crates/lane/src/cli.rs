@@ -1431,12 +1431,15 @@ fn merge(
             &["merge-base", "--is-ancestor", &upstream.tip, &base],
             Some(&root),
         ) {
-            let number = pull_request_number(&lane_path, &upstream.remote, &upstream.tip);
-            let detail = number.map_or_else(String::new, |number| format!(" #{number}"));
-            eprintln!(
-                "warning: pushed pull request{detail} remains open; close it on {}",
-                upstream.remote
-            );
+            let Upstream { remote, branch, .. } = &upstream;
+            match pull_request_number(&lane_path, remote, &upstream.tip) {
+                Some(number) => {
+                    eprintln!("warning: pull request #{number} remains open; close it on {remote}")
+                }
+                None => eprintln!(
+                    "warning: pushed branch {branch} remains on {remote}; delete it with `git push {remote} --delete {branch}`"
+                ),
+            }
         }
     }
 
@@ -1467,6 +1470,7 @@ fn branch_remote(lane_path: &Path) -> Option<String> {
 
 struct Upstream {
     remote: String,
+    branch: String,
     tip: String,
 }
 
@@ -1491,7 +1495,19 @@ fn upstream_branch(lane_path: &Path, branch: &str) -> Option<Upstream> {
     } else {
         configured
     };
-    (remote != ".").then_some(Upstream { remote, tip })
+    let merge = try_git(
+        &["config", "--get", &format!("branch.{branch}.merge")],
+        Some(lane_path),
+    );
+    let branch = merge
+        .strip_prefix("refs/heads/")
+        .unwrap_or(branch)
+        .to_string();
+    (remote != ".").then_some(Upstream {
+        remote,
+        branch,
+        tip,
+    })
 }
 
 fn pull_request_number(lane_path: &Path, remote: &str, tip: &str) -> Option<String> {

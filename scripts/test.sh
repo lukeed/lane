@@ -1187,7 +1187,7 @@ git -C "$TMP/other" add -A && git -C "$TMP/other" commit -qm remote && git -C "$
 is "the lease refuses a remote commit" "$?" "1"
 is "the lease names the failed push" "$(grep -c 'force-with-lease' /tmp/lease.out)" "1"
 
-echo "== 39. merge warns only for orphaned pull requests =="
+echo "== 39. merge warns only for orphaned pushes =="
 setup
 remote_setup
 "$LANE" new feat > /dev/null 2>&1
@@ -1197,8 +1197,28 @@ REMOTE_TIP=$(git --git-dir="$TMP/origin.git" rev-parse refs/heads/feat)
 git --git-dir="$TMP/origin.git" update-ref refs/pull/7/head "$REMOTE_TIP"
 echo "base" > src/base.rs && git add -A && git commit -qm base
 ( cd "$LP" && "$LANE" merge > /tmp/orphan.out 2>&1 )
-is "merge warns after rewriting the pushed tip" "$(grep -c '^warning: pushed pull request' /tmp/orphan.out)" "1"
-is "the orphan warning names pull request 7" "$(grep -c 'pull request #7' /tmp/orphan.out)" "1"
+is "merge warns after rewriting the pushed tip" "$(grep -c '^warning: pull request #7 remains open; close it on origin$' /tmp/orphan.out)" "1"
+
+setup
+remote_setup
+"$LANE" new no-pr > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/no-pr"
+( cd "$LP" && echo "lane" > src/lane.rs && git add -A && git commit -qm lane && "$LANE" push > /dev/null )
+echo "base" > src/base.rs && git add -A && git commit -qm base
+( cd "$LP" && "$LANE" merge > /tmp/no-pr.out 2>&1 )
+is "a pushed branch with no pull request is not called one" "$(grep -c 'pull request' /tmp/no-pr.out)" "0"
+is "the branch warning names the branch and its delete" \
+   "$(grep -c '^warning: pushed branch no-pr remains on origin; delete it with `git push origin --delete no-pr`$' /tmp/no-pr.out)" "1"
+
+setup
+remote_setup
+"$LANE" new local-name > /dev/null 2>&1
+LP="$TMP/repo/.lane/trees/local-name"
+( cd "$LP" && echo "lane" > src/lane.rs && git add -A && git commit -qm lane && git push -q -u origin local-name:remote-name 2> /dev/null )
+echo "base" > src/base.rs && git add -A && git commit -qm base
+( cd "$LP" && "$LANE" merge > /tmp/renamed.out 2>&1 )
+is "the branch warning names the upstream, not the local branch" \
+   "$(grep -c 'delete it with `git push origin --delete remote-name`$' /tmp/renamed.out)" "1"
 
 setup
 remote_setup
@@ -1206,7 +1226,7 @@ remote_setup
 LP="$TMP/repo/.lane/trees/clean-pr"
 ( cd "$LP" && echo "lane" > src/lane.rs && git add -A && git commit -qm lane && "$LANE" push > /dev/null )
 ( cd "$LP" && "$LANE" merge > /tmp/clean-pr.out 2>&1 )
-is "merge stays silent when the pushed tip remains reachable" "$(grep -c '^warning: pushed pull request' /tmp/clean-pr.out)" "0"
+is "merge stays silent when the pushed tip remains reachable" "$(grep -c '^warning: ' /tmp/clean-pr.out)" "0"
 
 
 echo "== 40. a retired upstream proves a landing no patch can =="

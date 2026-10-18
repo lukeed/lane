@@ -4,9 +4,9 @@ anchor: fn merge
 created: 2026-08-26T03:30:39Z
 norm: '1'
 sig: 45beab2c07c04d68
-body_hash: b9047e1dee2a995b
-raw_hash: 38a7fa1c8226e967
-vouched: 2026-09-10T18:31:41Z
+body_hash: ab1a9ce43867a116
+raw_hash: 4e2ffa4507395445
+vouched: 2026-10-18T06:25:22Z
 lines: 1348-1405
 supersedes: 01M0TVF10VM7DTYH3E4BCHP9MH
 ---
